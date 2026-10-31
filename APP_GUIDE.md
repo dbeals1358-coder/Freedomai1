@@ -14,3 +14,12 @@ The server URL is saved on your phone. Prompts/photos are sent to that server wh
 
 ## Validation
 CI compiles the debug APK and runs Android lint. Device testing and a live server integration test are still required. In-progress images are held in memory and may be lost when Android recreates the activity.
+
+
+## Local Dream on the same phone (v0.3)
+
+Load CyberRealistic v10 NPU in Local Dream and leave its model screen open. Switch to Unbound, leave “Local Dream on this phone” enabled, then tap Check connection. Generate or AI Edit uses the loaded model at 1024 square with 20 steps. No server URL or extra model download is needed in Unbound. Local Dream must remain running; use Android split screen with both apps if the backend stops when switching. This has been built and protocol-tested, but must be verified on the phone with its installed Local Dream version. Other model sizes and DMD2 settings are not exposed yet. The cloud connection remains available by turning off the Local Dream switch.
+
+Local connection: fixed 127.0.0.1:8081 with /tokenize and /generate. Prompts and source photos stay on the phone in Local mode. Cleartext is allowed only for 127.0.0.1. API references: https://ld-guide.chino.icu/features/http-api and https://github.com/xororz/local-dream/issues/45 .
+
+Android debug signing keys can differ between build runners. If Android rejects an update as a conflicting package, uninstall the old Unbound app first, then install this APK. Saved gallery photos are separate; in-app settings will be reset.

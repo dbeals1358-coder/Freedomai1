@@ -37,6 +37,7 @@ class MainActivity : ComponentActivity() {
   setContent {
    val prefs = remember { getSharedPreferences("server", MODE_PRIVATE) }
    var server by remember { mutableStateOf(prefs.getString("url", "") ?: "") }
+   var localMode by remember { mutableStateOf(prefs.getBoolean("local", true)) }
    var busy by remember { mutableStateOf(false) }
    var status by remember { mutableStateOf("") }
    var result by remember { mutableStateOf<Bitmap?>(null) }
@@ -69,24 +70,59 @@ class MainActivity : ComponentActivity() {
      Column(Modifier.padding(inset).fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
       Text("UNBOUND AI STUDIO", style = MaterialTheme.typography.headlineMedium)
       Text("Create freely. Edit creatively.")
-      OutlinedTextField(value = server, onValueChange = { server = it }, label = { Text("Image server HTTPS URL") }, placeholder = { Text("https://your-server.example") }, enabled = !busy, modifier = Modifier.fillMaxWidth())
-      Text("Connect your AUTOMATIC1111 server with its API enabled. Photos and prompts are sent only when you tap Generate or AI Edit.")
+      Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+       Text("Local Dream on this phone")
+       Switch(checked = localMode, enabled = !busy, onCheckedChange = { localMode = it; prefs.edit().putBoolean("local", it).apply() })
+      }
+      if (localMode) {
+       Text("1. Open Local Dream and load CyberRealistic v10.\n2. Keep its model screen open, then switch back here.\n3. Check connection, then generate.")
+       OutlinedButton(enabled = !busy, onClick = {
+        val intent = packageManager.getLaunchIntentForPackage("io.github.xororz.localdream")
+        if (intent != null) startActivity(intent) else toast("Open Local Dream from your phone's app list")
+       }) { Text("Open Local Dream") }
+       OutlinedButton(enabled = !busy, onClick = {
+        busy = true
+        scope.launch {
+         try {
+          withContext(Dispatchers.IO) { LocalDreamClient.checkConnection() }
+          status = "Connected to Local Dream. Ready to generate."
+         } catch (e: kotlinx.coroutines.CancellationException) { throw e
+         } catch (e: Exception) { status = "Local Dream isn't ready. Open it, load a model, and keep it running. Try split screen if needed."
+         } finally { busy = false }
+        }
+       }) { Text("Check connection") }
+      } else {
+       OutlinedTextField(value = server, onValueChange = { server = it }, label = { Text("Image server HTTPS URL") }, placeholder = { Text("https://your-server.example") }, enabled = !busy, modifier = Modifier.fillMaxWidth())
+       Text("Connect an AUTOMATIC1111 server. Photos and prompts go to that server when you generate or AI edit.")
+      }
       if (busy) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
       if (status.isNotEmpty()) Text(status)
       fun requestImage(input: Bitmap?) {
        if (prompt.isBlank()) { status = "Describe the image first"; return }
        val address = server.trim().trimEnd('/')
-       if (runCatching { URL(address).let { it.protocol == "https" && it.host.isNotBlank() && it.userInfo == null && it.query == null && it.ref == null } }.getOrDefault(false).not()) {
+       if (!localMode && runCatching { URL(address).let { it.protocol == "https" && it.host.isNotBlank() && it.userInfo == null && it.query == null && it.ref == null } }.getOrDefault(false).not()) {
         status = "Enter a valid HTTPS server URL"; return
        }
        prefs.edit().putString("url", address).apply()
+       val useLocal = localMode
+       val requestedPrompt = prompt
        busy = true; status = "Creating image…"
        scope.launch {
         try {
-         result = withContext(Dispatchers.IO) { generateImage(address, prompt, input) }
+         result = withContext(Dispatchers.IO) {
+          if (useLocal) {
+           val encoded = input?.let { bitmap ->
+            ByteArrayOutputStream().use { stream -> bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream); Base64.encodeToString(stream.toByteArray(), Base64.NO_WRAP) }
+           }
+           val frame = LocalDreamClient.generate(requestedPrompt, encoded) { step, total ->
+            runOnUiThread { status = "Creating image: step $step of $total" }
+           }
+           Bitmap.createBitmap(frame.pixels, frame.width, frame.height, Bitmap.Config.ARGB_8888)
+          } else generateImage(address, requestedPrompt, input)
+         }
          status = "Image ready"
         } catch (e: kotlinx.coroutines.CancellationException) { throw e
-        } catch (e: Exception) { status = "Could not create image: ${e.message ?: "connection failed"}"
+        } catch (e: Exception) { status = if (useLocal) "Local Dream: ${e.message ?: "connection failed"}. Keep the model loaded; try split screen if disconnected." else "Could not create image: ${e.message ?: "connection failed"}"
         } finally { busy = false }
        }
       }
@@ -190,3 +226,4 @@ private fun generateImage(server: String, prompt: String, input: Bitmap?): Bitma
   return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample }) ?: error("Server did not return a readable image")
  } finally { connection.disconnect() }
 }
+
