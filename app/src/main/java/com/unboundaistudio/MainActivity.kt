@@ -11,6 +11,10 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color as UiColor
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -42,7 +46,8 @@ class MainActivity : ComponentActivity() {
    var status by remember { mutableStateOf("") }
    var result by remember { mutableStateOf<Bitmap?>(null) }
    val scope = rememberCoroutineScope()
-   var tab by remember { mutableStateOf(0) }
+   var tab by remember { mutableStateOf(-1) }
+   var showConnection by remember { mutableStateOf(false) }
    var prompt by remember { mutableStateOf("") }
    var original by remember { mutableStateOf<Bitmap?>(null) }
    var brightness by remember { mutableFloatStateOf(0f) }
@@ -60,16 +65,38 @@ class MainActivity : ComponentActivity() {
     } catch (e: Exception) { toast("Couldn't open image") }
    }
    val edited = remember(original, brightness, saturation) { original?.let { adjust(it, brightness, saturation) } }
-   MaterialTheme(colorScheme = darkColorScheme()) {
+   MaterialTheme(colorScheme = darkColorScheme(
+    primary = UiColor(0xFFB8A0FF), onPrimary = UiColor(0xFF21133F),
+    secondary = UiColor(0xFF8AC7FF), background = UiColor(0xFF101116),
+    surface = UiColor(0xFF191B24), surfaceVariant = UiColor(0xFF252836)
+   )) {
     Scaffold(bottomBar = {
      NavigationBar {
-      NavigationBarItem(selected = tab == 0, onClick = { tab = 0 }, icon = { Text("✦") }, label = { Text("Generate") })
+      NavigationBarItem(selected = tab == -1, onClick = { tab = -1 }, icon = { Text("⌂") }, label = { Text("Home") })
+      NavigationBarItem(selected = tab == 0, onClick = { tab = 0 }, icon = { Text("✦") }, label = { Text("Create") })
       NavigationBarItem(selected = tab == 1, onClick = { tab = 1 }, icon = { Text("◈") }, label = { Text("Edit") })
      }
     }) { inset ->
      Column(Modifier.padding(inset).fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-      Text("UNBOUND AI STUDIO", style = MaterialTheme.typography.headlineMedium)
-      Text("Create freely. Edit creatively.")
+      Text("FreedomAI", style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.primary)
+      Text(if (tab == -1) "What will you create?" else if (tab == 0) "Turn your ideas into images" else "Give your photos a fresh look", style = MaterialTheme.typography.titleLarge)
+      if (tab == -1) {
+       Column(Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(UiColor(0xFF332451), UiColor(0xFF192F49))), RoundedCornerShape(28.dp)).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Text("✦", style = MaterialTheme.typography.displayMedium, color = MaterialTheme.colorScheme.secondary)
+        Text("A little imagination.\nEndless possibilities.", style = MaterialTheme.typography.headlineMedium)
+        Text("Start with an idea or a photo. Make something your own.", color = UiColor(0xFFD3D0E3))
+        Button(onClick = { tab = 0 }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("Create Image") }
+        OutlinedButton(onClick = { tab = 1 }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("Edit Photo") }
+       }
+       Text("Start with an idea", style = MaterialTheme.typography.titleMedium)
+       listOf("A mountain lake under a sky full of stars", "A cozy cabin in an autumn forest", "A neon city street in the rain").forEach { idea ->
+        OutlinedButton(onClick = { prompt = idea; tab = 0 }, modifier = Modifier.fillMaxWidth()) { Text(idea) }
+       }
+      }
+      TextButton(onClick = { showConnection = !showConnection }) { Text(if (showConnection) "Hide connection settings ↑" else "Connection settings ↓") }
+      if (showConnection) {
+      Card(Modifier.fillMaxWidth()) {
+      Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
       Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
        Text("Local Dream on this phone")
        Switch(checked = localMode, enabled = !busy, onCheckedChange = { localMode = it; prefs.edit().putBoolean("local", it).apply() })
@@ -95,8 +122,11 @@ class MainActivity : ComponentActivity() {
        OutlinedTextField(value = server, onValueChange = { server = it }, label = { Text("Image server HTTPS URL") }, placeholder = { Text("https://your-server.example") }, enabled = !busy, modifier = Modifier.fillMaxWidth())
        Text("Connect an AUTOMATIC1111 server. Photos and prompts go to that server when you generate or AI edit.")
       }
+      }
+      }
+      }
       if (busy) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-      if (status.isNotEmpty()) Text(status)
+      if (status.isNotEmpty()) Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceVariant) { Text(status, modifier = Modifier.fillMaxWidth().padding(16.dp)) }
       fun requestImage(input: Bitmap?) {
        if (prompt.isBlank()) { status = "Describe the image first"; return }
        val address = server.trim().trimEnd('/')
@@ -127,10 +157,10 @@ class MainActivity : ComponentActivity() {
        }
       }
       if (tab == 0) {
-       OutlinedTextField(value = prompt, onValueChange = { prompt = it }, label = { Text("Describe your image") }, modifier = Modifier.fillMaxWidth().height(170.dp))
-       Button(onClick = { requestImage(null) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Generate Image") }
+       OutlinedTextField(value = prompt, onValueChange = { prompt = it }, label = { Text("Describe your image") }, placeholder = { Text("A peaceful beach at sunset, warm light, gentle waves…") }, modifier = Modifier.fillMaxWidth().height(170.dp))
+       Button(onClick = { requestImage(null) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text(if (busy) "Creating…" else "Create Image") }
 
-      } else {
+      } else if (tab == 1) {
        Button(enabled = !busy, onClick = { picker.launch("image/*") }, modifier = Modifier.fillMaxWidth()) { Text("Choose Photo") }
        edited?.let { bitmap ->
         Image(bitmap.asImageBitmap(), contentDescription = "Photo preview", modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp))
