@@ -58,6 +58,8 @@ class MainActivity : ComponentActivity() {
    var videoMode by remember { mutableStateOf("On-device") }
    var offlineMotion by remember { mutableStateOf("Zoom in") }
    var adultConfirmed by remember { mutableStateOf(false) }
+   var fictionalPrompt by remember { mutableStateOf("") }
+   var fictionalStyle by remember { mutableStateOf("Photorealistic") }
    var showAdultConfirm by remember { mutableStateOf(false) }
    var showConnection by remember { mutableStateOf(false) }
    var prompt by remember { mutableStateOf("") }
@@ -251,9 +253,24 @@ class MainActivity : ComponentActivity() {
       } else if (tab == 1 || (tab == 2 && adultConfirmed)) {
        if (tab == 2) {
         Text("Private 18+ studio. Use only adult subjects and images you have permission to use. AI generation depends on the capabilities of the connected model; this app does not include an adult image model.")
-        Text("Create a new image", style = MaterialTheme.typography.titleMedium)
-        OutlinedTextField(value = prompt, onValueChange = { prompt = it }, label = { Text("Describe a new image") }, modifier = Modifier.fillMaxWidth())
-        Button(onClick = { requestImage(null) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Generate Private Image") }
+        Text("Create a fictional adult character", style = MaterialTheme.typography.titleMedium)
+        Text("Text-only character creation: no real person's photo is used as a reference. Describe fictional adults aged 18 or older.")
+        OutlinedTextField(value = fictionalPrompt, onValueChange = { fictionalPrompt = it }, label = { Text("Describe your fictional adult character") }, placeholder = { Text("A fictional 30-year-old woman with auburn hair, studio lighting...") }, modifier = Modifier.fillMaxWidth())
+        Text("Character art style")
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+         listOf("Photorealistic", "Illustration").forEach { style ->
+          FilterChip(selected = fictionalStyle == style, onClick = { fictionalStyle = style }, label = { Text(style) })
+         }
+        }
+        Button(onClick = {
+         if (fictionalPrompt.isBlank()) status = "Describe a fictional adult character first"
+         else {
+          prompt = "Entirely fictional adult character, age 25 or older. " + fictionalPrompt.trim() + ". " + if (fictionalStyle == "Illustration") "Detailed digital illustration." else "Photorealistic original character, realistic lighting."
+          original = null
+          result = null
+          requestImage(null)
+         }
+        }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Generate Fictional Character") }
         Text("Or choose a photo to edit. AI edits may send photos to the selected server. Private saving keeps the result inside this app.")
        }
        Button(enabled = !busy, onClick = { picker.launch("image/*") }, modifier = Modifier.fillMaxWidth()) { Text("Choose Photo") }
