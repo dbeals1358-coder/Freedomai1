@@ -186,7 +186,7 @@ class MainActivity : ComponentActivity() {
        }
       }
       if (tab == 3) {
-       Text("Choose how to animate your photograph. Video generation is not connected yet; these controls are a first step.")
+       Text("Create a free moving-photo MP4 on your phone. This is pan-and-zoom animation, not AI-generated movement. Cloud AI video is not connected yet.")
        Button(onClick = { picker.launch("image/*") }, modifier = Modifier.fillMaxWidth()) { Text("Choose Starting Photo") }
        original?.let { Image(it.asImageBitmap(), contentDescription = "Starting photo", modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp), contentScale = ContentScale.Fit) }
        OutlinedTextField(value = prompt, onValueChange = { prompt = it }, label = { Text("Describe the movement") }, modifier = Modifier.fillMaxWidth())
@@ -194,8 +194,43 @@ class MainActivity : ComponentActivity() {
         FilterChip(selected = videoMode == "On-device", onClick = { videoMode = "On-device" }, label = { Text("Free on phone") })
         FilterChip(selected = videoMode == "Cloud", onClick = { videoMode = "Cloud" }, label = { Text("Online quality") })
        }
-       Text(if (videoMode == "On-device") "On-device video requires a compatible model and runtime; none is connected yet." else "Online generation requires a provider, a secure API connection, and may cost money.")
-       Button(onClick = { status = "Video generation is not configured yet. Your photo has not been uploaded." }, enabled = original != null && prompt.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("Check Video Setup") }
+       Text(if (videoMode == "On-device") "Free offline mode creates a 3-second pan-and-zoom MP4. Motion instructions are not yet interpreted." else "Cloud AI video requires a secure provider integration and may cost money. No photos are uploaded from this screen.")
+       Button(onClick = {
+        if (videoMode == "Cloud") {
+         status = "Cloud AI video is not connected yet. Nothing was uploaded."
+        } else {
+         val photo = original
+         if (photo == null) status = "Choose a photograph first"
+         else {
+          busy = true; status = "Creating offline video…"
+          scope.launch {
+           val temp = java.io.File(cacheDir, "motion_${System.currentTimeMillis()}.mp4")
+           try {
+            withContext(Dispatchers.IO) { PhotoMotionEncoder.render(photo, temp) }
+            val values = ContentValues().apply {
+             put(MediaStore.Video.Media.DISPLAY_NAME, "FreedomAI_${System.currentTimeMillis()}.mp4")
+             put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
+             put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/FreedomAI")
+             put(MediaStore.Video.Media.IS_PENDING, 1)
+            }
+            val uri = contentResolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values) ?: error("Cannot create video")
+            try {
+             withContext(Dispatchers.IO) {
+              contentResolver.openOutputStream(uri)?.use { output -> temp.inputStream().use { it.copyTo(output) } } ?: error("Cannot save video")
+             }
+             contentResolver.update(uri, ContentValues().apply { put(MediaStore.Video.Media.IS_PENDING, 0) }, null, null)
+             status = "Video saved to Movies/FreedomAI"
+             val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+              setDataAndType(uri, "video/mp4"); addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+             }
+             runCatching { startActivity(intent) }
+            } catch (e: Exception) { contentResolver.delete(uri, null, null); throw e }
+           } catch (e: Exception) { status = "Video failed: ${e.message ?: "encoder unavailable"}" }
+           finally { temp.delete(); busy = false }
+          }
+         }
+        }
+       }, enabled = !busy && original != null, modifier = Modifier.fillMaxWidth()) { Text(if (videoMode == "On-device") "Create Free Video" else "Check Cloud Setup") }
       }
       if (tab == 0) {
        OutlinedTextField(value = prompt, onValueChange = { prompt = it }, label = { Text("Describe your image") }, placeholder = { Text("A peaceful beach at sunset, warm light, gentle waves…") }, modifier = Modifier.fillMaxWidth().height(170.dp))
