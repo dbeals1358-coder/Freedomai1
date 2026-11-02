@@ -313,7 +313,7 @@ class MainActivity : ComponentActivity() {
        Text("Your creation", style = MaterialTheme.typography.titleLarge)
        Image(image.asImageBitmap(), contentDescription = "Generated image", modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp))
        Button(onClick = { if (tab == 2) savePrivate(image) else save(image) }) { Text(if (tab == 2) "Save Privately" else "Save Image") }
-       OutlinedButton(onClick = { original = image; brightness = 0f; saturation = 1f; result = null; tab = 1 }) { Text("Edit this image") }
+       OutlinedButton(onClick = { original = image; brightness = 0f; saturation = 1f; result = null; if (tab != 2) tab = 1 }) { Text("Edit this image") }
       }
      }
     }
