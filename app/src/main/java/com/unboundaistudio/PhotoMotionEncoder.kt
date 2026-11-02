@@ -12,7 +12,7 @@ import java.io.File
 
 /** Offline photo animation: pan/zoom MP4, NOT generative AI motion. */
 internal object PhotoMotionEncoder {
- fun render(photo: Bitmap, output: File) {
+ fun render(photo: Bitmap, output: File, motion: String = "Zoom in") {
   val width = 512; val height = 512; val fps = 24; val frames = 72
   val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, width, height).apply {
    setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
@@ -59,10 +59,20 @@ internal object PhotoMotionEncoder {
     try {
      canvas.drawColor(Color.BLACK)
      val t = frame.toFloat() / (frames - 1)
-     val scale = 1.0f + 0.12f * t
+     val eased = t * t * (3f - 2f * t)
+     val scale = when (motion) {
+      "Zoom out" -> 1.16f - 0.12f * eased
+      "Pan left", "Pan right" -> 1.12f
+      else -> 1.04f + 0.12f * eased
+     }
      val fit = maxOf(width.toFloat() / photo.width, height.toFloat() / photo.height) * scale
      val dw = photo.width * fit; val dh = photo.height * fit
-     val x = (width - dw) / 2 + (dw - width) * (0.5f - t) * 0.25f
+     val horizontal = when (motion) {
+      "Pan left" -> 0.85f - 0.7f * eased
+      "Pan right" -> 0.15f + 0.7f * eased
+      else -> 0.5f
+     }
+     val x = (width - dw) * horizontal
      val y = (height - dh) / 2
      canvas.drawBitmap(photo, null, android.graphics.RectF(x, y, x + dw, y + dh), paint)
     } finally { surface.unlockCanvasAndPost(canvas) }
