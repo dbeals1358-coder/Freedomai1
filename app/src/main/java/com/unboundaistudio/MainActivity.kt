@@ -56,6 +56,7 @@ class MainActivity : ComponentActivity() {
    val scope = rememberCoroutineScope()
    var tab by remember { mutableStateOf(-1) }
    var videoMode by remember { mutableStateOf("On-device") }
+   var offlineMotion by remember { mutableStateOf("Zoom in") }
    var adultConfirmed by remember { mutableStateOf(false) }
    var showAdultConfirm by remember { mutableStateOf(false) }
    var showConnection by remember { mutableStateOf(false) }
@@ -189,12 +190,23 @@ class MainActivity : ComponentActivity() {
        Text("Create a free moving-photo MP4 on your phone. This is pan-and-zoom animation, not AI-generated movement. Cloud AI video is not connected yet.")
        Button(onClick = { picker.launch("image/*") }, modifier = Modifier.fillMaxWidth()) { Text("Choose Starting Photo") }
        original?.let { Image(it.asImageBitmap(), contentDescription = "Starting photo", modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp), contentScale = ContentScale.Fit) }
-       OutlinedTextField(value = prompt, onValueChange = { prompt = it }, label = { Text("Describe the movement") }, modifier = Modifier.fillMaxWidth())
+       Text("Choose camera movement (works without internet):")
+       Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        listOf("Zoom in", "Zoom out").forEach { option ->
+         FilterChip(selected = offlineMotion == option, onClick = { offlineMotion = option }, label = { Text(option) })
+        }
+       }
+       Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        listOf("Pan left", "Pan right").forEach { option ->
+         FilterChip(selected = offlineMotion == option, onClick = { offlineMotion = option }, label = { Text(option) })
+        }
+       }
+       OutlinedTextField(value = prompt, onValueChange = { prompt = it }, label = { Text("Future AI movement instructions (not used offline)") }, modifier = Modifier.fillMaxWidth())
        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         FilterChip(selected = videoMode == "On-device", onClick = { videoMode = "On-device" }, label = { Text("Free on phone") })
         FilterChip(selected = videoMode == "Cloud", onClick = { videoMode = "Cloud" }, label = { Text("Online quality") })
        }
-       Text(if (videoMode == "On-device") "Free offline mode creates a 3-second pan-and-zoom MP4. Motion instructions are not yet interpreted." else "Cloud AI video requires a secure provider integration and may cost money. No photos are uploaded from this screen.")
+       Text(if (videoMode == "On-device") "Free offline mode creates a 3-second camera-movement MP4 using your selected preset. People do not move independently." else "Cloud AI video requires a secure provider integration and may cost money. No photos are uploaded from this screen.")
        Button(onClick = {
         if (videoMode == "Cloud") {
          status = "Cloud AI video is not connected yet. Nothing was uploaded."
@@ -206,7 +218,7 @@ class MainActivity : ComponentActivity() {
           scope.launch {
            val temp = java.io.File(cacheDir, "motion_${System.currentTimeMillis()}.mp4")
            try {
-            withContext(Dispatchers.IO) { PhotoMotionEncoder.render(photo, temp) }
+            withContext(Dispatchers.IO) { PhotoMotionEncoder.render(photo, temp, offlineMotion) }
             val values = ContentValues().apply {
              put(MediaStore.Video.Media.DISPLAY_NAME, "FreedomAI_${System.currentTimeMillis()}.mp4")
              put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
