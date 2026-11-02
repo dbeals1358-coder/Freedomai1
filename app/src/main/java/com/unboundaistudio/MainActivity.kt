@@ -58,6 +58,12 @@ class MainActivity : ComponentActivity() {
    var adultConfirmed by remember { mutableStateOf(false) }
    var showAdultConfirm by remember { mutableStateOf(false) }
    var fictionalAdultMode by remember { mutableStateOf(false) }
+   var characterAge by remember { mutableStateOf("30") }
+   var appearance by remember { mutableStateOf("") }
+   var bodyDescription by remember { mutableStateOf("") }
+   var pose by remember { mutableStateOf("") }
+   var setting by remember { mutableStateOf("") }
+   var photoStyle by remember { mutableStateOf("Photorealistic natural lighting") }
    var showConnection by remember { mutableStateOf(false) }
    var prompt by remember { mutableStateOf("") }
    var original by remember { mutableStateOf<Bitmap?>(null) }
@@ -146,14 +152,18 @@ class MainActivity : ComponentActivity() {
       if (busy) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
       if (status.isNotEmpty()) Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceVariant) { Text(status, modifier = Modifier.fillMaxWidth().padding(16.dp)) }
       fun requestImage(input: Bitmap?) {
-       if (prompt.isBlank()) { status = "Describe the image first"; return }
+       if (prompt.isBlank() && !(tab == 2 && fictionalAdultMode && (appearance.isNotBlank() || bodyDescription.isNotBlank()))) { status = "Describe the image first"; return }
        val address = server.trim().trimEnd('/')
        if (!localMode && runCatching { URL(address).let { it.protocol == "https" && it.host.isNotBlank() && it.userInfo == null && it.query == null && it.ref == null } }.getOrDefault(false).not()) {
         status = "Enter a valid HTTPS server URL"; return
        }
        prefs.edit().putString("url", address).apply()
        val useLocal = localMode
-       val requestedPrompt = prompt
+       val requestedPrompt = if (tab == 2 && fictionalAdultMode && input == null) {
+        val age = characterAge.toIntOrNull()
+        if (age == null || age < 18 || age > 100) { status = "Enter an adult age from 18 to 100"; return }
+        listOf("Original fictional adult woman, age $age", appearance, bodyDescription, pose, setting, photoStyle, prompt).filter { it.isNotBlank() }.joinToString(", ")
+       } else prompt
        val requestedStrength = editStrength
        val mask = if (input != null && maskMode && strokes.isNotEmpty()) makeMask(input.width, input.height, strokes.toList(), brush) else null
        val inputForValidation = input
@@ -193,7 +203,13 @@ class MainActivity : ComponentActivity() {
           Switch(checked = fictionalAdultMode, onCheckedChange = { fictionalAdultMode = it; result = null })
          }
          if (fictionalAdultMode) {
-          OutlinedTextField(value = prompt, onValueChange = { prompt = it }, label = { Text("Describe an original adult character") }, modifier = Modifier.fillMaxWidth().height(150.dp))
+          OutlinedTextField(value = characterAge, onValueChange = { characterAge = it.filter(Char::isDigit).take(3) }, label = { Text("Fictional character age (18+)") }, modifier = Modifier.fillMaxWidth())
+          OutlinedTextField(value = appearance, onValueChange = { appearance = it }, label = { Text("Appearance: hair, face, eyes") }, modifier = Modifier.fillMaxWidth())
+          OutlinedTextField(value = bodyDescription, onValueChange = { bodyDescription = it }, label = { Text("Body proportions and physique") }, modifier = Modifier.fillMaxWidth())
+          OutlinedTextField(value = pose, onValueChange = { pose = it }, label = { Text("Pose") }, modifier = Modifier.fillMaxWidth())
+          OutlinedTextField(value = setting, onValueChange = { setting = it }, label = { Text("Background / location") }, modifier = Modifier.fillMaxWidth())
+          OutlinedTextField(value = photoStyle, onValueChange = { photoStyle = it }, label = { Text("Photography and lighting style") }, modifier = Modifier.fillMaxWidth())
+          OutlinedTextField(value = prompt, onValueChange = { prompt = it }, label = { Text("Additional details (optional)") }, modifier = Modifier.fillMaxWidth().height(110.dp))
           Text("Generation depends on the connected model's capabilities. This switch does not bypass model restrictions.")
           Button(onClick = { requestImage(null) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Generate Fictional Adult Image") }
          }
