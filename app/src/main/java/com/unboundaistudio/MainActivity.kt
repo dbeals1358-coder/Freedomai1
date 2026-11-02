@@ -55,7 +55,11 @@ class MainActivity : ComponentActivity() {
    var result by remember { mutableStateOf<Bitmap?>(null) }
    val scope = rememberCoroutineScope()
    var tab by remember { mutableStateOf(-1) }
+   var videoMode by remember { mutableStateOf("On-device") }
+   var offlineMotion by remember { mutableStateOf("Zoom in") }
    var adultConfirmed by remember { mutableStateOf(false) }
+   var fictionalPrompt by remember { mutableStateOf("") }
+   var fictionalStyle by remember { mutableStateOf("Photorealistic") }
    var showAdultConfirm by remember { mutableStateOf(false) }
    var showConnection by remember { mutableStateOf(false) }
    var prompt by remember { mutableStateOf("") }
@@ -90,11 +94,12 @@ class MainActivity : ComponentActivity() {
       NavigationBarItem(selected = tab == -1, onClick = { tab = -1 }, icon = { Text("⌂") }, label = { Text("Home") })
       NavigationBarItem(selected = tab == 0, onClick = { tab = 0 }, icon = { Text("✦") }, label = { Text("Create") })
       NavigationBarItem(selected = tab == 1, onClick = { tab = 1 }, icon = { Text("◈") }, label = { Text("Edit") })
+      NavigationBarItem(selected = tab == 3, onClick = { tab = 3 }, icon = { Text("▶") }, label = { Text("Video") })
      }
     }) { inset ->
      Column(Modifier.padding(inset).fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
       Text("FreedomAI", style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.primary)
-      Text(if (tab == -1) "What will you create?" else if (tab == 0) "Turn your ideas into images" else if (tab == 2) "Private 18+ photo editor" else "Give your photos a fresh look", style = MaterialTheme.typography.titleLarge)
+      Text(if (tab == -1) "What will you create?" else if (tab == 0) "Turn your ideas into images" else if (tab == 2) "Private 18+ photo editor" else if (tab == 3) "Animate a photo" else "Give your photos a fresh look", style = MaterialTheme.typography.titleLarge)
       if (tab == -1) {
        Column(Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(UiColor(0xFF332451), UiColor(0xFF192F49))), RoundedCornerShape(28.dp)).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text("✦", style = MaterialTheme.typography.displayMedium, color = MaterialTheme.colorScheme.secondary)
@@ -102,6 +107,7 @@ class MainActivity : ComponentActivity() {
         Text("Start with an idea or a photo. Make something your own.", color = UiColor(0xFFD3D0E3))
         Button(onClick = { tab = 0 }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("Create Image") }
         OutlinedButton(onClick = { tab = 1 }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("Edit Photo") }
+        OutlinedButton(onClick = { tab = 3 }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("Photo to Video") }
         OutlinedButton(onClick = { showAdultConfirm = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("18+ Private Photo Editor") }
        }
        Text("Start with an idea", style = MaterialTheme.typography.titleMedium)
@@ -182,12 +188,92 @@ class MainActivity : ComponentActivity() {
         } finally { busy = false }
        }
       }
+      if (tab == 3) {
+       Text("Create a free moving-photo MP4 on your phone. This is pan-and-zoom animation, not AI-generated movement. Cloud AI video is not connected yet.")
+       Button(onClick = { picker.launch("image/*") }, modifier = Modifier.fillMaxWidth()) { Text("Choose Starting Photo") }
+       original?.let { Image(it.asImageBitmap(), contentDescription = "Starting photo", modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp), contentScale = ContentScale.Fit) }
+       Text("Choose camera movement (works without internet):")
+       Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        listOf("Zoom in", "Zoom out").forEach { option ->
+         FilterChip(selected = offlineMotion == option, onClick = { offlineMotion = option }, label = { Text(option) })
+        }
+       }
+       Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        listOf("Pan left", "Pan right").forEach { option ->
+         FilterChip(selected = offlineMotion == option, onClick = { offlineMotion = option }, label = { Text(option) })
+        }
+       }
+       OutlinedTextField(value = prompt, onValueChange = { prompt = it }, label = { Text("Future AI movement instructions (not used offline)") }, modifier = Modifier.fillMaxWidth())
+       Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FilterChip(selected = videoMode == "On-device", onClick = { videoMode = "On-device" }, label = { Text("Free on phone") })
+        FilterChip(selected = videoMode == "Cloud", onClick = { videoMode = "Cloud" }, label = { Text("Online quality") })
+       }
+       Text(if (videoMode == "On-device") "Free offline mode creates a 3-second camera-movement MP4 using your selected preset. People do not move independently." else "Cloud AI video requires a secure provider integration and may cost money. No photos are uploaded from this screen.")
+       Button(onClick = {
+        if (videoMode == "Cloud") {
+         status = "Cloud AI video is not connected yet. Nothing was uploaded."
+        } else {
+         val photo = original
+         if (photo == null) status = "Choose a photograph first"
+         else {
+          busy = true; status = "Creating offline video…"
+          scope.launch {
+           val temp = java.io.File(cacheDir, "motion_${System.currentTimeMillis()}.mp4")
+           try {
+            withContext(Dispatchers.IO) { PhotoMotionEncoder.render(photo, temp, offlineMotion) }
+            val values = ContentValues().apply {
+             put(MediaStore.Video.Media.DISPLAY_NAME, "FreedomAI_${System.currentTimeMillis()}.mp4")
+             put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
+             put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/FreedomAI")
+             put(MediaStore.Video.Media.IS_PENDING, 1)
+            }
+            val uri = contentResolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values) ?: error("Cannot create video")
+            try {
+             withContext(Dispatchers.IO) {
+              contentResolver.openOutputStream(uri)?.use { output -> temp.inputStream().use { it.copyTo(output) } } ?: error("Cannot save video")
+             }
+             contentResolver.update(uri, ContentValues().apply { put(MediaStore.Video.Media.IS_PENDING, 0) }, null, null)
+             status = "Video saved to Movies/FreedomAI"
+             val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+              setDataAndType(uri, "video/mp4"); addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+             }
+             runCatching { startActivity(intent) }
+            } catch (e: Exception) { contentResolver.delete(uri, null, null); throw e }
+           } catch (e: Exception) { status = "Video failed: ${e.message ?: "encoder unavailable"}" }
+           finally { temp.delete(); busy = false }
+          }
+         }
+        }
+       }, enabled = !busy && original != null, modifier = Modifier.fillMaxWidth()) { Text(if (videoMode == "On-device") "Create Free Video" else "Check Cloud Setup") }
+      }
       if (tab == 0) {
        OutlinedTextField(value = prompt, onValueChange = { prompt = it }, label = { Text("Describe your image") }, placeholder = { Text("A peaceful beach at sunset, warm light, gentle waves…") }, modifier = Modifier.fillMaxWidth().height(170.dp))
        Button(onClick = { requestImage(null) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text(if (busy) "Creating…" else "Create Image") }
 
       } else if (tab == 1 || (tab == 2 && adultConfirmed)) {
-       if (tab == 2) Text("Private editing: adjust brightness and saturation, then save to app-private storage. AI edits may send your photo to the selected model/server. Only use images you have permission to edit.")
+       if (tab == 2) {
+        Text("Private 18+ studio. Use only adult subjects and images you have permission to use. AI generation depends on the capabilities of the connected model; this app does not include an adult image model.")
+        Text("Create a fictional adult character", style = MaterialTheme.typography.titleMedium)
+        Text("For realistic results, select an SDXL photorealistic checkpoint in Local Dream first (for example RealVisXL V5). Model installation happens in Local Dream; FreedomAI uses the currently loaded model.")
+        Text("Text-only character creation: no real person's photo is used as a reference. Describe fictional adults aged 18 or older.")
+        OutlinedTextField(value = fictionalPrompt, onValueChange = { fictionalPrompt = it }, label = { Text("Describe your fictional adult character") }, placeholder = { Text("A fictional 30-year-old woman with auburn hair, studio lighting...") }, modifier = Modifier.fillMaxWidth())
+        Text("Character art style")
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+         listOf("Photorealistic", "Illustration").forEach { style ->
+          FilterChip(selected = fictionalStyle == style, onClick = { fictionalStyle = style }, label = { Text(style) })
+         }
+        }
+        Button(onClick = {
+         if (fictionalPrompt.isBlank()) status = "Describe a fictional adult character first"
+         else {
+          prompt = "Entirely fictional adult character, age 25 or older. " + fictionalPrompt.trim() + ". " + if (fictionalStyle == "Illustration") "Detailed digital illustration." else "Photorealistic original character, realistic lighting."
+          original = null
+          result = null
+          requestImage(null)
+         }
+        }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Generate Fictional Character") }
+        Text("Or choose a photo to edit. AI edits may send photos to the selected server. Private saving keeps the result inside this app.")
+       }
        Button(enabled = !busy, onClick = { picker.launch("image/*") }, modifier = Modifier.fillMaxWidth()) { Text("Choose Photo") }
        edited?.let { bitmap ->
         BoxWithConstraints(Modifier.fillMaxWidth()) {
@@ -239,13 +325,13 @@ class MainActivity : ComponentActivity() {
         Slider(value = saturation, onValueChange = { saturation = it }, valueRange = 0f..2f)
         Button(onClick = { if (tab == 2) savePrivate(bitmap) else save(bitmap) }, modifier = Modifier.fillMaxWidth()) { Text(if (tab == 2) "Save Privately" else "Save Photo") }
         OutlinedButton(onClick = { brightness = 0f; saturation = 1f }) { Text("Reset") }
-       } ?: Text("Pick a photo to edit its brightness and color saturation.")
+       } ?: Text(if (tab == 2) "Choose a photo below to edit, or use Generate Private Image above." else "Pick a photo to edit its brightness and color saturation.")
       }
       result?.let { image ->
        Text("Your creation", style = MaterialTheme.typography.titleLarge)
        Image(image.asImageBitmap(), contentDescription = "Generated image", modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp))
        Button(onClick = { if (tab == 2) savePrivate(image) else save(image) }) { Text(if (tab == 2) "Save Privately" else "Save Image") }
-       OutlinedButton(onClick = { original = image; brightness = 0f; saturation = 1f; result = null; tab = 1 }) { Text("Edit this image") }
+       OutlinedButton(onClick = { original = image; brightness = 0f; saturation = 1f; result = null; if (tab != 2) tab = 1 }) { Text("Edit this image") }
       }
      }
     }

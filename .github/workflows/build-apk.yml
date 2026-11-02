@@ -2,7 +2,7 @@ name: Build Android APK
 on:
   workflow_dispatch:
   push:
-    branches: [main, feature/photo-edit-strength]
+    branches: [main, feature/photo-edit-strength, feature/photo-to-video]
 permissions:
   contents: read
 jobs:
