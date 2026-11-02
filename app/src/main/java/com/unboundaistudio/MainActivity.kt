@@ -55,6 +55,7 @@ class MainActivity : ComponentActivity() {
    var result by remember { mutableStateOf<Bitmap?>(null) }
    val scope = rememberCoroutineScope()
    var tab by remember { mutableStateOf(-1) }
+   var videoMode by remember { mutableStateOf("On-device") }
    var adultConfirmed by remember { mutableStateOf(false) }
    var showAdultConfirm by remember { mutableStateOf(false) }
    var showConnection by remember { mutableStateOf(false) }
@@ -90,11 +91,12 @@ class MainActivity : ComponentActivity() {
       NavigationBarItem(selected = tab == -1, onClick = { tab = -1 }, icon = { Text("⌂") }, label = { Text("Home") })
       NavigationBarItem(selected = tab == 0, onClick = { tab = 0 }, icon = { Text("✦") }, label = { Text("Create") })
       NavigationBarItem(selected = tab == 1, onClick = { tab = 1 }, icon = { Text("◈") }, label = { Text("Edit") })
+      NavigationBarItem(selected = tab == 3, onClick = { tab = 3 }, icon = { Text("▶") }, label = { Text("Video") })
      }
     }) { inset ->
      Column(Modifier.padding(inset).fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
       Text("FreedomAI", style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.primary)
-      Text(if (tab == -1) "What will you create?" else if (tab == 0) "Turn your ideas into images" else if (tab == 2) "Private 18+ photo editor" else "Give your photos a fresh look", style = MaterialTheme.typography.titleLarge)
+      Text(if (tab == -1) "What will you create?" else if (tab == 0) "Turn your ideas into images" else if (tab == 2) "Private 18+ photo editor" else if (tab == 3) "Animate a photo" else "Give your photos a fresh look", style = MaterialTheme.typography.titleLarge)
       if (tab == -1) {
        Column(Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(UiColor(0xFF332451), UiColor(0xFF192F49))), RoundedCornerShape(28.dp)).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text("✦", style = MaterialTheme.typography.displayMedium, color = MaterialTheme.colorScheme.secondary)
@@ -102,6 +104,7 @@ class MainActivity : ComponentActivity() {
         Text("Start with an idea or a photo. Make something your own.", color = UiColor(0xFFD3D0E3))
         Button(onClick = { tab = 0 }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("Create Image") }
         OutlinedButton(onClick = { tab = 1 }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("Edit Photo") }
+        OutlinedButton(onClick = { tab = 3 }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("Photo to Video") }
         OutlinedButton(onClick = { showAdultConfirm = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("18+ Private Photo Editor") }
        }
        Text("Start with an idea", style = MaterialTheme.typography.titleMedium)
@@ -181,6 +184,18 @@ class MainActivity : ComponentActivity() {
         } catch (e: Exception) { status = if (useLocal) "Local Dream: ${e.message ?: "connection failed"}. Keep the model loaded; try split screen if disconnected." else "Could not create image: ${e.message ?: "connection failed"}"
         } finally { busy = false }
        }
+      }
+      if (tab == 3) {
+       Text("Choose how to animate your photograph. Video generation is not connected yet; these controls are a first step.")
+       Button(onClick = { picker.launch("image/*") }, modifier = Modifier.fillMaxWidth()) { Text("Choose Starting Photo") }
+       original?.let { Image(it.asImageBitmap(), contentDescription = "Starting photo", modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp), contentScale = ContentScale.Fit) }
+       OutlinedTextField(value = prompt, onValueChange = { prompt = it }, label = { Text("Describe the movement") }, modifier = Modifier.fillMaxWidth())
+       Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FilterChip(selected = videoMode == "On-device", onClick = { videoMode = "On-device" }, label = { Text("Free on phone") })
+        FilterChip(selected = videoMode == "Cloud", onClick = { videoMode = "Cloud" }, label = { Text("Online quality") })
+       }
+       Text(if (videoMode == "On-device") "On-device video requires a compatible model and runtime; none is connected yet." else "Online generation requires a provider, a secure API connection, and may cost money.")
+       Button(onClick = { status = "Video generation is not configured yet. Your photo has not been uploaded." }, enabled = original != null && prompt.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("Check Video Setup") }
       }
       if (tab == 0) {
        OutlinedTextField(value = prompt, onValueChange = { prompt = it }, label = { Text("Describe your image") }, placeholder = { Text("A peaceful beach at sunset, warm light, gentle waves…") }, modifier = Modifier.fillMaxWidth().height(170.dp))
