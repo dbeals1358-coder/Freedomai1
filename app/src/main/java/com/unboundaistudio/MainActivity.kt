@@ -55,6 +55,8 @@ class MainActivity : ComponentActivity() {
    var result by remember { mutableStateOf<Bitmap?>(null) }
    val scope = rememberCoroutineScope()
    var tab by remember { mutableStateOf(-1) }
+   var adultConfirmed by remember { mutableStateOf(false) }
+   var showAdultConfirm by remember { mutableStateOf(false) }
    var showConnection by remember { mutableStateOf(false) }
    var prompt by remember { mutableStateOf("") }
    var original by remember { mutableStateOf<Bitmap?>(null) }
@@ -92,7 +94,7 @@ class MainActivity : ComponentActivity() {
     }) { inset ->
      Column(Modifier.padding(inset).fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
       Text("FreedomAI", style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.primary)
-      Text(if (tab == -1) "What will you create?" else if (tab == 0) "Turn your ideas into images" else "Give your photos a fresh look", style = MaterialTheme.typography.titleLarge)
+      Text(if (tab == -1) "What will you create?" else if (tab == 0) "Turn your ideas into images" else if (tab == 2) "Private 18+ photo editor" else "Give your photos a fresh look", style = MaterialTheme.typography.titleLarge)
       if (tab == -1) {
        Column(Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(UiColor(0xFF332451), UiColor(0xFF192F49))), RoundedCornerShape(28.dp)).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text("✦", style = MaterialTheme.typography.displayMedium, color = MaterialTheme.colorScheme.secondary)
@@ -100,12 +102,14 @@ class MainActivity : ComponentActivity() {
         Text("Start with an idea or a photo. Make something your own.", color = UiColor(0xFFD3D0E3))
         Button(onClick = { tab = 0 }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("Create Image") }
         OutlinedButton(onClick = { tab = 1 }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("Edit Photo") }
+        OutlinedButton(onClick = { showAdultConfirm = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("18+ Private Photo Editor") }
        }
        Text("Start with an idea", style = MaterialTheme.typography.titleMedium)
        listOf("A mountain lake under a sky full of stars", "A cozy cabin in an autumn forest", "A neon city street in the rain").forEach { idea ->
         OutlinedButton(onClick = { prompt = idea; tab = 0 }, modifier = Modifier.fillMaxWidth()) { Text(idea) }
        }
       }
+      if (showAdultConfirm) AlertDialog(onDismissRequest = { showAdultConfirm = false }, title = { Text("18+ private editor") }, text = { Text("Only continue if you are 18 or older and have permission to use the images. Imported photos remain on this device unless you choose an online AI server. This is an age confirmation, not identity verification.") }, confirmButton = { TextButton(onClick = { adultConfirmed = true; showAdultConfirm = false; tab = 2; result = null }) { Text("I am 18 or older") } }, dismissButton = { TextButton(onClick = { showAdultConfirm = false }) { Text("Cancel") } })
       TextButton(onClick = { showConnection = !showConnection }) { Text(if (showConnection) "Hide connection settings ↑" else "Connection settings ↓") }
       if (showConnection) {
       Card(Modifier.fillMaxWidth()) {
@@ -151,6 +155,7 @@ class MainActivity : ComponentActivity() {
        val requestedPrompt = prompt
        val requestedStrength = editStrength
        val mask = if (input != null && maskMode && strokes.isNotEmpty()) makeMask(input.width, input.height, strokes.toList(), brush) else null
+       val inputForValidation = input
        busy = true; status = "Creating image…"
        scope.launch {
         try {
@@ -166,7 +171,12 @@ class MainActivity : ComponentActivity() {
            Bitmap.createBitmap(frame.pixels, frame.width, frame.height, Bitmap.Config.ARGB_8888)
           } else generateImage(address, requestedPrompt, input, requestedStrength, mask)
          }
-         status = "Image ready"
+         if (inputForValidation != null && result != null && isNearlyWhiteImage(result!!)) {
+          result = null
+          status = "The AI returned a blank white edit. Your original photo is safe. Try again with lower edit strength (25–35%) or restart the model."
+         } else {
+          status = "Image ready"
+         }
         } catch (e: kotlinx.coroutines.CancellationException) { throw e
         } catch (e: Exception) { status = if (useLocal) "Local Dream: ${e.message ?: "connection failed"}. Keep the model loaded; try split screen if disconnected." else "Could not create image: ${e.message ?: "connection failed"}"
         } finally { busy = false }
@@ -176,7 +186,8 @@ class MainActivity : ComponentActivity() {
        OutlinedTextField(value = prompt, onValueChange = { prompt = it }, label = { Text("Describe your image") }, placeholder = { Text("A peaceful beach at sunset, warm light, gentle waves…") }, modifier = Modifier.fillMaxWidth().height(170.dp))
        Button(onClick = { requestImage(null) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text(if (busy) "Creating…" else "Create Image") }
 
-      } else if (tab == 1) {
+      } else if (tab == 1 || (tab == 2 && adultConfirmed)) {
+       if (tab == 2) Text("Private editing: adjust brightness and saturation, then save to app-private storage. AI edits may send your photo to the selected model/server. Only use images you have permission to edit.")
        Button(enabled = !busy, onClick = { picker.launch("image/*") }, modifier = Modifier.fillMaxWidth()) { Text("Choose Photo") }
        edited?.let { bitmap ->
         BoxWithConstraints(Modifier.fillMaxWidth()) {
@@ -226,20 +237,28 @@ class MainActivity : ComponentActivity() {
         Slider(value = brightness, onValueChange = { brightness = it }, valueRange = -0.5f..0.5f)
         Text("Saturation")
         Slider(value = saturation, onValueChange = { saturation = it }, valueRange = 0f..2f)
-        Button(onClick = { save(bitmap) }, modifier = Modifier.fillMaxWidth()) { Text("Save Photo") }
+        Button(onClick = { if (tab == 2) savePrivate(bitmap) else save(bitmap) }, modifier = Modifier.fillMaxWidth()) { Text(if (tab == 2) "Save Privately" else "Save Photo") }
         OutlinedButton(onClick = { brightness = 0f; saturation = 1f }) { Text("Reset") }
        } ?: Text("Pick a photo to edit its brightness and color saturation.")
       }
       result?.let { image ->
        Text("Your creation", style = MaterialTheme.typography.titleLarge)
        Image(image.asImageBitmap(), contentDescription = "Generated image", modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp))
-       Button(onClick = { save(image) }) { Text("Save Image") }
+       Button(onClick = { if (tab == 2) savePrivate(image) else save(image) }) { Text(if (tab == 2) "Save Privately" else "Save Image") }
        OutlinedButton(onClick = { original = image; brightness = 0f; saturation = 1f; result = null; tab = 1 }) { Text("Edit this image") }
       }
      }
     }
    }
   }
+ }
+ private fun savePrivate(bitmap: Bitmap) {
+  try {
+   val dir = java.io.File(filesDir, "private_photos").apply { mkdirs() }
+   val file = java.io.File(dir, "Photo_${System.currentTimeMillis()}.jpg")
+   file.outputStream().use { check(bitmap.compress(Bitmap.CompressFormat.JPEG, 95, it)) }
+   toast("Saved inside FreedomAI private storage")
+  } catch (e: Exception) { toast("Couldn't save private photo") }
  }
  private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_LONG).show()
  private fun save(bitmap: Bitmap) {
@@ -340,4 +359,23 @@ private fun makeMask(width: Int, height: Int, strokes: List<List<Offset>>, brush
   }
  }
  return bitmap
+}
+
+/** Reject near-uniform white output from image-to-image generation instead of showing it as a successful edit. */
+private fun isNearlyWhiteImage(bitmap: Bitmap): Boolean {
+ val width = bitmap.width
+ val height = bitmap.height
+ if (width <= 0 || height <= 0) return true
+ var white = 0
+ var checked = 0
+ val stepX = (width / 32).coerceAtLeast(1)
+ val stepY = (height / 32).coerceAtLeast(1)
+ for (y in 0 until height step stepY) {
+  for (x in 0 until width step stepX) {
+   val pixel = bitmap.getPixel(x, y)
+   if (Color.red(pixel) >= 248 && Color.green(pixel) >= 248 && Color.blue(pixel) >= 248) white++
+   checked++
+  }
+ }
+ return checked > 0 && white.toFloat() / checked >= 0.985f
 }
