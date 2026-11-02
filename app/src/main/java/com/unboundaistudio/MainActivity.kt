@@ -254,6 +254,7 @@ class MainActivity : ComponentActivity() {
        if (tab == 2) {
         Text("Private 18+ studio. Use only adult subjects and images you have permission to use. AI generation depends on the capabilities of the connected model; this app does not include an adult image model.")
         Text("Create a fictional adult character", style = MaterialTheme.typography.titleMedium)
+        Text("For realistic results, select an SDXL photorealistic checkpoint in Local Dream first (for example RealVisXL V5). Model installation happens in Local Dream; FreedomAI uses the currently loaded model.")
         Text("Text-only character creation: no real person's photo is used as a reference. Describe fictional adults aged 18 or older.")
         OutlinedTextField(value = fictionalPrompt, onValueChange = { fictionalPrompt = it }, label = { Text("Describe your fictional adult character") }, placeholder = { Text("A fictional 30-year-old woman with auburn hair, studio lighting...") }, modifier = Modifier.fillMaxWidth())
         Text("Character art style")
