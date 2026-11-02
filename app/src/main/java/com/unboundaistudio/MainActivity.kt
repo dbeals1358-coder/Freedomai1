@@ -249,7 +249,13 @@ class MainActivity : ComponentActivity() {
        Button(onClick = { requestImage(null) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text(if (busy) "Creating…" else "Create Image") }
 
       } else if (tab == 1 || (tab == 2 && adultConfirmed)) {
-       if (tab == 2) Text("Private editing: adjust brightness and saturation, then save to app-private storage. AI edits may send your photo to the selected model/server. Only use images you have permission to edit.")
+       if (tab == 2) {
+        Text("Private 18+ studio. Use only adult subjects and images you have permission to use. AI generation depends on the capabilities of the connected model; this app does not include an adult image model.")
+        Text("Create a new image", style = MaterialTheme.typography.titleMedium)
+        OutlinedTextField(value = prompt, onValueChange = { prompt = it }, label = { Text("Describe a new image") }, modifier = Modifier.fillMaxWidth())
+        Button(onClick = { requestImage(null) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Generate Private Image") }
+        Text("Or choose a photo to edit. AI edits may send photos to the selected server. Private saving keeps the result inside this app.")
+       }
        Button(enabled = !busy, onClick = { picker.launch("image/*") }, modifier = Modifier.fillMaxWidth()) { Text("Choose Photo") }
        edited?.let { bitmap ->
         BoxWithConstraints(Modifier.fillMaxWidth()) {
@@ -301,7 +307,7 @@ class MainActivity : ComponentActivity() {
         Slider(value = saturation, onValueChange = { saturation = it }, valueRange = 0f..2f)
         Button(onClick = { if (tab == 2) savePrivate(bitmap) else save(bitmap) }, modifier = Modifier.fillMaxWidth()) { Text(if (tab == 2) "Save Privately" else "Save Photo") }
         OutlinedButton(onClick = { brightness = 0f; saturation = 1f }) { Text("Reset") }
-       } ?: Text("Pick a photo to edit its brightness and color saturation.")
+       } ?: Text(if (tab == 2) "Choose a photo below to edit, or use Generate Private Image above." else "Pick a photo to edit its brightness and color saturation.")
       }
       result?.let { image ->
        Text("Your creation", style = MaterialTheme.typography.titleLarge)
