@@ -52,6 +52,7 @@ class MainActivity : ComponentActivity() {
    var original by remember { mutableStateOf<Bitmap?>(null) }
    var brightness by remember { mutableFloatStateOf(0f) }
    var saturation by remember { mutableFloatStateOf(1f) }
+   var editStrength by remember { mutableFloatStateOf(0.55f) }
    val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
     if (uri != null) try {
      val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
@@ -136,6 +137,7 @@ class MainActivity : ComponentActivity() {
        prefs.edit().putString("url", address).apply()
        val useLocal = localMode
        val requestedPrompt = prompt
+       val requestedStrength = editStrength
        busy = true; status = "Creating image…"
        scope.launch {
         try {
@@ -144,11 +146,11 @@ class MainActivity : ComponentActivity() {
            val encoded = input?.let { bitmap ->
             ByteArrayOutputStream().use { stream -> bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream); Base64.encodeToString(stream.toByteArray(), Base64.NO_WRAP) }
            }
-           val frame = LocalDreamClient.generate(requestedPrompt, encoded) { step, total ->
+           val frame = LocalDreamClient.generate(requestedPrompt, encoded, requestedStrength) { step, total ->
             runOnUiThread { status = "Creating image: step $step of $total" }
            }
            Bitmap.createBitmap(frame.pixels, frame.width, frame.height, Bitmap.Config.ARGB_8888)
-          } else generateImage(address, requestedPrompt, input)
+          } else generateImage(address, requestedPrompt, input, requestedStrength)
          }
          status = "Image ready"
         } catch (e: kotlinx.coroutines.CancellationException) { throw e
@@ -165,6 +167,9 @@ class MainActivity : ComponentActivity() {
        edited?.let { bitmap ->
         Image(bitmap.asImageBitmap(), contentDescription = "Photo preview", modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp))
         OutlinedTextField(value = prompt, onValueChange = { prompt = it }, label = { Text("Describe your AI edit") }, modifier = Modifier.fillMaxWidth())
+        Text("AI edit strength: ${(editStrength * 100).roundToInt()}%")
+        Slider(value = editStrength, onValueChange = { editStrength = it }, valueRange = 0.15f..0.85f)
+        Text("Lower keeps more of the original; higher changes more.")
         Button(onClick = { requestImage(bitmap) }, enabled = !busy) { Text("AI Edit Photo") }
         Text("Brightness")
         Slider(value = brightness, onValueChange = { brightness = it }, valueRange = -0.5f..0.5f)
@@ -216,11 +221,11 @@ private fun adjust(bitmap: Bitmap, brightness: Float, saturation: Float): Bitmap
  return Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888).apply { setPixels(pixels, 0, w, 0, 0, w, h) }
 }
 
-private fun generateImage(server: String, prompt: String, input: Bitmap?): Bitmap {
+private fun generateImage(server: String, prompt: String, input: Bitmap?, editStrength: Float): Bitmap {
  val payload = JSONObject().put("prompt", prompt).put("steps", 20).put("width", 512).put("height", 512).put("batch_size", 1)
  if (input != null) {
   val bytes = ByteArrayOutputStream().use { stream -> input.compress(Bitmap.CompressFormat.PNG, 100, stream); stream.toByteArray() }
-  payload.put("init_images", JSONArray().put(Base64.encodeToString(bytes, Base64.NO_WRAP))).put("denoising_strength", 0.55)
+  payload.put("init_images", JSONArray().put(Base64.encodeToString(bytes, Base64.NO_WRAP))).put("denoising_strength", editStrength.toDouble())
  }
  val endpoint = if (input == null) "txt2img" else "img2img"
  val connection = URL("$server/sdapi/v1/$endpoint").openConnection() as HttpURLConnection
