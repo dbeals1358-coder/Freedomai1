@@ -57,6 +57,7 @@ class MainActivity : ComponentActivity() {
    var tab by remember { mutableStateOf(-1) }
    var adultConfirmed by remember { mutableStateOf(false) }
    var showAdultConfirm by remember { mutableStateOf(false) }
+   var fictionalAdultMode by remember { mutableStateOf(false) }
    var showConnection by remember { mutableStateOf(false) }
    var prompt by remember { mutableStateOf("") }
    var original by remember { mutableStateOf<Bitmap?>(null) }
@@ -94,7 +95,7 @@ class MainActivity : ComponentActivity() {
     }) { inset ->
      Column(Modifier.padding(inset).fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
       Text("FreedomAI", style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.primary)
-      Text(if (tab == -1) "What will you create?" else if (tab == 0) "Turn your ideas into images" else if (tab == 2) "Private 18+ photo editor" else "Give your photos a fresh look", style = MaterialTheme.typography.titleLarge)
+      Text(if (tab == -1) "What will you create?" else if (tab == 0) "Turn your ideas into images" else if (tab == 2) "Private 18+ studio" else "Give your photos a fresh look", style = MaterialTheme.typography.titleLarge)
       if (tab == -1) {
        Column(Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(UiColor(0xFF332451), UiColor(0xFF192F49))), RoundedCornerShape(28.dp)).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text("✦", style = MaterialTheme.typography.displayMedium, color = MaterialTheme.colorScheme.secondary)
@@ -102,14 +103,14 @@ class MainActivity : ComponentActivity() {
         Text("Start with an idea or a photo. Make something your own.", color = UiColor(0xFFD3D0E3))
         Button(onClick = { tab = 0 }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("Create Image") }
         OutlinedButton(onClick = { tab = 1 }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("Edit Photo") }
-        OutlinedButton(onClick = { showAdultConfirm = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("18+ Private Photo Editor") }
+        OutlinedButton(onClick = { showAdultConfirm = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("18+ Private Studio") }
        }
        Text("Start with an idea", style = MaterialTheme.typography.titleMedium)
        listOf("A mountain lake under a sky full of stars", "A cozy cabin in an autumn forest", "A neon city street in the rain").forEach { idea ->
         OutlinedButton(onClick = { prompt = idea; tab = 0 }, modifier = Modifier.fillMaxWidth()) { Text(idea) }
        }
       }
-      if (showAdultConfirm) AlertDialog(onDismissRequest = { showAdultConfirm = false }, title = { Text("18+ private editor") }, text = { Text("Only continue if you are 18 or older and have permission to use the images. Imported photos remain on this device unless you choose an online AI server. This is an age confirmation, not identity verification.") }, confirmButton = { TextButton(onClick = { adultConfirmed = true; showAdultConfirm = false; tab = 2; result = null }) { Text("I am 18 or older") } }, dismissButton = { TextButton(onClick = { showAdultConfirm = false }) { Text("Cancel") } })
+      if (showAdultConfirm) AlertDialog(onDismissRequest = { showAdultConfirm = false }, title = { Text("18+ private editor") }, text = { Text("Only continue if you are 18 or older and have permission to use the images. Imported photos remain on this device unless you choose an online AI server. This is an age confirmation, not identity verification.") }, confirmButton = { TextButton(onClick = { adultConfirmed = true; showAdultConfirm = false; tab = 2; fictionalAdultMode = false; result = null }) { Text("I am 18 or older") } }, dismissButton = { TextButton(onClick = { showAdultConfirm = false }) { Text("Cancel") } })
       TextButton(onClick = { showConnection = !showConnection }) { Text(if (showConnection) "Hide connection settings ↑" else "Connection settings ↓") }
       if (showConnection) {
       Card(Modifier.fillMaxWidth()) {
@@ -182,11 +183,28 @@ class MainActivity : ComponentActivity() {
         } finally { busy = false }
        }
       }
+      if (tab == 2 && adultConfirmed) {
+       Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+         Text("Adult fictional image creation", style = MaterialTheme.typography.titleMedium)
+         Text("Create original, clearly adult fictional characters. Do not use real people's photos to fabricate intimate images or depict anyone under 18.")
+         Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+          Text("Create fictional adult image", modifier = Modifier.weight(1f))
+          Switch(checked = fictionalAdultMode, onCheckedChange = { fictionalAdultMode = it; result = null })
+         }
+         if (fictionalAdultMode) {
+          OutlinedTextField(value = prompt, onValueChange = { prompt = it }, label = { Text("Describe an original adult character") }, modifier = Modifier.fillMaxWidth().height(150.dp))
+          Text("Generation depends on the connected model's capabilities. This switch does not bypass model restrictions.")
+          Button(onClick = { requestImage(null) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Generate Fictional Adult Image") }
+         }
+        }
+       }
+      }
       if (tab == 0) {
        OutlinedTextField(value = prompt, onValueChange = { prompt = it }, label = { Text("Describe your image") }, placeholder = { Text("A peaceful beach at sunset, warm light, gentle waves…") }, modifier = Modifier.fillMaxWidth().height(170.dp))
        Button(onClick = { requestImage(null) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text(if (busy) "Creating…" else "Create Image") }
 
-      } else if (tab == 1 || (tab == 2 && adultConfirmed)) {
+      } else if (tab == 1 || (tab == 2 && adultConfirmed && !fictionalAdultMode)) {
        if (tab == 2) Text("Private editing: adjust brightness and saturation, then save to app-private storage. AI edits may send your photo to the selected model/server. Only use images you have permission to edit.")
        Button(enabled = !busy, onClick = { picker.launch("image/*") }, modifier = Modifier.fillMaxWidth()) { Text("Choose Photo") }
        edited?.let { bitmap ->
@@ -215,7 +233,7 @@ class MainActivity : ComponentActivity() {
          Switch(checked = maskMode, onCheckedChange = { maskMode = it })
         }
         if (maskMode) {
-         Text("Drag over the clothing you want to change. Red marks show the selected area.")
+         Text("Drag over the area you want to edit. Red marks show the selected area.")
          Slider(value = brush, onValueChange = { brush = it }, valueRange = 0.015f..0.15f)
          OutlinedButton(onClick = { strokes.clear(); drawing = emptyList() }) { Text("Clear selection") }
          Text("Requires an HTTPS AUTOMATIC1111 inpainting server.")
