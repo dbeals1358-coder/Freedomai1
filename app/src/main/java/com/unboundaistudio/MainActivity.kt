@@ -64,6 +64,7 @@ class MainActivity : ComponentActivity() {
    var pose by remember { mutableStateOf("") }
    var setting by remember { mutableStateOf("") }
    var photoStyle by remember { mutableStateOf("Photorealistic natural lighting") }
+   var highQuality by remember { mutableStateOf(true) }
    var showConnection by remember { mutableStateOf(false) }
    var prompt by remember { mutableStateOf("") }
    var original by remember { mutableStateOf<Bitmap?>(null) }
@@ -165,6 +166,7 @@ class MainActivity : ComponentActivity() {
         listOf("Original fictional adult woman, age $age", appearance, bodyDescription, pose, setting, photoStyle, prompt).filter { it.isNotBlank() }.joinToString(", ")
        } else prompt
        val requestedStrength = editStrength
+       val requestedHighQuality = highQuality
        val mask = if (input != null && maskMode && strokes.isNotEmpty()) makeMask(input.width, input.height, strokes.toList(), brush) else null
        val inputForValidation = input
        busy = true; status = "Creating image…"
@@ -180,7 +182,7 @@ class MainActivity : ComponentActivity() {
             runOnUiThread { status = "Creating image: step $step of $total" }
            }
            Bitmap.createBitmap(frame.pixels, frame.width, frame.height, Bitmap.Config.ARGB_8888)
-          } else generateImage(address, requestedPrompt, input, requestedStrength, mask)
+          } else generateImage(address, requestedPrompt, input, requestedStrength, mask, requestedHighQuality)
          }
          if (inputForValidation != null && result != null && isNearlyWhiteImage(result!!)) {
           result = null
@@ -210,6 +212,7 @@ class MainActivity : ComponentActivity() {
           OutlinedTextField(value = setting, onValueChange = { setting = it }, label = { Text("Background / location") }, modifier = Modifier.fillMaxWidth())
           OutlinedTextField(value = photoStyle, onValueChange = { photoStyle = it }, label = { Text("Photography and lighting style") }, modifier = Modifier.fillMaxWidth())
           OutlinedTextField(value = prompt, onValueChange = { prompt = it }, label = { Text("Additional details (optional)") }, modifier = Modifier.fillMaxWidth().height(110.dp))
+          Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Text("High quality", modifier = Modifier.weight(1f)); Switch(checked = highQuality, onCheckedChange = { highQuality = it }) }
           Text("Generation depends on the connected model's capabilities. This switch does not bypass model restrictions.")
           Button(onClick = { requestImage(null) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Generate Fictional Adult Image") }
          }
@@ -325,8 +328,8 @@ private fun adjust(bitmap: Bitmap, brightness: Float, saturation: Float): Bitmap
  return Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888).apply { setPixels(pixels, 0, w, 0, 0, w, h) }
 }
 
-private fun generateImage(server: String, prompt: String, input: Bitmap?, editStrength: Float, mask: Bitmap? = null): Bitmap {
- val payload = JSONObject().put("prompt", prompt).put("steps", 20).put("width", 512).put("height", 512).put("batch_size", 1)
+private fun generateImage(server: String, prompt: String, input: Bitmap?, editStrength: Float, mask: Bitmap? = null, highQuality: Boolean = true): Bitmap {
+ val payload = JSONObject().put("prompt", prompt).put("negative_prompt", "cartoon, anime, illustration, CGI, plastic skin, waxy skin, blurry, distorted anatomy, extra fingers, deformed face, watermark, text").put("steps", if (highQuality) 35 else 20).put("cfg_scale", 6.0).put("width", if (input == null && highQuality) 768 else ((input?.width ?: 512).coerceIn(256, 1024) / 8 * 8)).put("height", if (input == null && highQuality) 1024 else ((input?.height ?: 512).coerceIn(256, 1024) / 8 * 8)).put("batch_size", 1)
  if (input != null) {
   val bytes = ByteArrayOutputStream().use { stream -> input.compress(Bitmap.CompressFormat.PNG, 100, stream); stream.toByteArray() }
   payload.put("init_images", JSONArray().put(Base64.encodeToString(bytes, Base64.NO_WRAP))).put("denoising_strength", editStrength.toDouble())
