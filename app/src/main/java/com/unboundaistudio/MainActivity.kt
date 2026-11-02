@@ -15,6 +15,14 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color as UiColor
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -53,6 +61,10 @@ class MainActivity : ComponentActivity() {
    var brightness by remember { mutableFloatStateOf(0f) }
    var saturation by remember { mutableFloatStateOf(1f) }
    var editStrength by remember { mutableFloatStateOf(0.35f) }
+   var maskMode by remember { mutableStateOf(false) }
+   var brush by remember { mutableFloatStateOf(0.06f) }
+   val strokes = remember { mutableStateListOf<List<Offset>>() }
+   var drawing by remember { mutableStateOf<List<Offset>>(emptyList()) }
    val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
     if (uri != null) try {
      val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
@@ -62,7 +74,7 @@ class MainActivity : ComponentActivity() {
      original = contentResolver.openInputStream(uri)?.use {
       BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply { inSampleSize = sample })
      }
-     brightness = 0f; saturation = 1f
+     brightness = 0f; saturation = 1f; strokes.clear()
     } catch (e: Exception) { toast("Couldn't open image") }
    }
    val edited = remember(original, brightness, saturation) { original?.let { adjust(it, brightness, saturation) } }
@@ -138,6 +150,7 @@ class MainActivity : ComponentActivity() {
        val useLocal = localMode
        val requestedPrompt = prompt
        val requestedStrength = editStrength
+       val mask = if (input != null && maskMode && strokes.isNotEmpty()) makeMask(input.width, input.height, strokes.toList(), brush) else null
        busy = true; status = "Creating image…"
        scope.launch {
         try {
@@ -146,11 +159,12 @@ class MainActivity : ComponentActivity() {
            val encoded = input?.let { bitmap ->
             ByteArrayOutputStream().use { stream -> bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream); Base64.encodeToString(stream.toByteArray(), Base64.NO_WRAP) }
            }
+           if (mask != null) error("Painted-area edits require an HTTPS AUTOMATIC1111 server")
            val frame = LocalDreamClient.generate(requestedPrompt, encoded, requestedStrength) { step, total ->
             runOnUiThread { status = "Creating image: step $step of $total" }
            }
            Bitmap.createBitmap(frame.pixels, frame.width, frame.height, Bitmap.Config.ARGB_8888)
-          } else generateImage(address, requestedPrompt, input, requestedStrength)
+          } else generateImage(address, requestedPrompt, input, requestedStrength, mask)
          }
          status = "Image ready"
         } catch (e: kotlinx.coroutines.CancellationException) { throw e
@@ -165,7 +179,36 @@ class MainActivity : ComponentActivity() {
       } else if (tab == 1) {
        Button(enabled = !busy, onClick = { picker.launch("image/*") }, modifier = Modifier.fillMaxWidth()) { Text("Choose Photo") }
        edited?.let { bitmap ->
-        Image(bitmap.asImageBitmap(), contentDescription = "Photo preview", modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp))
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+         val displayHeight = maxWidth * bitmap.height.toFloat() / bitmap.width.toFloat()
+         Image(bitmap.asImageBitmap(), contentDescription = "Photo preview", contentScale = ContentScale.FillBounds, modifier = Modifier.fillMaxWidth().height(displayHeight))
+         if (maskMode) Canvas(Modifier.fillMaxWidth().height(displayHeight).pointerInput(bitmap, brush) {
+          detectDragGestures(onDragStart = { p -> drawing = listOf(Offset(p.x / size.width, p.y / size.height)) },
+           onDrag = { change, _ -> change.consume(); drawing = drawing + Offset(change.position.x / size.width, change.position.y / size.height) },
+           onDragEnd = { if (drawing.isNotEmpty()) strokes.add(drawing); drawing = emptyList() })
+         }) {
+          (strokes.toList() + listOf(drawing)).forEach { points ->
+           if (points.isNotEmpty()) {
+            val path = Path().apply {
+             moveTo(points[0].x * size.width, points[0].y * size.height)
+             points.drop(1).forEach { lineTo(it.x * size.width, it.y * size.height) }
+            }
+            if (points.size == 1) drawCircle(UiColor.Red.copy(alpha = 0.55f), brush * size.width / 2, Offset(points[0].x * size.width, points[0].y * size.height))
+            else drawPath(path, UiColor.Red.copy(alpha = 0.55f), style = Stroke(width = brush * size.width, cap = StrokeCap.Round))
+           }
+          }
+         }
+        }
+        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+         Text("Paint area to change", modifier = Modifier.weight(1f))
+         Switch(checked = maskMode, onCheckedChange = { maskMode = it })
+        }
+        if (maskMode) {
+         Text("Drag over the clothing you want to change. Red marks show the selected area.")
+         Slider(value = brush, onValueChange = { brush = it }, valueRange = 0.015f..0.15f)
+         OutlinedButton(onClick = { strokes.clear(); drawing = emptyList() }) { Text("Clear selection") }
+         Text("Requires an HTTPS AUTOMATIC1111 inpainting server.")
+        }
         OutlinedTextField(value = prompt, onValueChange = { prompt = it }, label = { Text("Describe your AI edit") }, placeholder = { Text("Make the bikini top smaller; keep the face, pose and background unchanged.") }, modifier = Modifier.fillMaxWidth())
         Text("Quick clothing edits", style = MaterialTheme.typography.titleMedium)
         listOf(
@@ -229,11 +272,15 @@ private fun adjust(bitmap: Bitmap, brightness: Float, saturation: Float): Bitmap
  return Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888).apply { setPixels(pixels, 0, w, 0, 0, w, h) }
 }
 
-private fun generateImage(server: String, prompt: String, input: Bitmap?, editStrength: Float): Bitmap {
+private fun generateImage(server: String, prompt: String, input: Bitmap?, editStrength: Float, mask: Bitmap? = null): Bitmap {
  val payload = JSONObject().put("prompt", prompt).put("steps", 20).put("width", 512).put("height", 512).put("batch_size", 1)
  if (input != null) {
   val bytes = ByteArrayOutputStream().use { stream -> input.compress(Bitmap.CompressFormat.PNG, 100, stream); stream.toByteArray() }
   payload.put("init_images", JSONArray().put(Base64.encodeToString(bytes, Base64.NO_WRAP))).put("denoising_strength", editStrength.toDouble())
+  if (mask != null) {
+   val maskBytes = ByteArrayOutputStream().use { stream -> mask.compress(Bitmap.CompressFormat.PNG, 100, stream); stream.toByteArray() }
+   payload.put("mask", Base64.encodeToString(maskBytes, Base64.NO_WRAP)).put("inpainting_mask_invert", 0).put("inpainting_fill", 1).put("inpaint_full_res", true).put("inpaint_full_res_padding", 32)
+  }
  }
  val endpoint = if (input == null) "txt2img" else "img2img"
  val connection = URL("$server/sdapi/v1/$endpoint").openConnection() as HttpURLConnection
@@ -270,3 +317,27 @@ private fun generateImage(server: String, prompt: String, input: Bitmap?, editSt
  } finally { connection.disconnect() }
 }
 
+
+private fun makeMask(width: Int, height: Int, strokes: List<List<Offset>>, brush: Float): Bitmap {
+ val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+ val canvas = android.graphics.Canvas(bitmap)
+ canvas.drawColor(Color.BLACK)
+ val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+  color = Color.WHITE
+  strokeWidth = brush * width
+  strokeCap = android.graphics.Paint.Cap.ROUND
+  strokeJoin = android.graphics.Paint.Join.ROUND
+  style = android.graphics.Paint.Style.STROKE
+ }
+ strokes.forEach { points ->
+  if (points.size == 1) canvas.drawCircle(points[0].x * width, points[0].y * height, brush * width / 2, paint)
+  else if (points.isNotEmpty()) {
+   val path = android.graphics.Path().apply {
+    moveTo(points[0].x * width, points[0].y * height)
+    points.drop(1).forEach { lineTo(it.x * width, it.y * height) }
+   }
+   canvas.drawPath(path, paint)
+  }
+ }
+ return bitmap
+}
