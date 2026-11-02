@@ -151,6 +151,7 @@ class MainActivity : ComponentActivity() {
        val requestedPrompt = prompt
        val requestedStrength = editStrength
        val mask = if (input != null && maskMode && strokes.isNotEmpty()) makeMask(input.width, input.height, strokes.toList(), brush) else null
+       val inputForValidation = input
        busy = true; status = "Creating image…"
        scope.launch {
         try {
@@ -166,7 +167,12 @@ class MainActivity : ComponentActivity() {
            Bitmap.createBitmap(frame.pixels, frame.width, frame.height, Bitmap.Config.ARGB_8888)
           } else generateImage(address, requestedPrompt, input, requestedStrength, mask)
          }
-         status = "Image ready"
+         if (inputForValidation != null && result != null && isNearlyWhiteImage(result!!)) {
+          result = null
+          status = "The AI returned a blank white edit. Your original photo is safe. Try again with lower edit strength (25–35%) or restart the model."
+         } else {
+          status = "Image ready"
+         }
         } catch (e: kotlinx.coroutines.CancellationException) { throw e
         } catch (e: Exception) { status = if (useLocal) "Local Dream: ${e.message ?: "connection failed"}. Keep the model loaded; try split screen if disconnected." else "Could not create image: ${e.message ?: "connection failed"}"
         } finally { busy = false }
@@ -340,4 +346,23 @@ private fun makeMask(width: Int, height: Int, strokes: List<List<Offset>>, brush
   }
  }
  return bitmap
+}
+
+/** Reject near-uniform white output from image-to-image generation instead of showing it as a successful edit. */
+private fun isNearlyWhiteImage(bitmap: Bitmap): Boolean {
+ val width = bitmap.width
+ val height = bitmap.height
+ if (width <= 0 || height <= 0) return true
+ var white = 0
+ var checked = 0
+ val stepX = (width / 32).coerceAtLeast(1)
+ val stepY = (height / 32).coerceAtLeast(1)
+ for (y in 0 until height step stepY) {
+  for (x in 0 until width step stepX) {
+   val pixel = bitmap.getPixel(x, y)
+   if (Color.red(pixel) >= 248 && Color.green(pixel) >= 248 && Color.blue(pixel) >= 248) white++
+   checked++
+  }
+ }
+ return checked > 0 && white.toFloat() / checked >= 0.985f
 }
