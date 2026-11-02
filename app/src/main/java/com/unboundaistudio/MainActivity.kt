@@ -52,7 +52,7 @@ class MainActivity : ComponentActivity() {
    var original by remember { mutableStateOf<Bitmap?>(null) }
    var brightness by remember { mutableFloatStateOf(0f) }
    var saturation by remember { mutableFloatStateOf(1f) }
-   var editStrength by remember { mutableFloatStateOf(0.55f) }
+   var editStrength by remember { mutableFloatStateOf(0.35f) }
    val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
     if (uri != null) try {
      val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
@@ -166,10 +166,18 @@ class MainActivity : ComponentActivity() {
        Button(enabled = !busy, onClick = { picker.launch("image/*") }, modifier = Modifier.fillMaxWidth()) { Text("Choose Photo") }
        edited?.let { bitmap ->
         Image(bitmap.asImageBitmap(), contentDescription = "Photo preview", modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp))
-        OutlinedTextField(value = prompt, onValueChange = { prompt = it }, label = { Text("Describe your AI edit") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(value = prompt, onValueChange = { prompt = it }, label = { Text("Describe your AI edit") }, placeholder = { Text("Make the bikini top smaller; keep the face, pose and background unchanged.") }, modifier = Modifier.fillMaxWidth())
+        Text("Quick clothing edits", style = MaterialTheme.typography.titleMedium)
+        listOf(
+         "Make the bikini top smaller while keeping the person and background the same",
+         "Change the outfit to a red bikini top and denim shorts",
+         "Change the outfit color while preserving the face and pose"
+        ).forEach { suggestion ->
+         OutlinedButton(onClick = { prompt = suggestion }, modifier = Modifier.fillMaxWidth()) { Text(suggestion) }
+        }
         Text("AI edit strength: ${(editStrength * 100).roundToInt()}%")
         Slider(value = editStrength, onValueChange = { editStrength = it }, valueRange = 0.15f..0.85f)
-        Text("Lower keeps more of the original; higher changes more.")
+        Text("For clothing edits, start around 25–40%. Higher strength may change the face or background. Precise clothing-only editing needs a compatible inpainting model.")
         Button(onClick = { requestImage(bitmap) }, enabled = !busy) { Text("AI Edit Photo") }
         Text("Brightness")
         Slider(value = brightness, onValueChange = { brightness = it }, valueRange = -0.5f..0.5f)
