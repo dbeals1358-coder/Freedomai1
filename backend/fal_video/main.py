@@ -49,7 +49,6 @@ def get_video(job_id: str, authorization: str | None = Header(default=None)):
     authorize(authorization)
     if not job_id or len(job_id) > 128 or not all(c.isalnum() or c in "-_" for c in job_id):
         raise HTTPException(400, "Invalid job ID")
-    handle = fal_client.AsyncRequestHandle if False else None  # no persistent in-memory job handles
     status = fal_client.status(MODEL, job_id, with_logs=False)
     state = type(status).__name__
     if state == "Completed":
