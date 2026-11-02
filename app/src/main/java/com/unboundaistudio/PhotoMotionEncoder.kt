@@ -54,7 +54,15 @@ internal object PhotoMotionEncoder {
     }
    }
    val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+   // Canvas input surfaces use wall-clock timestamps. Pace submissions at the
+   // intended frame rate or the resulting MP4 may be only a fraction of a second.
+   val startNanos = System.nanoTime()
    for (frame in 0 until frames) {
+    val targetNanos = startNanos + frame * 1_000_000_000L / fps
+    val remainingNanos = targetNanos - System.nanoTime()
+    if (remainingNanos > 0L) {
+     Thread.sleep(remainingNanos / 1_000_000L, (remainingNanos % 1_000_000L).toInt())
+    }
     val canvas: Canvas = surface.lockCanvas(null)
     try {
      canvas.drawColor(Color.BLACK)
