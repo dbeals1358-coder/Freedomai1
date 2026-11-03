@@ -220,8 +220,8 @@ class MainActivity : ComponentActivity() {
         try {
          result = withContext(Dispatchers.IO) {
           if (useNightmare) {
-           if (mask != null) error("Painted-area masks are not supported by the Nightmare connection yet")
-           NightmareClient.generate(requestedPrompt, tokenForRun, input, requestedStrength, requestedHighQuality)
+           val generated = NightmareClient.generate(requestedPrompt, tokenForRun, input, requestedStrength, requestedHighQuality)
+           if (mask != null && input != null) compositeMaskedEdit(input, generated, mask) else generated
           } else if (useLocal) {
            val encoded = input?.let { bitmap ->
             ByteArrayOutputStream().use { stream -> bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream); Base64.encodeToString(stream.toByteArray(), Base64.NO_WRAP) }
@@ -309,7 +309,7 @@ class MainActivity : ComponentActivity() {
          Text("Drag over the area you want to edit. Red marks show the selected area.")
          Slider(value = brush, onValueChange = { brush = it }, valueRange = 0.015f..0.15f)
          OutlinedButton(onClick = { strokes.clear(); drawing = emptyList() }) { Text("Clear selection") }
-         Text("Requires an HTTPS AUTOMATIC1111 inpainting server.")
+         Text("With Nightmare, only the painted area is copied from the AI edit; everything outside stays pixel-identical. For true mask-guided generation, a compatible inpainting workflow is still needed.")
         }
         OutlinedTextField(value = prompt, onValueChange = { prompt = it }, label = { Text("Describe your AI edit") }, placeholder = { Text("Make the bikini top smaller; keep the face, pose and background unchanged.") }, modifier = Modifier.fillMaxWidth())
         Text("Quick clothing edits", style = MaterialTheme.typography.titleMedium)
@@ -329,7 +329,7 @@ class MainActivity : ComponentActivity() {
            }) { Text(if (preserveOriginal == level) "✓ $level" else level) }
           }
          }
-         Text("High keeps more of the original; Low allows larger changes. Background-only replacement requires a compatible masking model.")
+         Text("High keeps more of the original; Low allows larger changes. Paint an area to protect the rest of the photo exactly.")
          Text("AI edit strength: ${(editStrength * 100).roundToInt()}%")
         Slider(value = editStrength, onValueChange = { editStrength = it }, valueRange = 0.15f..0.85f)
         Text("For clothing edits, start around 25–40%. Higher strength may change the face or background. Precise clothing-only editing needs a compatible inpainting model.")
@@ -479,4 +479,32 @@ private fun isNearlyWhiteImage(bitmap: Bitmap): Boolean {
   }
  }
  return checked > 0 && white.toFloat() / checked >= 0.985f
+}
+
+/** Preserve the original pixels outside the user-painted region after Nightmare img2img. */
+private fun compositeMaskedEdit(original: Bitmap, generated: Bitmap, mask: Bitmap): Bitmap {
+ val width = original.width
+ val height = original.height
+ val resized = if (generated.width != width || generated.height != height) Bitmap.createScaledBitmap(generated, width, height, true) else generated
+ val result = original.copy(Bitmap.Config.ARGB_8888, true)
+ val canvas = android.graphics.Canvas(result)
+ val maskAlpha = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+ val maskPixels = IntArray(width * height)
+ mask.getPixels(maskPixels, 0, width, 0, 0, width, height)
+ for (i in maskPixels.indices) {
+  val p = maskPixels[i]
+  val v = Color.red(p)
+  maskPixels[i] = Color.argb(v, 255, 255, 255)
+ }
+ maskAlpha.setPixels(maskPixels, 0, width, 0, 0, width, height)
+ val layer = canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), null)
+ canvas.drawBitmap(resized, 0f, 0f, null)
+ val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+  xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.DST_IN)
+ }
+ canvas.drawBitmap(maskAlpha, 0f, 0f, paint)
+ paint.xfermode = null
+ canvas.restoreToCount(layer)
+ maskAlpha.recycle()
+ return result
 }
