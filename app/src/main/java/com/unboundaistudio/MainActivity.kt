@@ -186,8 +186,8 @@ class MainActivity : ComponentActivity() {
         Text("Creating image: $generationPercent% (estimated until image arrives)")
        }
       if (status.isNotEmpty()) Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceVariant) { Text(status, modifier = Modifier.fillMaxWidth().padding(16.dp)) }
-      fun requestImage(input: Bitmap?) {
-       if (prompt.isBlank() && !(tab == 2 && fictionalAdultMode && (appearance.isNotBlank() || bodyDescription.isNotBlank()))) { status = "Describe the image first"; return }
+      fun requestImage(input: Bitmap?, promptOverride: String? = null) {
+       if ((promptOverride ?: prompt).isBlank() && !(tab == 2 && fictionalAdultMode && (appearance.isNotBlank() || bodyDescription.isNotBlank()))) { status = "Describe the image first"; return }
        val address = server.trim().trimEnd('/')
        if (!nightmareMode && !localMode && runCatching { URL(address).let { it.protocol == "https" && it.host.isNotBlank() && it.userInfo == null && it.query == null && it.ref == null } }.getOrDefault(false).not()) {
         status = "Enter a valid HTTPS server URL"; return
@@ -200,7 +200,7 @@ class MainActivity : ComponentActivity() {
         val age = characterAge.toIntOrNull()
         if (age == null || age < 18 || age > 100) { status = "Enter an adult age from 18 to 100"; return }
         listOf("Original fictional adult woman, age $age", appearance, bodyDescription, pose, setting, photoStyle, prompt).filter { it.isNotBlank() }.joinToString(", ")
-       } else prompt
+       } else (promptOverride ?: prompt)
        val requestedStrength = if (input != null) when (preserveOriginal) {
          "High" -> editStrength.coerceAtMost(if (precisionEdit) 0.16f else 0.25f)
          "Medium" -> editStrength.coerceIn(0.26f, 0.45f)
@@ -327,7 +327,8 @@ class MainActivity : ComponentActivity() {
           text = { Text("Only use this option with original, fictional AI-generated adults aged 18 or older. Do not use photos of real people or anyone whose age is uncertain.") },
           confirmButton = { TextButton(onClick = {
            showRemoveClothingConfirm = false
-           prompt = "Edit this original fictional AI-generated adult character: remove clothing, preserving the original face, pose, lighting and background. The character is an adult aged 25 or older. Photorealistic."
+           val clothingEditPrompt = "Edit this original fictional AI-generated adult character: remove clothing, preserving the original face, pose, lighting and background. The character is an adult aged 25 or older. Photorealistic."
+           prompt = clothingEditPrompt
            // Start the image-to-image request directly from the confirmed action.
            // This action does not require painting a mask or a second button press.
            precisionEdit = false
@@ -335,7 +336,7 @@ class MainActivity : ComponentActivity() {
            editStrength = 0.40f
            preserveOriginal = "Medium"
            status = "Starting automatic AI edit…"
-           requestImage(bitmap)
+           requestImage(bitmap, clothingEditPrompt)
           }) { Text("Eligible fictional adult") } },
           dismissButton = { TextButton(onClick = { showRemoveClothingConfirm = false }) { Text("Cancel") } }
          )
