@@ -206,14 +206,13 @@ class MainActivity : ComponentActivity() {
         } else editStrength
        val requestedHighQuality = highQuality
        val mask = if (input != null && maskMode && strokes.isNotEmpty()) makeMask(input.width, input.height, strokes.toList(), brush) else null
-       val inputForValidation = input
-       busy = true; generationPercent = 0; status = "Creating image…"
+              busy = true; generationPercent = 0; status = "Creating image…"
         // Nightmare does not currently expose generation progress through this client.
         // Show an explicitly estimated percentage, capped below 100 until an image arrives.
         val progressJob = scope.launch {
          while (isActive && busy) {
           delay(1500)
-          if (busy) generationPercent = (generationPercent + 1).coerceAtMost(95)
+          if (busy) generationPercent = (generationPercent + 2).coerceAtMost(95)
          }
         }
        scope.launch {
@@ -221,6 +220,7 @@ class MainActivity : ComponentActivity() {
          result = withContext(Dispatchers.IO) {
           if (useNightmare) {
            val generated = NightmareClient.generate(requestedPrompt, tokenForRun, input, requestedStrength, requestedHighQuality)
+           check(!isNearlyWhiteImage(generated)) { "The AI returned a blank white image. Try a different flow or restart the model." }
            if (mask != null && input != null) compositeMaskedEdit(input, generated, mask) else generated
           } else if (useLocal) {
            val encoded = input?.let { bitmap ->
@@ -233,9 +233,9 @@ class MainActivity : ComponentActivity() {
            Bitmap.createBitmap(frame.pixels, frame.width, frame.height, Bitmap.Config.ARGB_8888)
           } else generateImage(address, requestedPrompt, input, requestedStrength, mask, requestedHighQuality)
          }
-         if (inputForValidation != null && result != null && isNearlyWhiteImage(result!!)) {
+         if (result != null && isNearlyWhiteImage(result!!)) {
           result = null
-          status = "The AI returned a blank white edit. Your original photo is safe. Try again with lower edit strength (25–35%) or restart the model."
+          status = "The AI returned a blank white image. Your original photo is safe. Try again with lower edit strength or restart the model."
          } else {
           generationPercent = 100
            status = "Image ready"
