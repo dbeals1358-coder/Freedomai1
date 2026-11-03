@@ -71,6 +71,7 @@ class MainActivity : ComponentActivity() {
    var highQuality by remember { mutableStateOf(true) }
    var showConnection by remember { mutableStateOf(false) }
    var prompt by remember { mutableStateOf("") }
+   var showRemoveClothingConfirm by remember { mutableStateOf(false) }
    var original by remember { mutableStateOf<Bitmap?>(null) }
    var brightness by remember { mutableFloatStateOf(0f) }
    var saturation by remember { mutableFloatStateOf(1f) }
@@ -320,6 +321,20 @@ class MainActivity : ComponentActivity() {
          Text("With Nightmare, only the painted area is copied from the AI edit; everything outside stays pixel-identical. For true mask-guided generation, a compatible inpainting workflow is still needed.")
         }
         OutlinedTextField(value = prompt, onValueChange = { prompt = it }, label = { Text("Describe your AI edit") }, placeholder = { Text("Make the bikini top smaller; keep the face, pose and background unchanged.") }, modifier = Modifier.fillMaxWidth())
+        Button(onClick = { showRemoveClothingConfirm = true }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Remove Clothing") }
+        if (showRemoveClothingConfirm) {
+         AlertDialog(
+          onDismissRequest = { showRemoveClothingConfirm = false },
+          title = { Text("Remove Clothing — eligibility check") },
+          text = { Text("Only use this option with original, fictional AI-generated adults aged 18 or older. Do not use photos of real people or anyone whose age is uncertain.") },
+          confirmButton = { TextButton(onClick = {
+           showRemoveClothingConfirm = false
+           prompt = "Edit this original fictional AI-generated adult character: remove clothing, preserving the original face, pose, lighting and background. The character is an adult aged 25 or older. Photorealistic."
+           status = "Edit prepared. Tap AI Edit Photo to generate using the connected model."
+          }) { Text("Eligible fictional adult") } },
+          dismissButton = { TextButton(onClick = { showRemoveClothingConfirm = false }) { Text("Cancel") } }
+         )
+        }
         Text("Quick clothing edits", style = MaterialTheme.typography.titleMedium)
         listOf(
          "Make the bikini top smaller while keeping the person and background the same",
