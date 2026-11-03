@@ -76,6 +76,7 @@ class MainActivity : ComponentActivity() {
    var saturation by remember { mutableFloatStateOf(1f) }
    var editStrength by remember { mutableFloatStateOf(0.20f) }
     var preserveOriginal by remember { mutableStateOf("High") }
+    var precisionEdit by remember { mutableStateOf(true) }
     var generationPercent by remember { mutableStateOf(0) }
    var maskMode by remember { mutableStateOf(false) }
    var brush by remember { mutableFloatStateOf(0.06f) }
@@ -90,7 +91,7 @@ class MainActivity : ComponentActivity() {
      original = contentResolver.openInputStream(uri)?.use {
       BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply { inSampleSize = sample })
      }
-     brightness = 0f; saturation = 1f; strokes.clear()
+     brightness = 0f; saturation = 1f; strokes.clear(); result = null
     } catch (e: Exception) { toast("Couldn't open image") }
    }
    val edited = remember(original, brightness, saturation) { original?.let { adjust(it, brightness, saturation) } }
@@ -200,11 +201,15 @@ class MainActivity : ComponentActivity() {
         listOf("Original fictional adult woman, age $age", appearance, bodyDescription, pose, setting, photoStyle, prompt).filter { it.isNotBlank() }.joinToString(", ")
        } else prompt
        val requestedStrength = if (input != null) when (preserveOriginal) {
-         "High" -> editStrength.coerceAtMost(0.25f)
+         "High" -> editStrength.coerceAtMost(if (precisionEdit) 0.16f else 0.25f)
          "Medium" -> editStrength.coerceIn(0.26f, 0.45f)
          else -> editStrength
         } else editStrength
        val requestedHighQuality = highQuality
+       if (input != null && precisionEdit && (!maskMode || strokes.isEmpty())) {
+        status = "Precision Edit requires a painted area. Paint the area to change, or turn off Precision Edit to edit the whole photo."
+        return
+       }
        val mask = if (input != null && maskMode && strokes.isNotEmpty()) makeMask(input.width, input.height, strokes.toList(), brush) else null
               busy = true; generationPercent = 0; status = "Creating image…"
         // Nightmare does not currently expose generation progress through this client.
@@ -221,7 +226,7 @@ class MainActivity : ComponentActivity() {
           if (useNightmare) {
            val generated = NightmareClient.generate(requestedPrompt, tokenForRun, input, requestedStrength, requestedHighQuality)
            check(!isNearlyWhiteImage(generated)) { "The AI returned a blank white image. Try a different flow or restart the model." }
-           if (mask != null && input != null) compositeMaskedEdit(input, generated, mask) else generated
+           if (mask != null && input != null) compositeMaskedEdit(input, generated, mask) else preserveFraming(input, generated)
           } else if (useLocal) {
            val encoded = input?.let { bitmap ->
             ByteArrayOutputStream().use { stream -> bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream); Base64.encodeToString(stream.toByteArray(), Base64.NO_WRAP) }
@@ -231,7 +236,10 @@ class MainActivity : ComponentActivity() {
             runOnUiThread { status = "Creating image: step $step of $total" }
            }
            Bitmap.createBitmap(frame.pixels, frame.width, frame.height, Bitmap.Config.ARGB_8888)
-          } else generateImage(address, requestedPrompt, input, requestedStrength, mask, requestedHighQuality)
+          } else {
+           val generated = generateImage(address, requestedPrompt, input, requestedStrength, mask, requestedHighQuality)
+           if (input != null && mask == null) preserveFraming(input, generated) else generated
+          }
          }
          if (result != null && isNearlyWhiteImage(result!!)) {
           result = null
@@ -320,12 +328,17 @@ class MainActivity : ComponentActivity() {
         ).forEach { suggestion ->
          OutlinedButton(onClick = { prompt = suggestion }, modifier = Modifier.fillMaxWidth()) { Text(suggestion) }
         }
+        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+         Text("Precision Edit (painted area only)", modifier = Modifier.weight(1f))
+         Switch(checked = precisionEdit, enabled = !busy, onCheckedChange = { precisionEdit = it; if (it) maskMode = true })
+        }
+        Text("Precision Edit requires painting a selection; pixels outside it stay unchanged. Switch off for full-photo edits.")
         Text("Preserve Original")
          Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
           listOf("High", "Medium", "Low").forEach { level ->
            OutlinedButton(onClick = {
             preserveOriginal = level
-            editStrength = when (level) { "High" -> 0.20f; "Medium" -> 0.35f; else -> 0.60f }
+            editStrength = when (level) { "High" -> 0.16f; "Medium" -> 0.35f; else -> 0.60f }
            }) { Text(if (preserveOriginal == level) "✓ $level" else level) }
           }
          }
@@ -346,7 +359,7 @@ class MainActivity : ComponentActivity() {
        Text("Your creation", style = MaterialTheme.typography.titleLarge)
        Image(image.asImageBitmap(), contentDescription = "Generated image", modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp))
        Button(onClick = { if (tab == 2) savePrivate(image) else save(image) }) { Text(if (tab == 2) "Save Privately" else "Save Image") }
-       OutlinedButton(onClick = { original = image; brightness = 0f; saturation = 1f; result = null; tab = 1 }) { Text("Edit this image") }
+       OutlinedButton(onClick = { original = image; brightness = 0f; saturation = 1f; strokes.clear(); maskMode = true; precisionEdit = true; result = null; tab = 1 }) { Text("Edit this image") }
       }
      }
     }
@@ -507,4 +520,10 @@ private fun compositeMaskedEdit(original: Bitmap, generated: Bitmap, mask: Bitma
  canvas.restoreToCount(layer)
  maskAlpha.recycle()
  return result
+}
+
+/** Match the original image canvas dimensions for full-frame edits. */
+private fun preserveFraming(original: Bitmap?, generated: Bitmap): Bitmap {
+ if (original == null || (original.width == generated.width && original.height == generated.height)) return generated
+ return Bitmap.createScaledBitmap(generated, original.width, original.height, true)
 }
