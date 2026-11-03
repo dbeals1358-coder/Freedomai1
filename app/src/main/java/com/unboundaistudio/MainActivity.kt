@@ -207,10 +207,8 @@ class MainActivity : ComponentActivity() {
          else -> editStrength
         } else editStrength
        val requestedHighQuality = highQuality
-       if (input != null && precisionEdit && (!maskMode || strokes.isEmpty())) {
-        status = "Precision Edit needs a painted selection. Turn off Precision Edit or paint the area you want changed."
-        return
-       }
+       // Precision Edit without a painted selection uses full-image img2img instead of silently blocking.
+       // The lower denoise strength above still helps preserve the original appearance.
        val mask = if (input != null && maskMode && strokes.isNotEmpty()) makeMask(input.width, input.height, strokes.toList(), brush) else null
               busy = true; generationPercent = 0; status = "Creating image…"
         // Nightmare does not currently expose generation progress through this client.
@@ -353,9 +351,9 @@ class MainActivity : ComponentActivity() {
         }
         Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
          Text("Precision Edit (painted area only)", modifier = Modifier.weight(1f))
-         Switch(checked = precisionEdit, enabled = !busy, onCheckedChange = { precisionEdit = it; if (it) maskMode = true })
+         Switch(checked = precisionEdit, enabled = !busy, onCheckedChange = { precisionEdit = it })
         }
-        Text("Precision Edit requires painting a selection; pixels outside it stay unchanged. Switch off for full-photo edits.")
+        Text("Precision Edit uses gentler changes. Painting a selection is optional; without one, the entire photo is edited.")
         Text("Preserve Original")
          Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
           listOf("High", "Medium", "Low").forEach { level ->
