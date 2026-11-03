@@ -50,6 +50,8 @@ class MainActivity : ComponentActivity() {
    val prefs = remember { getSharedPreferences("server", MODE_PRIVATE) }
    var server by remember { mutableStateOf(prefs.getString("url", "") ?: "") }
    var localMode by remember { mutableStateOf(prefs.getBoolean("local", true)) }
+   var nightmareMode by remember { mutableStateOf(prefs.getBoolean("nightmare", true)) }
+   var nightmareToken by remember { mutableStateOf(prefs.getString("nightmare_token", "") ?: "") }
    var busy by remember { mutableStateOf(false) }
    var status by remember { mutableStateOf("") }
    var result by remember { mutableStateOf<Bitmap?>(null) }
@@ -123,10 +125,16 @@ class MainActivity : ComponentActivity() {
       Card(Modifier.fillMaxWidth()) {
       Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
       Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-       Text("Local Dream on this phone")
+       Text("Use an AI model on this phone")
        Switch(checked = localMode, enabled = !busy, onCheckedChange = { localMode = it; prefs.edit().putBoolean("local", it).apply() })
       }
       if (localMode) {
+       Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        Text("Use Nightmare", modifier = Modifier.weight(1f))
+        Switch(checked = nightmareMode, enabled = !busy, onCheckedChange = { nightmareMode = it; prefs.edit().putBoolean("nightmare", it).apply() })
+       }
+      }
+      if (localMode && !nightmareMode) {
        Text("1. Open Local Dream and load CyberRealistic v10.\n2. Keep its model screen open, then switch back here.\n3. Check connection, then generate.")
        OutlinedButton(enabled = !busy, onClick = {
         val intent = packageManager.getLaunchIntentForPackage("io.github.xororz.localdream")
@@ -143,6 +151,19 @@ class MainActivity : ComponentActivity() {
          } finally { busy = false }
         }
        }) { Text("Check connection") }
+      } else if (localMode && nightmareMode) {
+       Text("Nightmare API • 127.0.0.1:8820. Turn on Settings → Advanced → API in Nightmare.")
+       OutlinedTextField(value = nightmareToken, onValueChange = { nightmareToken = it; prefs.edit().putString("nightmare_token", it).apply() },
+        label = { Text("Nightmare API token") }, visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+        modifier = Modifier.fillMaxWidth(), enabled = !busy)
+       OutlinedButton(enabled = !busy, onClick = {
+        busy = true
+        scope.launch {
+         try { status = withContext(Dispatchers.IO) { NightmareClient.check(nightmareToken) } }
+         catch (e: Exception) { status = "Nightmare connection failed: ${e.message}" }
+         finally { busy = false }
+        }
+       }) { Text("Check Nightmare connection") }
       } else {
        OutlinedTextField(value = server, onValueChange = { server = it }, label = { Text("Image server HTTPS URL") }, placeholder = { Text("https://your-server.example") }, enabled = !busy, modifier = Modifier.fillMaxWidth())
        Text("Connect an AUTOMATIC1111 server. Photos and prompts go to that server when you generate or AI edit.")
@@ -160,6 +181,8 @@ class MainActivity : ComponentActivity() {
        }
        prefs.edit().putString("url", address).apply()
        val useLocal = localMode
+       val useNightmare = localMode && nightmareMode
+       val tokenForRequest = nightmareToken
        val requestedPrompt = if (tab == 2 && fictionalAdultMode && input == null) {
         val age = characterAge.toIntOrNull()
         if (age == null || age < 18 || age > 100) { status = "Enter an adult age from 18 to 100"; return }
@@ -178,6 +201,7 @@ class MainActivity : ComponentActivity() {
             ByteArrayOutputStream().use { stream -> bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream); Base64.encodeToString(stream.toByteArray(), Base64.NO_WRAP) }
            }
            if (mask != null) error("Painted-area edits require an HTTPS AUTOMATIC1111 server")
+           if (useNightmare) return@withContext NightmareClient.generate(tokenForRequest, requestedPrompt, encoded, requestedStrength)
            val frame = LocalDreamClient.generate(requestedPrompt, encoded, requestedStrength) { step, total ->
             runOnUiThread { status = "Creating image: step $step of $total" }
            }
@@ -191,7 +215,7 @@ class MainActivity : ComponentActivity() {
           status = "Image ready"
          }
         } catch (e: kotlinx.coroutines.CancellationException) { throw e
-        } catch (e: Exception) { status = if (useLocal) "Local Dream: ${e.message ?: "connection failed"}. Keep the model loaded; try split screen if disconnected." else "Could not create image: ${e.message ?: "connection failed"}"
+        } catch (e: Exception) { status = if (useNightmare) "Nightmare: ${e.message ?: "connection failed"}" else if (useLocal) "Local Dream: ${e.message ?: "connection failed"}. Keep the model loaded; try split screen if disconnected." else "Could not create image: ${e.message ?: "connection failed"}"
         } finally { busy = false }
        }
       }
@@ -206,6 +230,17 @@ class MainActivity : ComponentActivity() {
          }
          if (fictionalAdultMode) {
           OutlinedTextField(value = characterAge, onValueChange = { characterAge = it.filter(Char::isDigit).take(3) }, label = { Text("Fictional character age (18+)") }, modifier = Modifier.fillMaxWidth())
+          Text("Quick fictional character presets", style = MaterialTheme.typography.titleSmall)
+          listOf(
+           "Natural portrait" to listOf("Adult woman with brown hair, natural facial features", "Natural adult proportions", "Relaxed standing portrait", "Sunlit studio", "Photorealistic DSLR portrait, realistic skin texture"),
+           "Beach photography" to listOf("Adult woman with blonde hair, natural facial features", "Athletic adult physique", "Standing near the shoreline", "Sunny tropical beach", "Photorealistic editorial photography, natural skin texture"),
+           "Fashion studio" to listOf("Adult woman with dark hair, expressive eyes", "Natural adult proportions", "Confident fashion pose", "Professional photography studio", "Photorealistic softbox lighting, detailed skin texture")
+          ).forEach { (label, fields) ->
+           OutlinedButton(onClick = {
+            appearance = fields[0]; bodyDescription = fields[1]; pose = fields[2]
+            setting = fields[3]; photoStyle = fields[4]
+           }, modifier = Modifier.fillMaxWidth()) { Text(label) }
+          }
           OutlinedTextField(value = appearance, onValueChange = { appearance = it }, label = { Text("Appearance: hair, face, eyes") }, modifier = Modifier.fillMaxWidth())
           OutlinedTextField(value = bodyDescription, onValueChange = { bodyDescription = it }, label = { Text("Body proportions and physique") }, modifier = Modifier.fillMaxWidth())
           OutlinedTextField(value = pose, onValueChange = { pose = it }, label = { Text("Pose") }, modifier = Modifier.fillMaxWidth())
@@ -213,6 +248,7 @@ class MainActivity : ComponentActivity() {
           OutlinedTextField(value = photoStyle, onValueChange = { photoStyle = it }, label = { Text("Photography and lighting style") }, modifier = Modifier.fillMaxWidth())
           OutlinedTextField(value = prompt, onValueChange = { prompt = it }, label = { Text("Additional details (optional)") }, modifier = Modifier.fillMaxWidth().height(110.dp))
           Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Text("High quality", modifier = Modifier.weight(1f)); Switch(checked = highQuality, onCheckedChange = { highQuality = it }) }
+          Text("Tip: Describe lighting, camera angle and natural skin texture for more realistic results. Start with the presets, then customize any field.")
           Text("Generation depends on the connected model's capabilities. This switch does not bypass model restrictions.")
           Button(onClick = { requestImage(null) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Generate Fictional Adult Image") }
          }
