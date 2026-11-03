@@ -2,7 +2,7 @@ name: Build Android APK
 on:
   workflow_dispatch:
   push:
-    branches: [main, feature/photo-edit-strength]
+    branches: [main, feature/photo-edit-strength, feature/adult-character-presets-20261102]
 permissions:
   contents: read
 jobs:
