@@ -381,7 +381,7 @@ class MainActivity : ComponentActivity() {
        Text("Your creation", style = MaterialTheme.typography.titleLarge)
        Image(image.asImageBitmap(), contentDescription = "Generated image", modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp))
        Button(onClick = { if (tab == 2) savePrivate(image) else save(image) }) { Text(if (tab == 2) "Save Privately" else "Save Image") }
-       OutlinedButton(onClick = { original = image; brightness = 0f; saturation = 1f; strokes.clear(); maskMode = true; precisionEdit = true; result = null; tab = 1 }) { Text("Edit this image") }
+       OutlinedButton(onClick = { original = image; brightness = 0f; saturation = 1f; strokes.clear(); maskMode = false; precisionEdit = false; preserveOriginal = "Medium"; editStrength = 0.40f; result = null; status = "Image loaded for AI editing. Describe a change and tap AI Edit Photo."; tab = 1 }) { Text("Edit this image") }
       }
      }
     }
