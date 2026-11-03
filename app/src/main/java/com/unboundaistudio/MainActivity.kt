@@ -342,6 +342,7 @@ class MainActivity : ComponentActivity() {
           dismissButton = { TextButton(onClick = { showRemoveClothingConfirm = false }) { Text("Cancel") } }
          )
         }
+        Button(onClick = { status = "Starting AI photo edit…"; requestImage(bitmap) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("AI Edit Photo") }
         Text("Quick clothing edits", style = MaterialTheme.typography.titleMedium)
         listOf(
          "Make the bikini top smaller while keeping the person and background the same",
@@ -368,7 +369,6 @@ class MainActivity : ComponentActivity() {
          Text("AI edit strength: ${(editStrength * 100).roundToInt()}%")
         Slider(value = editStrength, onValueChange = { editStrength = it }, valueRange = 0.15f..0.85f)
         Text("For clothing edits, start around 25–40%. Higher strength may change the face or background. Precise clothing-only editing needs a compatible inpainting model.")
-        Button(onClick = { status = "Starting AI photo edit…"; requestImage(bitmap) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("AI Edit Photo") }
         Text("Brightness")
         Slider(value = brightness, onValueChange = { brightness = it }, valueRange = -0.5f..0.5f)
         Text("Saturation")
