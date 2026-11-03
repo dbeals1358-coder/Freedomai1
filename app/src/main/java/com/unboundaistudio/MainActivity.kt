@@ -70,7 +70,7 @@ class MainActivity : ComponentActivity() {
    var original by remember { mutableStateOf<Bitmap?>(null) }
    var brightness by remember { mutableFloatStateOf(0f) }
    var saturation by remember { mutableFloatStateOf(1f) }
-   var editStrength by remember { mutableFloatStateOf(0.35f) }
+   var editStrength by remember { mutableFloatStateOf(0.20f) }
    var maskMode by remember { mutableStateOf(false) }
    var brush by remember { mutableFloatStateOf(0.06f) }
    val strokes = remember { mutableStateListOf<List<Offset>>() }
