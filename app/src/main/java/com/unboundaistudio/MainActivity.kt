@@ -330,7 +330,7 @@ class MainActivity : ComponentActivity() {
           confirmButton = { TextButton(onClick = {
            showRemoveClothingConfirm = false
            prompt = "Edit this original fictional AI-generated adult character: remove clothing, preserving the original face, pose, lighting and background. The character is an adult aged 25 or older. Photorealistic."
-           status = "Edit prepared. Tap AI Edit Photo to generate using the connected model."
+           status = "Edit instructions prepared. Tap AI Edit Photo below to start."
           }) { Text("Eligible fictional adult") } },
           dismissButton = { TextButton(onClick = { showRemoveClothingConfirm = false }) { Text("Cancel") } }
          )
@@ -361,7 +361,7 @@ class MainActivity : ComponentActivity() {
          Text("AI edit strength: ${(editStrength * 100).roundToInt()}%")
         Slider(value = editStrength, onValueChange = { editStrength = it }, valueRange = 0.15f..0.85f)
         Text("For clothing edits, start around 25–40%. Higher strength may change the face or background. Precise clothing-only editing needs a compatible inpainting model.")
-        Button(onClick = { requestImage(bitmap) }, enabled = !busy) { Text("AI Edit Photo") }
+        Button(onClick = { status = "Starting AI photo edit…"; requestImage(bitmap) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("AI Edit Photo") }
         Text("Brightness")
         Slider(value = brightness, onValueChange = { brightness = it }, valueRange = -0.5f..0.5f)
         Text("Saturation")
