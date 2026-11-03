@@ -206,6 +206,17 @@ class MainActivity : ComponentActivity() {
          }
          if (fictionalAdultMode) {
           OutlinedTextField(value = characterAge, onValueChange = { characterAge = it.filter(Char::isDigit).take(3) }, label = { Text("Fictional character age (18+)") }, modifier = Modifier.fillMaxWidth())
+          Text("Quick fictional character presets", style = MaterialTheme.typography.titleSmall)
+          listOf(
+           "Natural portrait" to listOf("Adult woman with brown hair, natural facial features", "Natural adult proportions", "Relaxed standing portrait", "Sunlit studio", "Photorealistic DSLR portrait, realistic skin texture"),
+           "Beach photography" to listOf("Adult woman with blonde hair, natural facial features", "Athletic adult physique", "Standing near the shoreline", "Sunny tropical beach", "Photorealistic editorial photography, natural skin texture"),
+           "Fashion studio" to listOf("Adult woman with dark hair, expressive eyes", "Natural adult proportions", "Confident fashion pose", "Professional photography studio", "Photorealistic softbox lighting, detailed skin texture")
+          ).forEach { (label, fields) ->
+           OutlinedButton(onClick = {
+            appearance = fields[0]; bodyDescription = fields[1]; pose = fields[2]
+            setting = fields[3]; photoStyle = fields[4]
+           }, modifier = Modifier.fillMaxWidth()) { Text(label) }
+          }
           OutlinedTextField(value = appearance, onValueChange = { appearance = it }, label = { Text("Appearance: hair, face, eyes") }, modifier = Modifier.fillMaxWidth())
           OutlinedTextField(value = bodyDescription, onValueChange = { bodyDescription = it }, label = { Text("Body proportions and physique") }, modifier = Modifier.fillMaxWidth())
           OutlinedTextField(value = pose, onValueChange = { pose = it }, label = { Text("Pose") }, modifier = Modifier.fillMaxWidth())
@@ -213,6 +224,7 @@ class MainActivity : ComponentActivity() {
           OutlinedTextField(value = photoStyle, onValueChange = { photoStyle = it }, label = { Text("Photography and lighting style") }, modifier = Modifier.fillMaxWidth())
           OutlinedTextField(value = prompt, onValueChange = { prompt = it }, label = { Text("Additional details (optional)") }, modifier = Modifier.fillMaxWidth().height(110.dp))
           Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Text("High quality", modifier = Modifier.weight(1f)); Switch(checked = highQuality, onCheckedChange = { highQuality = it }) }
+          Text("Tip: Describe lighting, camera angle and natural skin texture for more realistic results. Start with the presets, then customize any field.")
           Text("Generation depends on the connected model's capabilities. This switch does not bypass model restrictions.")
           Button(onClick = { requestImage(null) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Generate Fictional Adult Image") }
          }
