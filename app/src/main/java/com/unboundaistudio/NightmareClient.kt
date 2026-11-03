@@ -53,4 +53,53 @@ internal object NightmareClient {
             connection.disconnect()
         }
     }
+    fun generate(prompt: String, token: String, input: android.graphics.Bitmap?, strength: Float, highQuality: Boolean): android.graphics.Bitmap {
+        require(token.isNotBlank()) { "Enter your Nightmare API token in Connection settings" }
+        val payload = JSONObject()
+            .put("flow", if (input == null) "saved:FreedomAI RealVis" else "img2img")
+            .put("prompt", prompt)
+            .put("steps", if (highQuality) 35 else 22)
+            .put("cfg", 6.0)
+        if (input != null) {
+            val stream = java.io.ByteArrayOutputStream()
+            input.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, stream)
+            payload.put("images", JSONObject().put("image", android.util.Base64.encodeToString(stream.toByteArray(), android.util.Base64.NO_WRAP)))
+            payload.put("denoise", strength.toDouble())
+        }
+        val connection = URL("$BASE_URL/run").openConnection() as HttpURLConnection
+        val reply = try {
+            connection.requestMethod = "POST"
+            connection.connectTimeout = 10000
+            connection.readTimeout = 600000
+            connection.doOutput = true
+            connection.setRequestProperty("Authorization", "Bearer $token")
+            connection.setRequestProperty("Content-Type", "application/json")
+            connection.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
+            val code = connection.responseCode
+            val body = (if (code in 200..299) connection.inputStream else connection.errorStream)
+                ?.bufferedReader()?.use { it.readText() }.orEmpty()
+            check(code in 200..299) { "Nightmare HTTP $code: ${body.take(250)}" }
+            JSONObject(body)
+        } finally {
+            connection.disconnect()
+        }
+        val results = reply.optJSONArray("results") ?: error("Nightmare returned no results")
+        val result = (0 until results.length()).mapNotNull { results.optJSONObject(it) }
+            .firstOrNull { it.optString("url").endsWith(".png", ignoreCase = true) }
+            ?: error("Nightmare did not return a PNG image")
+        val resultPath = result.getString("url")
+        require(resultPath.startsWith("/results/")) { "Unexpected Nightmare result path" }
+        val download = URL("$BASE_URL$resultPath").openConnection() as HttpURLConnection
+        try {
+            download.connectTimeout = 10000
+            download.readTimeout = 60000
+            download.setRequestProperty("Authorization", "Bearer $token")
+            check(download.responseCode == 200) { "Image download failed: HTTP ${download.responseCode}" }
+            return download.inputStream.use { android.graphics.BitmapFactory.decodeStream(it) }
+                ?: error("Nightmare returned an unreadable image")
+        } finally {
+            download.disconnect()
+        }
+    }
+
 }
