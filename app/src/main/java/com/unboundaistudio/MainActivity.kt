@@ -147,7 +147,7 @@ class MainActivity : ComponentActivity() {
         } catch (e: kotlinx.coroutines.CancellationException) { throw e
         } catch (e: Exception) {
          status = "Cannot reach Nightmare on port 8820: ${e.message ?: "connection failed"}. Enable its API in Advanced settings."
-        } finally { busy = false; progressJob.cancel() }
+        } finally { busy = false }
        }
       }) { Text("Check Nightmare connection") }
       HorizontalDivider()
