@@ -50,6 +50,8 @@ class MainActivity : ComponentActivity() {
    val prefs = remember { getSharedPreferences("server", MODE_PRIVATE) }
    var server by remember { mutableStateOf(prefs.getString("url", "") ?: "") }
    var localMode by remember { mutableStateOf(prefs.getBoolean("local", true)) }
+   var nightmareMode by remember { mutableStateOf(prefs.getBoolean("nightmare", true)) }
+   var nightmareToken by remember { mutableStateOf(prefs.getString("nightmare_token", "") ?: "") }
    var busy by remember { mutableStateOf(false) }
    var status by remember { mutableStateOf("") }
    var result by remember { mutableStateOf<Bitmap?>(null) }
@@ -123,13 +125,21 @@ class MainActivity : ComponentActivity() {
       Card(Modifier.fillMaxWidth()) {
       Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
       Text("Nightmare (RealVis XL V5)", style = MaterialTheme.typography.titleMedium)
-      Text("Check the Nightmare API running on this phone. Image generation through saved Nightmare flows is not connected yet.")
+      Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+       Text("Use Nightmare for images")
+       Switch(checked = nightmareMode, enabled = !busy, onCheckedChange = { nightmareMode = it; prefs.edit().putBoolean("nightmare", it).apply() })
+      }
+      OutlinedTextField(value = nightmareToken, onValueChange = {
+       nightmareToken = it.trim()
+       prefs.edit().putString("nightmare_token", nightmareToken).apply()
+      }, label = { Text("Nightmare API token (kept on this phone)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+      Text("Uses your saved FreedomAI RealVis flow for creation and Nightmare's img2img flow for photo edits.")
       OutlinedButton(enabled = !busy, onClick = {
        busy = true
        scope.launch {
         try {
          val version = withContext(Dispatchers.IO) { NightmareClient.checkConnection() }
-         status = "Nightmare v$version is reachable on port 8820. Flow generation is not configured yet."
+         status = "Nightmare v$version is reachable on port 8820."
         } catch (e: kotlinx.coroutines.CancellationException) { throw e
         } catch (e: Exception) {
          status = "Cannot reach Nightmare on port 8820: ${e.message ?: "connection failed"}. Enable its API in Advanced settings."
@@ -170,11 +180,13 @@ class MainActivity : ComponentActivity() {
       fun requestImage(input: Bitmap?) {
        if (prompt.isBlank() && !(tab == 2 && fictionalAdultMode && (appearance.isNotBlank() || bodyDescription.isNotBlank()))) { status = "Describe the image first"; return }
        val address = server.trim().trimEnd('/')
-       if (!localMode && runCatching { URL(address).let { it.protocol == "https" && it.host.isNotBlank() && it.userInfo == null && it.query == null && it.ref == null } }.getOrDefault(false).not()) {
+       if (!nightmareMode && !localMode && runCatching { URL(address).let { it.protocol == "https" && it.host.isNotBlank() && it.userInfo == null && it.query == null && it.ref == null } }.getOrDefault(false).not()) {
         status = "Enter a valid HTTPS server URL"; return
        }
        prefs.edit().putString("url", address).apply()
        val useLocal = localMode
+       val useNightmare = nightmareMode
+       val tokenForRun = nightmareToken
        val requestedPrompt = if (tab == 2 && fictionalAdultMode && input == null) {
         val age = characterAge.toIntOrNull()
         if (age == null || age < 18 || age > 100) { status = "Enter an adult age from 18 to 100"; return }
@@ -188,7 +200,10 @@ class MainActivity : ComponentActivity() {
        scope.launch {
         try {
          result = withContext(Dispatchers.IO) {
-          if (useLocal) {
+          if (useNightmare) {
+           if (mask != null) error("Painted-area masks are not supported by the Nightmare connection yet")
+           NightmareClient.generate(requestedPrompt, tokenForRun, input, requestedStrength, requestedHighQuality)
+          } else if (useLocal) {
            val encoded = input?.let { bitmap ->
             ByteArrayOutputStream().use { stream -> bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream); Base64.encodeToString(stream.toByteArray(), Base64.NO_WRAP) }
            }
