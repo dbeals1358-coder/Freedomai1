@@ -221,7 +221,11 @@ class MainActivity : ComponentActivity() {
           status = "Image ready"
          }
         } catch (e: kotlinx.coroutines.CancellationException) { throw e
-        } catch (e: Exception) { status = if (useLocal) "Local Dream: ${e.message ?: "connection failed"}. Keep the model loaded; try split screen if disconnected." else "Could not create image: ${e.message ?: "connection failed"}"
+        } catch (e: Exception) { status = when {
+          useNightmare -> "Nightmare generation failed: ${e.message ?: "connection failed"}. Check your API token and saved flow."
+          useLocal -> "Local Dream: ${e.message ?: "connection failed"}. Keep the model loaded; try split screen if disconnected."
+          else -> "Could not create image: ${e.message ?: "connection failed"}"
+         }
         } finally { busy = false }
        }
       }
