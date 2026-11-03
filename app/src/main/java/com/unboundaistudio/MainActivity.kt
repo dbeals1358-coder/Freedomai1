@@ -246,7 +246,7 @@ class MainActivity : ComponentActivity() {
           useLocal -> "Local Dream: ${e.message ?: "connection failed"}. Keep the model loaded; try split screen if disconnected."
           else -> "Could not create image: ${e.message ?: "connection failed"}"
          }
-        } finally { busy = false }
+        } finally { busy = false; progressJob.cancel() }
        }
       }
       if (tab == 2 && adultConfirmed) {
