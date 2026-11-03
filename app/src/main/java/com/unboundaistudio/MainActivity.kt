@@ -77,7 +77,7 @@ class MainActivity : ComponentActivity() {
    var saturation by remember { mutableFloatStateOf(1f) }
    var editStrength by remember { mutableFloatStateOf(0.20f) }
     var preserveOriginal by remember { mutableStateOf("High") }
-    var precisionEdit by remember { mutableStateOf(true) }
+    var precisionEdit by remember { mutableStateOf(false) }
     var generationPercent by remember { mutableStateOf(0) }
    var maskMode by remember { mutableStateOf(false) }
    var brush by remember { mutableFloatStateOf(0.06f) }
@@ -208,7 +208,7 @@ class MainActivity : ComponentActivity() {
         } else editStrength
        val requestedHighQuality = highQuality
        if (input != null && precisionEdit && (!maskMode || strokes.isEmpty())) {
-        status = "Precision Edit requires a painted area. Paint the area to change, or turn off Precision Edit to edit the whole photo."
+        status = "Precision Edit needs a painted selection. Turn off Precision Edit or paint the area you want changed."
         return
        }
        val mask = if (input != null && maskMode && strokes.isNotEmpty()) makeMask(input.width, input.height, strokes.toList(), brush) else null
