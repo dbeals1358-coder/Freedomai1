@@ -34,6 +34,8 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import android.util.Base64
@@ -73,6 +75,8 @@ class MainActivity : ComponentActivity() {
    var brightness by remember { mutableFloatStateOf(0f) }
    var saturation by remember { mutableFloatStateOf(1f) }
    var editStrength by remember { mutableFloatStateOf(0.20f) }
+    var preserveOriginal by remember { mutableStateOf("High") }
+    var generationPercent by remember { mutableStateOf(0) }
    var maskMode by remember { mutableStateOf(false) }
    var brush by remember { mutableFloatStateOf(0.06f) }
    val strokes = remember { mutableStateListOf<List<Offset>>() }
@@ -143,7 +147,7 @@ class MainActivity : ComponentActivity() {
         } catch (e: kotlinx.coroutines.CancellationException) { throw e
         } catch (e: Exception) {
          status = "Cannot reach Nightmare on port 8820: ${e.message ?: "connection failed"}. Enable its API in Advanced settings."
-        } finally { busy = false }
+        } finally { busy = false; progressJob.cancel() }
        }
       }) { Text("Check Nightmare connection") }
       HorizontalDivider()
@@ -175,7 +179,10 @@ class MainActivity : ComponentActivity() {
       }
       }
       }
-      if (busy) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+      if (busy) {
+        LinearProgressIndicator(progress = { generationPercent / 100f }, modifier = Modifier.fillMaxWidth())
+        Text("Creating image: $generationPercent% (estimated until image arrives)")
+       }
       if (status.isNotEmpty()) Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceVariant) { Text(status, modifier = Modifier.fillMaxWidth().padding(16.dp)) }
       fun requestImage(input: Bitmap?) {
        if (prompt.isBlank() && !(tab == 2 && fictionalAdultMode && (appearance.isNotBlank() || bodyDescription.isNotBlank()))) { status = "Describe the image first"; return }
@@ -192,11 +199,23 @@ class MainActivity : ComponentActivity() {
         if (age == null || age < 18 || age > 100) { status = "Enter an adult age from 18 to 100"; return }
         listOf("Original fictional adult woman, age $age", appearance, bodyDescription, pose, setting, photoStyle, prompt).filter { it.isNotBlank() }.joinToString(", ")
        } else prompt
-       val requestedStrength = editStrength
+       val requestedStrength = if (input != null) when (preserveOriginal) {
+         "High" -> editStrength.coerceAtMost(0.25f)
+         "Medium" -> editStrength.coerceIn(0.26f, 0.45f)
+         else -> editStrength
+        } else editStrength
        val requestedHighQuality = highQuality
        val mask = if (input != null && maskMode && strokes.isNotEmpty()) makeMask(input.width, input.height, strokes.toList(), brush) else null
        val inputForValidation = input
-       busy = true; status = "Creating image…"
+       busy = true; generationPercent = 0; status = "Creating image…"
+        // Nightmare does not currently expose generation progress through this client.
+        // Show an explicitly estimated percentage, capped below 100 until an image arrives.
+        val progressJob = scope.launch {
+         while (isActive && busy) {
+          delay(1500)
+          if (busy) generationPercent = (generationPercent + 1).coerceAtMost(95)
+         }
+        }
        scope.launch {
         try {
          result = withContext(Dispatchers.IO) {
@@ -218,7 +237,8 @@ class MainActivity : ComponentActivity() {
           result = null
           status = "The AI returned a blank white edit. Your original photo is safe. Try again with lower edit strength (25–35%) or restart the model."
          } else {
-          status = "Image ready"
+          generationPercent = 100
+           status = "Image ready"
          }
         } catch (e: kotlinx.coroutines.CancellationException) { throw e
         } catch (e: Exception) { status = when {
@@ -300,7 +320,17 @@ class MainActivity : ComponentActivity() {
         ).forEach { suggestion ->
          OutlinedButton(onClick = { prompt = suggestion }, modifier = Modifier.fillMaxWidth()) { Text(suggestion) }
         }
-        Text("AI edit strength: ${(editStrength * 100).roundToInt()}%")
+        Text("Preserve Original")
+         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+          listOf("High", "Medium", "Low").forEach { level ->
+           OutlinedButton(onClick = {
+            preserveOriginal = level
+            editStrength = when (level) { "High" -> 0.20f; "Medium" -> 0.35f; else -> 0.60f }
+           }) { Text(if (preserveOriginal == level) "✓ $level" else level) }
+          }
+         }
+         Text("High keeps more of the original; Low allows larger changes. Background-only replacement requires a compatible masking model.")
+         Text("AI edit strength: ${(editStrength * 100).roundToInt()}%")
         Slider(value = editStrength, onValueChange = { editStrength = it }, valueRange = 0.15f..0.85f)
         Text("For clothing edits, start around 25–40%. Higher strength may change the face or background. Precise clothing-only editing needs a compatible inpainting model.")
         Button(onClick = { requestImage(bitmap) }, enabled = !busy) { Text("AI Edit Photo") }
