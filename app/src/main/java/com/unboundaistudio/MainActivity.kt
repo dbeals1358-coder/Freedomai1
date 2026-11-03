@@ -122,6 +122,21 @@ class MainActivity : ComponentActivity() {
       if (showConnection) {
       Card(Modifier.fillMaxWidth()) {
       Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+      Text("Nightmare (RealVis XL V5)", style = MaterialTheme.typography.titleMedium)
+      Text("Check the Nightmare API running on this phone. Image generation through saved Nightmare flows is not connected yet.")
+      OutlinedButton(enabled = !busy, onClick = {
+       busy = true
+       scope.launch {
+        try {
+         val version = withContext(Dispatchers.IO) { NightmareClient.checkConnection() }
+         status = "Nightmare v$version is reachable on port 8820. Flow generation is not configured yet."
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e
+        } catch (e: Exception) {
+         status = "Cannot reach Nightmare on port 8820: ${e.message ?: "connection failed"}. Enable its API in Advanced settings."
+        } finally { busy = false }
+       }
+      }) { Text("Check Nightmare connection") }
+      HorizontalDivider()
       Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
        Text("Local Dream on this phone")
        Switch(checked = localMode, enabled = !busy, onCheckedChange = { localMode = it; prefs.edit().putBoolean("local", it).apply() })
