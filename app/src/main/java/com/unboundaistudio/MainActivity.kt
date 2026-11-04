@@ -44,6 +44,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
 import android.util.Base64
 import org.json.JSONObject
 import org.json.JSONArray
@@ -69,6 +72,8 @@ class MainActivity : ComponentActivity() {
    var customSeconds by remember { mutableStateOf("") }
    var lastVideo by remember { mutableStateOf<Uri?>(null) }
    var busy by remember { mutableStateOf(false) }
+   var videoElapsedSeconds by remember { mutableIntStateOf(0) }
+   var videoJob by remember { mutableStateOf<Job?>(null) }
    var status by remember { mutableStateOf("") }
    var result by remember { mutableStateOf<Bitmap?>(null) }
    var originalGeneratedHere by remember { mutableStateOf(false) }
