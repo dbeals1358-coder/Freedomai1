@@ -224,7 +224,7 @@ class MainActivity : ComponentActivity() {
        } else (promptOverride ?: prompt)
        val requestedStrength = if (input != null) editStrength.coerceIn(0.10f, 0.80f) else editStrength
        val requestedHighQuality = highQuality
-       val editPrompt = if (input != null) "Edit the supplied source image. Apply only the requested modification. Preserve all unrelated facial features, body proportions, pose, camera framing, lighting, colors, and background. Do not regenerate a different person or scene. Requested change: $requestedPrompt" else editPrompt
+       val editPrompt = if (input != null) "Edit the supplied source image. Apply only the requested modification. Preserve all unrelated facial features, body proportions, pose, camera framing, lighting, colors, and background. Do not regenerate a different person or scene. Requested change: $requestedPrompt" else requestedPrompt
        if (input != null && precisionEdit && (!maskMode || strokes.isEmpty())) {
         precisionEdit = false // Fall back to full-frame edit instead of silently blocking.
        }
