@@ -111,6 +111,40 @@ class MainActivity : ComponentActivity() {
      brightness = 0f; saturation = 1f; strokes.clear(); result = if (videoMode) original else null; originalGeneratedHere = false; resultGeneratedHere = false
     } catch (e: Exception) { toast("Couldn't open image") }
    }
+   var motionModelMessage by remember { mutableStateOf("") }
+   val motionModelPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+    if (uri != null) {
+     scope.launch {
+      busy = true
+      try {
+       motionModelMessage = "Importing motion model…"
+       val filename = android.provider.OpenableColumns.DISPLAY_NAME.let { column ->
+        contentResolver.query(uri, arrayOf(column), null, null, null)?.use { cursor ->
+         if (cursor.moveToFirst()) cursor.getString(0) else null
+        }
+       } ?: ""
+       val allowed = setOf("text_encoder.onnx", "image_encoder.onnx", "denoiser.onnx", "video_decoder.onnx")
+       require(filename in allowed) { "Choose one of: " + allowed.joinToString() }
+       val dir = java.io.File(filesDir, "motion_models").apply { mkdirs() }
+       val target = java.io.File(dir, filename)
+       withContext(Dispatchers.IO) {
+        val temp = java.io.File(dir, filename + ".partial")
+        try {
+         contentResolver.openInputStream(uri)?.use { input ->
+          temp.outputStream().use { output -> input.copyTo(output) }
+         } ?: error("Cannot open model file")
+         require(temp.length() >= 1024) { "Model file is empty or truncated" }
+         if (target.exists()) target.delete()
+         check(temp.renameTo(target)) { "Cannot save model file" }
+        } finally { temp.delete() }
+       }
+       motionModelMessage = "Imported $filename (" + (target.length() / 1048576) + " MB)."
+      } catch (e: Exception) {
+       motionModelMessage = "Model import failed: " + (e.message ?: "Unknown error")
+      } finally { busy = false }
+     }
+    }
+   }
    val edited = remember(original, brightness, saturation) { original?.let { adjust(it, brightness, saturation) } }
    MaterialTheme(colorScheme = darkColorScheme(
     primary = UiColor(0xFFB8A0FF), onPrimary = UiColor(0xFF21133F),
@@ -429,8 +463,13 @@ class MainActivity : ComponentActivity() {
        Text("No Runway key or online account is required. The installed offline renderer currently supports camera movement only. AI body movement will become available only after a compatible on-device motion model and inference runtime are installed.")
        Text("Camera motion renderer", style = MaterialTheme.typography.titleMedium)
        Text("Offline video: camera animation only. Realistic AI body movement requires converted model weights and a verified inference pipeline.")
-       val aiModelStatus = remember { LocalAiMotionRuntime(java.io.File(filesDir, "motion_models")).use { it.readiness() } }
+       val aiModelStatus = LocalAiMotionRuntime(java.io.File(filesDir, "motion_models")).use { it.readiness() }
        Text("AI motion model: " + if (aiModelStatus.ready) "Ready" else "Not ready — " + aiModelStatus.reason)
+       OutlinedButton(enabled = !busy, onClick = { motionModelPicker.launch(arrayOf("application/octet-stream", "*/*")) }) {
+        Text("Import ONNX motion model file")
+       }
+       if (motionModelMessage.isNotBlank()) Text(motionModelMessage)
+       Text("Importing model files does not enable AI video until a compatible inference pipeline is implemented.")
        Text("The video button below creates camera-motion MP4s, not AI-generated body movement.")
        OutlinedTextField(value = motionPrompt, onValueChange = { motionPrompt = it },
         label = { Text("Describe camera motion") }, modifier = Modifier.fillMaxWidth())
