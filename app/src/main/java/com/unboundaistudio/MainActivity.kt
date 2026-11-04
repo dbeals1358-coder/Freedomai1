@@ -399,20 +399,20 @@ class MainActivity : ComponentActivity() {
         }
         OutlinedTextField(value = prompt, onValueChange = { prompt = it }, label = { Text("Describe your AI edit") }, placeholder = { Text("Make the bikini top smaller; keep the face, pose and background unchanged.") }, modifier = Modifier.fillMaxWidth())
         Text(if (originalGeneratedHere) "Image source: generated in FreedomAI (this session)" else "Image source: imported or unverified")
-        Button(onClick = { showRemoveClothingConfirm = true }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Nude") }
+        Button(onClick = { showRemoveClothingConfirm = true }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Swimwear Edit") }
         if (showRemoveClothingConfirm) {
          AlertDialog(
           onDismissRequest = { showRemoveClothingConfirm = false },
-          title = { Text("Remove Clothing — eligibility check") },
-          text = { Text("Only use this option with original, fictional AI-generated adults aged 18 or older. Do not use photos of real people or anyone whose age is uncertain.") },
+          title = { Text("Swimwear edit") },
+          text = { Text("Replace the outfit with swimwear on a fictional adult character. For precise edits, select the clothing area using Paint area to change.") },
           confirmButton = { TextButton(onClick = {
            showRemoveClothingConfirm = false
-           prompt = "Image-to-image edit of the PROVIDED SOURCE IMAGE, not a new scene. Keep exactly the same fictional adult character, blonde hair, facial features, identity, body proportions, seated pose, camera framing, beach, rocks, trees, water, lighting and colors. Change only the requested clothing area. Do not replace the person, change hair color, change the background, or move the camera. Photorealistic adult character aged 25 or older."
-           precisionEdit = false; maskMode = false
+           prompt = "Edit the clothing only: replace the existing outfit with a simple two-piece swimsuit. Preserve the same adult character, face, hairstyle, body proportions, pose, camera angle, lighting and background. Do not change anything outside the outfit. Photorealistic result."
+           precisionEdit = strokes.isNotEmpty(); maskMode = strokes.isNotEmpty()
            preserveOriginal = "High"; editStrength = 0.35f
            status = "Clothing edit instructions ready. Starting image edit…"
-           requestImage(bitmap, "Image-to-image edit of the PROVIDED SOURCE IMAGE, not a new scene. Keep exactly the same fictional adult character, blonde hair, facial features, identity, body proportions, seated pose, camera framing, beach, rocks, trees, water, lighting and colors. Change only the requested clothing area. Do not replace the person, change hair color, change the background, or move the camera. Photorealistic adult character aged 25 or older.")
-          }) { Text("Eligible fictional adult") } },
+           requestImage(bitmap, "Edit the clothing only: replace the existing outfit with a simple two-piece swimsuit. Preserve the same adult character, face, hairstyle, body proportions, pose, camera angle, lighting and background. Do not change anything outside the outfit. Photorealistic result.")
+          }) { Text("Apply swimwear edit") } },
           dismissButton = { TextButton(onClick = { showRemoveClothingConfirm = false }) { Text("Cancel") } }
          )
         }
