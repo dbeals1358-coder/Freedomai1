@@ -94,7 +94,7 @@ fun AssistantScreen() {
   Row { Checkbox(checked = speak, onCheckedChange = { speak = it }); Text("Read replies aloud") }
   Column(Modifier.fillMaxWidth().heightIn(max = 350.dp).verticalScroll(rememberScrollState())) {
    history.forEach { (role, text) ->
-    Text(if (role == "user") "You: $text" else "Assistant: $text", modifier = Modifier.padding(vertical = 6.dp))
+    Text(if (role == "user") "You: $text" else "Assistant: ${text.replace(Regex("^(Assistant:\\s*)+", RegexOption.IGNORE_CASE), "").trim()}", modifier = Modifier.padding(vertical = 6.dp))
    }
   }
   if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error)
@@ -117,7 +117,7 @@ fun AssistantScreen() {
     scope.launch {
      try {
       val answer = withContext(Dispatchers.IO) { if (localModelPath.isNotBlank()) offlineAssistantReply(context, localModelPath, history.toList()) else assistantReply(endpoint, model, apiKey, history.toList()) }
-      history.add("assistant" to answer)
+      history.add("assistant" to answer.replace(Regex("^(Assistant:\\s*)+", RegexOption.IGNORE_CASE), "").trim())
       if (speak) tts.speak(answer, TextToSpeech.QUEUE_FLUSH, null, "assistant-reply")
      } catch (e: Exception) {
       error = e.message ?: "Assistant connection failed."
@@ -157,14 +157,14 @@ private fun offlineAssistantReply(context: android.content.Context, path: String
  val engine = LlmInference.createFromOptions(context, options)
  try {
   val prompt = buildString {
-   append("You are a helpful assistant.\\n")
+   append("You are a helpful conversational assistant. Answer requests directly and retain context. If asked to display or generate an image, explain that chat cannot display it directly and direct the user to the Create tab.\\n")
    history.takeLast(8).forEach { (role, message) ->
     append(if (role == "user") "User: " else "Assistant: ")
-    append(message).append("\\n")
+    append(message.replace(Regex("^(Assistant:\\s*)+", RegexOption.IGNORE_CASE), "")).append("\n")
    }
    append("Assistant: ")
   }
-  return engine.generateResponse(prompt)
+  return engine.generateResponse(prompt).replace(Regex("^(Assistant:\\s*)+", RegexOption.IGNORE_CASE), "").trim()
  } finally { engine.close() }
 }
 
