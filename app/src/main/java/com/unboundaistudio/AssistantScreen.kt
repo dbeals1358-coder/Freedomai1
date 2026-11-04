@@ -1,6 +1,9 @@
 package com.unboundaistudio
 
 import android.content.Intent
+import android.net.Uri
+import com.google.mediapipe.tasks.genai.llminference.LlmInference
+import java.io.File
 import android.speech.RecognizerIntent
 import android.speech.tts.TextToSpeech
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -29,6 +32,20 @@ fun AssistantScreen() {
  var endpoint by remember { mutableStateOf(prefs.getString("endpoint", "") ?: "") }
  var model by remember { mutableStateOf(prefs.getString("model", "") ?: "") }
  var apiKey by remember { mutableStateOf(prefs.getString("api_key", "") ?: "") }
+ var localModelPath by remember { mutableStateOf(prefs.getString("local_model", "") ?: "") }
+ val modelPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+  if (uri != null) {
+   val target = File(context.filesDir, "assistant-model.task")
+   runCatching {
+    context.contentResolver.openInputStream(uri)?.use { input ->
+     target.outputStream().use { output -> input.copyTo(output) }
+    } ?: error("Could not open model")
+    require(target.length() > 1024 * 1024) { "Model is incomplete" }
+    localModelPath = target.absolutePath
+    prefs.edit().putString("local_model", localModelPath).apply()
+   }.onFailure { error = it.message ?: "Model import failed" }
+  }
+ }
  var message by remember { mutableStateOf("") }
  var error by remember { mutableStateOf("") }
  var busy by remember { mutableStateOf(false) }
@@ -43,7 +60,9 @@ fun AssistantScreen() {
  }
  Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
   Text("AI Assistant", style = MaterialTheme.typography.headlineMedium)
-  Text("Chat by typing or speaking. Connect an OpenAI-compatible chat service to receive AI responses.")
+  Text("Chat by typing or speaking. Import a compatible .task model for offline replies, or connect a chat service.")
+  OutlinedButton(onClick = { modelPicker.launch(arrayOf("*/*")) }) { Text("Import offline AI model (.task)") }
+  Text(if (localModelPath.isNotBlank()) "Offline model installed" else "No offline AI model installed")
   OutlinedTextField(endpoint, { endpoint = it }, label = { Text("Chat API URL (HTTPS)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
   OutlinedTextField(model, { model = it }, label = { Text("Model name") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
   OutlinedTextField(apiKey, { apiKey = it }, label = { Text("API key (optional)") }, modifier = Modifier.fillMaxWidth(), singleLine = true, visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation())
@@ -76,7 +95,7 @@ fun AssistantScreen() {
     error = ""
     scope.launch {
      try {
-      val answer = withContext(Dispatchers.IO) { assistantReply(endpoint, model, apiKey, history.toList()) }
+      val answer = withContext(Dispatchers.IO) { if (localModelPath.isNotBlank()) offlineAssistantReply(context, localModelPath, history.toList()) else assistantReply(endpoint, model, apiKey, history.toList()) }
       history.add("assistant" to answer)
       if (speak) tts.speak(answer, TextToSpeech.QUEUE_FLUSH, null, "assistant-reply")
      } catch (e: Exception) {
@@ -110,4 +129,20 @@ private fun assistantReply(endpoint: String, model: String, apiKey: String, hist
   val body = connection.inputStream.bufferedReader().use { it.readText().take(1000000) }
   return JSONObject(body).getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content")
  } finally { connection.disconnect() }
+}
+
+private fun offlineAssistantReply(context: android.content.Context, path: String, history: List<Pair<String, String>>): String {
+ val options = LlmInference.LlmInferenceOptions.builder().setModelPath(path).setMaxTokens(1024).build()
+ val engine = LlmInference.createFromOptions(context, options)
+ try {
+  val prompt = buildString {
+   append("You are a helpful assistant.\\n")
+   history.takeLast(8).forEach { (role, message) ->
+    append(if (role == "user") "User: " else "Assistant: ")
+    append(message).append("\\n")
+   }
+   append("Assistant: ")
+  }
+  return engine.generateResponse(prompt)
+ } finally { engine.close() }
 }
