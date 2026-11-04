@@ -590,10 +590,10 @@ private fun preserveDetectedFace(original: Bitmap, generated: Bitmap): Bitmap {
   val layer = canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), null)
   canvas.drawBitmap(original, 0f, 0f, null)
   val radial = android.graphics.RadialGradient(
-   cx, cy, 1f, intArrayOf(Color.WHITE, Color.WHITE, Color.TRANSPARENT),
+   0f, 0f, 1f, intArrayOf(Color.WHITE, Color.WHITE, Color.TRANSPARENT),
    floatArrayOf(0f, 0.68f, 1f), android.graphics.Shader.TileMode.CLAMP
   )
-  val transform = android.graphics.Matrix().apply { setScale(rx, ry, cx, cy) }
+  val transform = android.graphics.Matrix().apply { setScale(rx, ry); postTranslate(cx, cy) }
   radial.setLocalMatrix(transform)
   val maskPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
    shader = radial
