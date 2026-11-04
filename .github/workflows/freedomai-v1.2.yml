@@ -1,4 +1,4 @@
-name: FreedomAI v1.4 Android APK
+name: FreedomAI v2.0 Android APK
 on:
   workflow_dispatch:
   push:
@@ -26,21 +26,23 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.10.2'
-      - name: Verify v1.4 app metadata and required features
+      - name: Verify v2.0 app metadata and required features
         run: |
-          grep -q 'versionName = "1.4"' app/build.gradle.kts
-          grep -q 'android:label="Boobs v1.4"' app/src/main/AndroidManifest.xml
+          grep -q 'versionName = "2.0"' app/build.gradle.kts
+          grep -q 'android:label="Boobs v2.0"' app/src/main/AndroidManifest.xml
           grep -q 'RunwayVideoClient.generate' app/src/main/java/com/unboundaistudio/MainActivity.kt
           grep -q 'Text("Nude")' app/src/main/java/com/unboundaistudio/MainActivity.kt
           grep -q 'Text("AI Edit")' app/src/main/java/com/unboundaistudio/MainActivity.kt
           grep -q 'OfflineVideoEngine.render' app/src/main/java/com/unboundaistudio/MainActivity.kt
-      - name: Test and assemble v1.4 debug APK
+          grep -q 'AssistantScreen()' app/src/main/java/com/unboundaistudio/MainActivity.kt
+          grep -q 'fun AssistantScreen()' app/src/main/java/com/unboundaistudio/AssistantScreen.kt
+      - name: Test and assemble v2.0 debug APK
         run: gradle --no-daemon testDebugUnitTest assembleDebug
       - name: Verify APK produced
         run: test -s app/build/outputs/apk/debug/app-debug.apk
       - name: Upload installable debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: FreedomAI-v1.4-debug
+          name: FreedomAI-v2.0-debug
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
