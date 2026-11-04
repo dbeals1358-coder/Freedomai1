@@ -43,7 +43,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r mobilei2v-converter/scripts/convert/requirements.txt
-          python -m pip install onnx onnxruntime
+          python -m pip install onnx onnxruntime einops
       - name: Download and convert all four components
         working-directory: mobilei2v-converter/scripts/convert
         run: |
