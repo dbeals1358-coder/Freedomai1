@@ -18,8 +18,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 330
     env:
-      HF_HOME: ${{ runner.temp }}/huggingface
-      PIP_CACHE_DIR: ${{ runner.temp }}/pip-cache
+      HF_HOME: /tmp/mobilei2v-huggingface
+      PIP_CACHE_DIR: /tmp/mobilei2v-pip-cache
       PYTHONUNBUFFERED: "1"
     steps:
       - name: Checkout Boobs repository
