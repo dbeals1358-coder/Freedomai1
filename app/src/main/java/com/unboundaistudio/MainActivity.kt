@@ -1,6 +1,8 @@
 package com.unboundaistudio
 
 import android.content.ContentValues
+import android.content.Intent
+import android.net.Uri
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
@@ -55,6 +57,11 @@ class MainActivity : ComponentActivity() {
    var nightmareMode by remember { mutableStateOf(prefs.getBoolean("nightmare", true)) }
    var nightmareToken by remember { mutableStateOf(prefs.getString("nightmare_token", "") ?: "") }
    var nightmareEditFlow by remember { mutableStateOf(prefs.getString("nightmare_edit_flow", "img2img") ?: "img2img") }
+   var videoUrl by remember { mutableStateOf(prefs.getString("video_url", "") ?: "") }
+   var motionPrompt by remember { mutableStateOf("") }
+   var duration by remember { mutableIntStateOf(5) }
+   var customSeconds by remember { mutableStateOf("") }
+   var lastVideo by remember { mutableStateOf<Uri?>(null) }
    var busy by remember { mutableStateOf(false) }
    var status by remember { mutableStateOf("") }
    var result by remember { mutableStateOf<Bitmap?>(null) }
@@ -389,6 +396,62 @@ class MainActivity : ComponentActivity() {
        Text("Your creation", style = MaterialTheme.typography.titleLarge)
        Image(image.asImageBitmap(), contentDescription = "Generated image", modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp))
        Button(onClick = { if (tab == 2) savePrivate(image) else save(image) }) { Text(if (tab == 2) "Save Privately" else "Save Image") }
+       Text("Create Video", style = MaterialTheme.typography.titleLarge)
+       Text("Requires an image-to-video API that returns an MP4. Nightmare image generation alone cannot produce video.")
+       OutlinedTextField(value = videoUrl, onValueChange = {
+        videoUrl = it.trim()
+        prefs.edit().putString("video_url", videoUrl).apply()
+       }, label = { Text("HTTPS video API endpoint") }, modifier = Modifier.fillMaxWidth())
+       OutlinedTextField(value = motionPrompt, onValueChange = { motionPrompt = it },
+        label = { Text("Describe motion") }, modifier = Modifier.fillMaxWidth())
+       Text("Duration")
+       listOf(3, 5, 10, 15, 30, 60).chunked(3).forEach { row ->
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+         row.forEach { seconds ->
+          OutlinedButton(onClick = { duration = seconds; customSeconds = "" },
+           modifier = Modifier.weight(1f)) { Text(if (duration == seconds && customSeconds.isEmpty()) "✓ ${seconds}s" else "${seconds}s") }
+         }
+        }
+       }
+       OutlinedTextField(value = customSeconds, onValueChange = { customSeconds = it.filter { c -> c.isDigit() }.take(3) },
+        label = { Text("Custom duration in seconds") }, modifier = Modifier.fillMaxWidth())
+       Button(enabled = !busy, onClick = {
+        val seconds = customSeconds.toIntOrNull() ?: duration
+        if (seconds !in 1..120) { status = "Choose 1–120 seconds" }
+        else if (motionPrompt.isBlank()) { status = "Describe motion first" }
+        else if (!videoUrl.startsWith("https://")) { status = "Enter an HTTPS video API endpoint" }
+        else {
+         busy = true
+         status = "Creating video…"
+         scope.launch {
+          try {
+           val mp4 = withContext(Dispatchers.IO) { generateVideoMp4(videoUrl, image, motionPrompt, seconds) }
+           val values = ContentValues().apply {
+            put(MediaStore.Video.Media.DISPLAY_NAME, "FreedomAI_${System.currentTimeMillis()}.mp4")
+            put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
+            put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/FreedomAI")
+            put(MediaStore.Video.Media.IS_PENDING, 1)
+           }
+           val uri = contentResolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values) ?: error("Cannot save video")
+           try {
+            withContext(Dispatchers.IO) { contentResolver.openOutputStream(uri)?.use { it.write(mp4) } ?: error("Cannot write MP4") }
+            contentResolver.update(uri, ContentValues().apply { put(MediaStore.Video.Media.IS_PENDING, 0) }, null, null)
+            lastVideo = uri
+            status = "Video saved to Movies/FreedomAI"
+           } catch (e: Exception) { contentResolver.delete(uri, null, null); throw e }
+          } catch (e: Exception) { status = "Video failed: ${e.message}" }
+          finally { busy = false }
+         }
+        }
+       }, modifier = Modifier.fillMaxWidth()) { Text("Generate Video") }
+       lastVideo?.let { uri ->
+        OutlinedButton(onClick = {
+         startActivity(Intent(Intent.ACTION_VIEW).apply {
+          setDataAndType(uri, "video/mp4")
+          addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+         })
+        }) { Text("Play saved MP4") }
+       }
        OutlinedButton(onClick = { original = image; originalGeneratedHere = resultGeneratedHere; brightness = 0f; saturation = 1f; strokes.clear(); maskMode = false; precisionEdit = false; result = null; tab = 1 }) { Text("Edit this image") }
       }
      }
@@ -616,4 +679,39 @@ private fun isSameImage(a: Bitmap, b: Bitmap): Boolean {
   if (kotlin.math.abs(Color.red(c)-Color.red(d)) + kotlin.math.abs(Color.green(c)-Color.green(d)) + kotlin.math.abs(Color.blue(c)-Color.blue(d)) > 24) different++
  }
  return different < 3
+}
+
+/** API contract: POST JSON image_base64, prompt, duration_seconds; response video/mp4 bytes. */
+private fun generateVideoMp4(endpoint: String, bitmap: Bitmap, prompt: String, seconds: Int): ByteArray {
+ val url = URL(endpoint)
+ require(url.protocol == "https" && url.host.isNotBlank() && url.userInfo == null) { "HTTPS required" }
+ val png = ByteArrayOutputStream().also { check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) }.toByteArray()
+ val payload = JSONObject().put("image_base64", Base64.encodeToString(png, Base64.NO_WRAP))
+  .put("prompt", prompt).put("duration_seconds", seconds)
+ val connection = url.openConnection() as HttpURLConnection
+ try {
+  connection.requestMethod = "POST"
+  connection.connectTimeout = 15000
+  connection.readTimeout = 300000
+  connection.instanceFollowRedirects = false
+  connection.doOutput = true
+  connection.setRequestProperty("Content-Type", "application/json")
+  connection.setRequestProperty("Accept", "video/mp4")
+  connection.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
+  check(connection.responseCode in 200..299) { "Video API HTTP ${connection.responseCode}" }
+  check(connection.contentType?.substringBefore(';') == "video/mp4") { "Video API must return video/mp4" }
+  val output = ByteArrayOutputStream()
+  connection.inputStream.use { input ->
+   val buffer = ByteArray(8192)
+   while (true) {
+    val n = input.read(buffer)
+    if (n < 0) break
+    check(output.size() + n <= 200 * 1024 * 1024) { "Video exceeds 200MB" }
+    output.write(buffer, 0, n)
+   }
+  }
+  val bytes = output.toByteArray()
+  check(bytes.size > 12 && String(bytes, 4, 4, Charsets.US_ASCII) == "ftyp") { "Invalid MP4" }
+  return bytes
+ } finally { connection.disconnect() }
 }
