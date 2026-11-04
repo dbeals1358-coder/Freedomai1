@@ -26,7 +26,7 @@ import java.net.URL
 import java.util.Locale
 
 @Composable
-fun AssistantScreen() {
+fun AssistantScreen(onCreateImage: (String) -> Unit = {}, onEditImage: (String) -> Unit = {}, onCreateVideo: (String) -> Unit = {}) {
  val context = LocalContext.current
  val prefs = remember { context.getSharedPreferences("assistant", android.content.Context.MODE_PRIVATE) }
  var endpoint by remember { mutableStateOf(prefs.getString("endpoint", "") ?: "") }
@@ -112,6 +112,21 @@ fun AssistantScreen() {
     val input = message.trim()
     message = ""
     history.add("user" to input)
+    val imageRequest = Regex("(?i)\\b(show|make|create|generate|draw|picture|image|photo)\\b").containsMatchIn(input)
+    val editRequest = Regex("(?i)\\b(edit|modify|change|replace|remove|adjust)\\b").containsMatchIn(input)
+    val videoRequest = Regex("(?i)\\b(video|animate|animation|motion)\\b").containsMatchIn(input)
+    if (videoRequest && imageRequest) {
+     onCreateVideo(input)
+     return@Button
+    }
+    if (editRequest && !videoRequest) {
+     onEditImage(input)
+     return@Button
+    }
+    if (imageRequest) {
+     onCreateImage(input)
+     return@Button
+    }
     busy = true
     error = ""
     scope.launch {
