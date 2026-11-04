@@ -189,7 +189,7 @@ class MainActivity : ComponentActivity() {
       }
       if (tab == -1) {
        Column(Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(UiColor(0xFF332451), UiColor(0xFF192F49))), RoundedCornerShape(28.dp)).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Image(painter = painterResource(id = R.drawable.boobs_launcher), contentDescription = "Boobs app photo", contentScale = ContentScale.Crop, modifier = Modifier.size(48.dp))
+        Text("✦", style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.primary)
         Text("Dream It. Build It.\nCrank It.", style = MaterialTheme.typography.headlineLarge)
         Text("Create or edit photos and videos.", color = UiColor(0xFFD3D0E3))
         Button(onClick = { tab = 0 }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("Create Image") }
