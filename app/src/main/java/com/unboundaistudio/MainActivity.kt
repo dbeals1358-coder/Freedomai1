@@ -444,6 +444,7 @@ class MainActivity : ComponentActivity() {
         val seconds = customSeconds.toIntOrNull() ?: duration
         if (seconds !in 1..120) { status = "Choose 1–120 seconds" }
         else if (motionPrompt.isBlank()) { status = "Describe camera motion: zoom, left, right, up or down" }
+        else if (!Regex("\\b(zoom|pan|left|right|up|down|camera)\\b", RegexOption.IGNORE_CASE).containsMatchIn(motionPrompt)) { status = "Body animation is not supported by the installed engine. This tool only renders camera movement; no video was created." }
         else {
          busy = true
          generationPercent = 0
@@ -474,7 +475,7 @@ class MainActivity : ComponentActivity() {
           finally { busy = false }
          }
         }
-       }, modifier = Modifier.fillMaxWidth()) { Text("Generate Video") }
+       }, modifier = Modifier.fillMaxWidth()) { Text("Render Camera Motion (not AI)") }
        lastVideo?.let { uri ->
         OutlinedButton(onClick = {
          startActivity(Intent(Intent.ACTION_VIEW).apply {
