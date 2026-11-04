@@ -78,7 +78,7 @@ class MainActivity : ComponentActivity() {
    var original by remember { mutableStateOf<Bitmap?>(null) }
    var brightness by remember { mutableFloatStateOf(0f) }
    var saturation by remember { mutableFloatStateOf(1f) }
-   var editStrength by remember { mutableFloatStateOf(0.35f) }
+   var editStrength by remember { mutableFloatStateOf(0.69f) }
     var preserveOriginal by remember { mutableStateOf("High") }
     var precisionEdit by remember { mutableStateOf(false) }
     var resolution by remember { mutableIntStateOf(prefs.getInt("resolution", 1024)) }
@@ -341,11 +341,11 @@ class MainActivity : ComponentActivity() {
           text = { Text("Only use this option with original, fictional AI-generated adults aged 18 or older. Do not use photos of real people or anyone whose age is uncertain.") },
           confirmButton = { TextButton(onClick = {
            showRemoveClothingConfirm = false
-           prompt = "Edit this original fictional AI-generated adult character: remove clothing, preserving the original face, pose, lighting and background. The character is an adult aged 25 or older. Photorealistic."
+           prompt = "Image-to-image edit of the PROVIDED SOURCE IMAGE, not a new scene. Keep exactly the same fictional adult character, blonde hair, facial features, identity, body proportions, seated pose, camera framing, beach, rocks, trees, water, lighting and colors. Change only the requested clothing area. Do not replace the person, change hair color, change the background, or move the camera. Photorealistic adult character aged 25 or older."
            precisionEdit = false; maskMode = false
            preserveOriginal = "Low"; editStrength = 0.69f
            status = "Clothing edit instructions ready. Starting image edit…"
-           requestImage(bitmap, "Edit this original fictional AI-generated adult character: remove clothing, preserving the original face, pose, lighting and background. The character is an adult aged 25 or older. Photorealistic.")
+           requestImage(bitmap, "Image-to-image edit of the PROVIDED SOURCE IMAGE, not a new scene. Keep exactly the same fictional adult character, blonde hair, facial features, identity, body proportions, seated pose, camera framing, beach, rocks, trees, water, lighting and colors. Change only the requested clothing area. Do not replace the person, change hair color, change the background, or move the camera. Photorealistic adult character aged 25 or older.")
           }) { Text("Eligible fictional adult") } },
           dismissButton = { TextButton(onClick = { showRemoveClothingConfirm = false }) { Text("Cancel") } }
          )
