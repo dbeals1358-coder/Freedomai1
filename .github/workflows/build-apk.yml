@@ -2,7 +2,7 @@ name: Build Android APK
 on:
   workflow_dispatch:
   push:
-    branches: [main, feature/photo-edit-strength]
+    branches: [main, feature/photo-edit-strength, freedomai-v1.1-upload]
 permissions:
   contents: read
 jobs:
@@ -26,5 +26,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           if-no-files-found: error
-          name: UnboundAIStudio-APK
+          name: FreedomAI-v1.1-APK
           path: app/build/outputs/apk/debug/app-debug.apk
