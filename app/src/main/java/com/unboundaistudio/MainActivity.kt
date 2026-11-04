@@ -61,6 +61,7 @@ class MainActivity : ComponentActivity() {
    var nightmareEditFlow by remember { mutableStateOf(prefs.getString("nightmare_edit_flow", "img2img") ?: "img2img") }
    var videoUrl by remember { mutableStateOf(prefs.getString("video_url", "") ?: "") }
    var motionPrompt by remember { mutableStateOf("") }
+   var nightmareVideoFlow by remember { mutableStateOf(prefs.getString("nightmare_video_flow", "current") ?: "current") }
     var runwayKey by remember { mutableStateOf(prefs.getString("runway_key", "") ?: "") }
    var duration by remember { mutableIntStateOf(5) }
    var customSeconds by remember { mutableStateOf("") }
@@ -461,6 +462,51 @@ class MainActivity : ComponentActivity() {
 
        Text("Offline video", style = MaterialTheme.typography.titleMedium)
        Text("No Runway key or online account is required. The installed offline renderer currently supports camera movement only. AI body movement will become available only after a compatible on-device motion model and inference runtime are installed.")
+       Text("On-device AI video through Nightmare", style = MaterialTheme.typography.titleMedium)
+       Text("Uses Nightmare's locally installed image-to-video model. No cloud video API. Choose a video workflow in Nightmare first.")
+       OutlinedTextField(value = nightmareVideoFlow, onValueChange = {
+        nightmareVideoFlow = it.trim()
+        prefs.edit().putString("nightmare_video_flow", nightmareVideoFlow).apply()
+       }, label = { Text("Nightmare video flow (current or saved:Name)") }, modifier = Modifier.fillMaxWidth())
+       OutlinedTextField(value = motionPrompt, onValueChange = { motionPrompt = it },
+        label = { Text("Describe AI movement") }, modifier = Modifier.fillMaxWidth())
+       Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        listOf(5, 10).forEach { secs ->
+         OutlinedButton(onClick = { duration = secs; customSeconds = "" }) {
+          Text(if (duration == secs) "✓ ${secs}s" else "${secs}s")
+         }
+        }
+       }
+       Button(enabled = !busy, onClick = {
+        if (motionPrompt.isBlank()) status = "Describe the desired movement"
+        else {
+         busy = true
+         generationPercent = 0
+         status = "Generating AI motion in Nightmare…"
+         scope.launch {
+          try {
+           val mp4 = withContext(Dispatchers.IO) {
+            NightmareVideoClient.generate(nightmareToken, nightmareVideoFlow, image, motionPrompt, if (duration == 10) 10 else 5)
+           }
+           val values = ContentValues().apply {
+            put(MediaStore.Video.Media.DISPLAY_NAME, "FreedomAI_Motion_${System.currentTimeMillis()}.mp4")
+            put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
+            put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/FreedomAI")
+            put(MediaStore.Video.Media.IS_PENDING, 1)
+           }
+           val uri = contentResolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values) ?: error("Cannot save video")
+           try {
+            withContext(Dispatchers.IO) { contentResolver.openOutputStream(uri)?.use { it.write(mp4) } ?: error("Cannot write MP4") }
+            contentResolver.update(uri, ContentValues().apply { put(MediaStore.Video.Media.IS_PENDING, 0) }, null, null)
+            lastVideo = uri
+            generationPercent = 100
+            status = "AI video saved to Movies/FreedomAI"
+           } catch (e: Exception) { contentResolver.delete(uri, null, null); throw e }
+          } catch (e: Exception) { status = "AI video failed: ${e.message}" }
+          finally { busy = false }
+         }
+        }
+       }, modifier = Modifier.fillMaxWidth()) { Text("Generate AI Motion (Nightmare offline)") }
        Text("Camera motion renderer", style = MaterialTheme.typography.titleMedium)
        Text("Offline video: camera animation only. Realistic AI body movement requires converted model weights and a verified inference pipeline.")
        val aiModelStatus = LocalAiMotionRuntime(java.io.File(filesDir, "motion_models")).use { it.readiness() }
