@@ -21,7 +21,6 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
       - name: Make Gradle executable
         run: chmod +x ./gradlew
       - name: Test and assemble v1.2 debug APK
