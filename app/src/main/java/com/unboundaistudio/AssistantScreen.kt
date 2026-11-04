@@ -47,6 +47,9 @@ fun AssistantScreen() {
    }.onFailure { error = it.message ?: "Model import failed" }
   }
  }
+ var hfToken by remember { mutableStateOf(prefs.getString("hf_token", "") ?: "") }
+ var downloadStatus by remember { mutableStateOf("") }
+ var downloading by remember { mutableStateOf(false) }
  var message by remember { mutableStateOf("") }
  var busy by remember { mutableStateOf(false) }
  var speak by remember { mutableStateOf(true) }
@@ -61,6 +64,22 @@ fun AssistantScreen() {
  Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
   Text("AI Assistant", style = MaterialTheme.typography.headlineMedium)
   Text("Chat by typing or speaking. Import a compatible .task model for offline replies, or connect a chat service.")
+  Text("Offline AI setup: Gemma 3 1B (one-time download, then works without internet). Accept the model license on Hugging Face before downloading.")
+  OutlinedTextField(hfToken, { hfToken = it }, label = { Text("Hugging Face access token") }, modifier = Modifier.fillMaxWidth(), visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation())
+  Button(enabled = !downloading, onClick = {
+   downloading = true
+   downloadStatus = "Downloading model..."
+   scope.launch {
+    try {
+     val downloaded = withContext(Dispatchers.IO) { downloadGemmaModel(context, hfToken.trim()) }
+     localModelPath = downloaded
+     prefs.edit().putString("local_model", downloaded).putString("hf_token", hfToken.trim()).apply()
+     downloadStatus = "Offline AI ready"
+    } catch (e: Exception) { downloadStatus = e.message ?: "Download failed" }
+    finally { downloading = false }
+   }
+  }) { Text(if (downloading) "Downloading..." else "Install offline AI") }
+  if (downloadStatus.isNotBlank()) Text(downloadStatus)
   OutlinedButton(onClick = { modelPicker.launch(arrayOf("*/*")) }) { Text("Import offline AI model (.task)") }
   Text(if (localModelPath.isNotBlank()) "Offline model installed" else "No offline AI model installed")
   OutlinedTextField(endpoint, { endpoint = it }, label = { Text("Chat API URL (HTTPS)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
@@ -145,4 +164,26 @@ private fun offlineAssistantReply(context: android.content.Context, path: String
   }
   return engine.generateResponse(prompt)
  } finally { engine.close() }
+}
+
+private fun downloadGemmaModel(context: android.content.Context, token: String): String {
+ require(token.isNotBlank()) { "Enter a Hugging Face token after accepting the Gemma license." }
+ val target = File(context.filesDir, "assistant-model.task")
+ val partial = File(context.filesDir, "assistant-model.task.partial")
+ val url = URL("https://huggingface.co/litert-community/Gemma3-1B-IT/resolve/main/gemma3-1b-it-int4.task?download=true")
+ val connection = url.openConnection() as HttpURLConnection
+ try {
+  connection.connectTimeout = 30000
+  connection.readTimeout = 120000
+  connection.setRequestProperty("Authorization", "Bearer $token")
+  connection.instanceFollowRedirects = true
+  val status = connection.responseCode
+  require(status in 200..299) { "Model download HTTP $status. Accept the Gemma license and check your token." }
+  require(connection.contentType?.contains("text/html") != true) { "Received a webpage, not a model." }
+  connection.inputStream.use { input -> partial.outputStream().use { output -> input.copyTo(output) } }
+  require(partial.length() > 100_000_000L) { "Downloaded model is incomplete." }
+  if (target.exists()) target.delete()
+  require(partial.renameTo(target)) { "Could not save model." }
+  return target.absolutePath
+ } finally { connection.disconnect() }
 }
