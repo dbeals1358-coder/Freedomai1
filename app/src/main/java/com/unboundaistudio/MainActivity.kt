@@ -487,7 +487,7 @@ class MainActivity : ComponentActivity() {
        if (busy) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
        Text("Choose a photo and describe movement.")
 
-       Text("Requires a working Nightmare video model.")
+       Text("AI video uses the selected local Nightmare workflow.")
        OutlinedTextField(value = nightmareVideoFlow, onValueChange = {
         nightmareVideoFlow = it.trim()
         prefs.edit().putString("nightmare_video_flow", nightmareVideoFlow).apply()
@@ -532,63 +532,6 @@ class MainActivity : ComponentActivity() {
         }
        }, modifier = Modifier.fillMaxWidth()) { Text("Generate AI Video") }
        
-       val aiModelStatus = LocalAiMotionRuntime(java.io.File(filesDir, "motion_models")).use { it.readiness() }
-       Text("AI motion model: " + if (aiModelStatus.ready) "Ready" else "Not ready — " + aiModelStatus.reason)
-       OutlinedButton(enabled = !busy, onClick = { motionModelPicker.launch(arrayOf("application/octet-stream", "*/*")) }) {
-        Text("Import ONNX motion model file")
-       }
-       if (motionModelMessage.isNotBlank()) Text(motionModelMessage)
-       
-       
-       OutlinedTextField(value = motionPrompt, onValueChange = { motionPrompt = it },
-        label = { Text("Describe camera motion") }, modifier = Modifier.fillMaxWidth())
-       Text("Duration")
-       listOf(3, 5, 10, 15, 30, 60).chunked(3).forEach { row ->
-        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-         row.forEach { seconds ->
-          OutlinedButton(onClick = { duration = seconds; customSeconds = "" },
-           modifier = Modifier.weight(1f)) { Text(if (duration == seconds && customSeconds.isEmpty()) "✓ ${seconds}s" else "${seconds}s") }
-         }
-        }
-       }
-       OutlinedTextField(value = customSeconds, onValueChange = { customSeconds = it.filter { c -> c.isDigit() }.take(3) },
-        label = { Text("Custom duration in seconds") }, modifier = Modifier.fillMaxWidth())
-       Button(enabled = !busy, onClick = {
-        val seconds = customSeconds.toIntOrNull() ?: duration
-        if (seconds !in 1..120) { status = "Choose 1–120 seconds" }
-        else if (motionPrompt.isBlank()) { status = "Describe camera motion: zoom, left, right, up or down" }
-        else if (!Regex("\\b(zoom|pan|left|right|up|down|camera)\\b", RegexOption.IGNORE_CASE).containsMatchIn(motionPrompt)) { status = "Body animation is not supported by the installed engine. This tool only renders camera movement; no video was created." }
-        else {
-         busy = true
-         generationPercent = 0
-         status = "Rendering offline video…"
-         scope.launch {
-          try {
-           val mp4 = withContext(Dispatchers.IO) {
-            val file = java.io.File(cacheDir, "offline_${System.currentTimeMillis()}.mp4")
-            try {
-             OfflineVideoEngine.render(image, seconds, motionPrompt, file) { pct -> generationPercent = pct }
-             file.readBytes()
-            } finally { file.delete() }
-           }
-           val values = ContentValues().apply {
-            put(MediaStore.Video.Media.DISPLAY_NAME, "FreedomAI_${System.currentTimeMillis()}.mp4")
-            put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
-            put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/FreedomAI")
-            put(MediaStore.Video.Media.IS_PENDING, 1)
-           }
-           val uri = contentResolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values) ?: error("Cannot save video")
-           try {
-            withContext(Dispatchers.IO) { contentResolver.openOutputStream(uri)?.use { it.write(mp4) } ?: error("Cannot write MP4") }
-            contentResolver.update(uri, ContentValues().apply { put(MediaStore.Video.Media.IS_PENDING, 0) }, null, null)
-            lastVideo = uri
-            status = "Offline video saved to Movies/FreedomAI"
-           } catch (e: Exception) { contentResolver.delete(uri, null, null); throw e }
-          } catch (e: Exception) { status = "Video failed: ${e.message}" }
-          finally { busy = false }
-         }
-        }
-       }, modifier = Modifier.fillMaxWidth()) { Text("Render Camera Motion (not AI)") }
        lastVideo?.let { uri ->
         OutlinedButton(onClick = {
          startActivity(Intent(Intent.ACTION_VIEW).apply {
