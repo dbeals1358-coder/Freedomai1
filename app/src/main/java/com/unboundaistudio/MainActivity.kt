@@ -195,8 +195,8 @@ class MainActivity : ComponentActivity() {
         Text("Creating image: $generationPercent% (estimated until image arrives)")
        }
       if (status.isNotEmpty()) Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceVariant) { Text(status, modifier = Modifier.fillMaxWidth().padding(16.dp)) }
-      fun requestImage(input: Bitmap?) {
-       if (prompt.isBlank() && !(tab == 2 && fictionalAdultMode && (appearance.isNotBlank() || bodyDescription.isNotBlank()))) { status = "Describe the image first"; return }
+      fun requestImage(input: Bitmap?, promptOverride: String? = null) {
+       if ((promptOverride ?: prompt).isBlank() && !(tab == 2 && fictionalAdultMode && (appearance.isNotBlank() || bodyDescription.isNotBlank()))) { status = "Describe the image first"; return }
        val address = server.trim().trimEnd('/')
        if (!nightmareMode && !localMode && runCatching { URL(address).let { it.protocol == "https" && it.host.isNotBlank() && it.userInfo == null && it.query == null && it.ref == null } }.getOrDefault(false).not()) {
         status = "Enter a valid HTTPS server URL"; return
@@ -209,7 +209,7 @@ class MainActivity : ComponentActivity() {
         val age = characterAge.toIntOrNull()
         if (age == null || age < 18 || age > 100) { status = "Enter an adult age from 18 to 100"; return }
         listOf("Original fictional adult woman, age $age", appearance, bodyDescription, pose, setting, photoStyle, prompt).filter { it.isNotBlank() }.joinToString(", ")
-       } else prompt
+       } else (promptOverride ?: prompt)
        val requestedStrength = if (input != null) when (preserveOriginal) {
          "High" -> editStrength.coerceIn(0.25f, 0.40f)
          "Medium" -> editStrength.coerceIn(0.26f, 0.45f)
@@ -342,12 +342,12 @@ class MainActivity : ComponentActivity() {
            precisionEdit = false; maskMode = false
            preserveOriginal = "Medium"; editStrength = 0.45f
            status = "Clothing edit instructions ready. Starting image edit…"
-           requestImage(bitmap)
+           requestImage(bitmap, "Edit this original fictional AI-generated adult character: remove clothing, preserving the original face, pose, lighting and background. The character is an adult aged 25 or older. Photorealistic.")
           }) { Text("Eligible fictional adult") } },
           dismissButton = { TextButton(onClick = { showRemoveClothingConfirm = false }) { Text("Cancel") } }
          )
         }
-        Button(onClick = { status = "Starting AI photo edit…"; requestImage(bitmap) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("AI Edit Photo") }
+        Button(onClick = { status = "Starting AI photo edit…"; requestImage(result ?: bitmap) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("AI Edit Photo") }
         Text("Quick clothing edits", style = MaterialTheme.typography.titleMedium)
         listOf(
          "Make the bikini top smaller while keeping the person and background the same",
