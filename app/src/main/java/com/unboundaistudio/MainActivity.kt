@@ -107,8 +107,7 @@ class MainActivity : ComponentActivity() {
      original = contentResolver.openInputStream(uri)?.use {
       BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply { inSampleSize = sample })
      }
-     if (videoMode) result = original
-     brightness = 0f; saturation = 1f; strokes.clear(); result = null; originalGeneratedHere = false; resultGeneratedHere = false
+     brightness = 0f; saturation = 1f; strokes.clear(); result = if (videoMode) original else null; originalGeneratedHere = false; resultGeneratedHere = false
     } catch (e: Exception) { toast("Couldn't open image") }
    }
    val edited = remember(original, brightness, saturation) { original?.let { adjust(it, brightness, saturation) } }
@@ -125,7 +124,7 @@ class MainActivity : ComponentActivity() {
      }
     }) { inset ->
      Column(Modifier.padding(inset).fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-      Text("Boobs v1.3", style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.primary)
+      Text("Boobs v1.4", style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.primary)
       Text(if (videoMode) "Create video from a photo" else if (tab == -1) "What will you create?" else if (tab == 0) "Turn your ideas into images" else if (tab == 2) "Private 18+ studio" else "Give your photos a fresh look", style = MaterialTheme.typography.titleLarge)
       if (tab == -1) {
        Column(Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(UiColor(0xFF332451), UiColor(0xFF192F49))), RoundedCornerShape(28.dp)).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -424,7 +423,7 @@ class MainActivity : ComponentActivity() {
        }
        Button(onClick = { if (tab == 2) savePrivate(image) else save(image) }) { Text(if (tab == 2) "Save Privately" else "Save Image") }
        Text("Create Video", style = MaterialTheme.typography.titleLarge)
-       Text("Video generation needs a compatible HTTPS video API. Nightmare image generation alone cannot create an MP4.")
+       Text("Video rendering requires a connected engine. Offline realistic AI motion is not yet installed.")
        OutlinedTextField(value = videoUrl, onValueChange = {
         videoUrl = it.trim()
         prefs.edit().putString("video_url", videoUrl).apply()
@@ -446,7 +445,7 @@ class MainActivity : ComponentActivity() {
         val seconds = customSeconds.toIntOrNull() ?: duration
         if (seconds !in 1..120) { status = "Choose 1–120 seconds" }
         else if (motionPrompt.isBlank()) { status = "Describe motion first" }
-        else if (!videoUrl.startsWith("https://")) { status = "Enter an HTTPS video API endpoint" }
+        else if (!videoUrl.startsWith("https://")) { status = "Offline AI video engine is not installed yet. Video cannot be generated without an engine." }
         else {
          busy = true
          status = "Creating video…"
