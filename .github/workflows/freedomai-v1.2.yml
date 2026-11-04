@@ -31,8 +31,8 @@ jobs:
           grep -q 'versionName = "2.0"' app/build.gradle.kts
           grep -q 'android:label="Boobs v2.0"' app/src/main/AndroidManifest.xml
           grep -q 'Text("AI Edit")' app/src/main/java/com/unboundaistudio/MainActivity.kt
-          grep -q 'AssistantScreen()' app/src/main/java/com/unboundaistudio/MainActivity.kt
-          grep -q 'fun AssistantScreen()' app/src/main/java/com/unboundaistudio/AssistantScreen.kt
+          grep -q 'AssistantScreen(' app/src/main/java/com/unboundaistudio/MainActivity.kt
+          grep -q 'fun AssistantScreen(' app/src/main/java/com/unboundaistudio/AssistantScreen.kt
       - name: Test and assemble v2.0 debug APK
         run: gradle --no-daemon testDebugUnitTest assembleDebug
       - name: Verify APK produced
