@@ -182,11 +182,11 @@ class MainActivity : ComponentActivity() {
      }
     }) { inset ->
      Column(Modifier.padding(inset).fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-      Text("Boobs v1.6", style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.primary)
+      Text("Boobs v2.0", style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.primary)
       Text(if (videoMode) "Create video from a photo" else if (tab == -1) "What will you create?" else if (tab == 0) "Turn your ideas into images" else if (tab == 2) "Private 18+ studio" else "Give your photos a fresh look", style = MaterialTheme.typography.titleLarge)
       if (tab == -1) {
        Column(Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(UiColor(0xFF332451), UiColor(0xFF192F49))), RoundedCornerShape(28.dp)).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Image(painter = painterResource(id = R.drawable.boobs_launcher), contentDescription = "Boobs app photo", contentScale = ContentScale.Crop, modifier = Modifier.size(48.dp))
+        Image(painter = painterResource(id = android.R.drawable.sym_def_app_icon), contentDescription = "Boobs app photo", contentScale = ContentScale.Crop, modifier = Modifier.size(48.dp))
         Text("Dream It. Build It.\nCrank It.", style = MaterialTheme.typography.headlineLarge)
         Text("Create or edit photos and videos.", color = UiColor(0xFFD3D0E3))
         Button(onClick = { tab = 0 }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("Create Image") }
