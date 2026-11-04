@@ -1,4 +1,4 @@
-name: Boobs v1.5 - Build Android APK
+name: FreedomAI v2.0 - Build Android APK
 on:
   workflow_dispatch:
   push:
@@ -22,21 +22,25 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.10.2'
-      - name: Verify current source version
+      - name: Verify source version and Hugging Face build secret
+        env:
+          HF_ACCESS_TOKEN: ${{ secrets.HF_ACCESS_TOKEN }}
         run: |
-          grep -q 'versionName = "1.5"' app/build.gradle.kts
-          grep -q 'Text("Boobs v1.5"' app/src/main/java/com/unboundaistudio/MainActivity.kt
+          grep -q 'versionName = "2.0"' app/build.gradle.kts
+          test -n "$HF_ACCESS_TOKEN" || { echo "::error::Set repository secret HF_ACCESS_TOKEN before building"; exit 1; }
       - name: Install selected launcher photo
         run: |
           mkdir -p app/src/main/res/drawable-nodpi
           base64 --decode app/icon_source.b64 > app/src/main/res/drawable-nodpi/boobs_launcher.jpg
           test -s app/src/main/res/drawable-nodpi/boobs_launcher.jpg
-      - name: Compile and test Boobs v1.5
+      - name: Compile and test FreedomAI v2.0
+        env:
+          HF_ACCESS_TOKEN: ${{ secrets.HF_ACCESS_TOKEN }}
         run: gradle assembleDebug lintDebug testDebugUnitTest --no-daemon
       - name: Name APK with version
-        run: cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/Boobs-v1.5-debug.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/FreedomAI-v2.0-debug.apk
       - uses: actions/upload-artifact@v4
         with:
           if-no-files-found: error
-          name: Boobs-v1.5-APK
-          path: app/build/outputs/apk/debug/Boobs-v1.5-debug.apk
+          name: FreedomAI-v2.0-APK
+          path: app/build/outputs/apk/debug/FreedomAI-v2.0-debug.apk
