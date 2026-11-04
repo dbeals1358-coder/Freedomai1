@@ -15,11 +15,12 @@ internal object NightmareVideoClient {
   require(!token.contains('\n') && !token.contains('\r')) { "Invalid token" }
   require(flow == "current" || flow.startsWith("saved:")) { "Select a saved Nightmare video workflow or current" }
   require(seconds in 1..10) { "Choose 1–10 seconds for AI video" }
+  // Nightmare /run does not accept duration fields; duration belongs to the selected workflow configuration.
   NightmareClient.authenticatedGet("/info", token)
   val bytes = ByteArrayOutputStream().also { image.compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
   val request = JSONObject().put("flow", flow).put("prompt", prompt)
    .put("images", JSONObject().put("image", Base64.encodeToString(bytes, Base64.NO_WRAP)))
-   .put("duration", seconds).put("duration_seconds", seconds)
+
   val connection = URL("$BASE/run").openConnection() as HttpURLConnection
   val response = try {
    connection.requestMethod = "POST"
