@@ -54,7 +54,7 @@ class MainActivity : ComponentActivity() {
    var localMode by remember { mutableStateOf(prefs.getBoolean("local", true)) }
    var nightmareMode by remember { mutableStateOf(prefs.getBoolean("nightmare", true)) }
    var nightmareToken by remember { mutableStateOf(prefs.getString("nightmare_token", "") ?: "") }
-   var nightmareEditFlow by remember { mutableStateOf(prefs.getString("nightmare_edit_flow", "current") ?: "current") }
+   var nightmareEditFlow by remember { mutableStateOf(prefs.getString("nightmare_edit_flow", "img2img") ?: "img2img") }
    var busy by remember { mutableStateOf(false) }
    var status by remember { mutableStateOf("") }
    var result by remember { mutableStateOf<Bitmap?>(null) }
@@ -337,7 +337,7 @@ class MainActivity : ComponentActivity() {
         }
         OutlinedTextField(value = prompt, onValueChange = { prompt = it }, label = { Text("Describe your AI edit") }, placeholder = { Text("Make the bikini top smaller; keep the face, pose and background unchanged.") }, modifier = Modifier.fillMaxWidth())
         Text(if (originalGeneratedHere) "Image source: generated in FreedomAI (this session)" else "Image source: imported or unverified")
-        Button(onClick = { showRemoveClothingConfirm = true }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Remove Clothing") }
+        Button(onClick = { showRemoveClothingConfirm = true }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Nude") }
         if (showRemoveClothingConfirm) {
          AlertDialog(
           onDismissRequest = { showRemoveClothingConfirm = false },
@@ -354,7 +354,7 @@ class MainActivity : ComponentActivity() {
           dismissButton = { TextButton(onClick = { showRemoveClothingConfirm = false }) { Text("Cancel") } }
          )
         }
-        Button(onClick = { status = "Starting AI photo edit…"; requestImage(result ?: bitmap) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("AI Edit Photo") }
+        Button(onClick = { status = "Starting AI photo edit…"; requestImage(result ?: bitmap) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("AI Edit") }
         Text("Quick clothing edits", style = MaterialTheme.typography.titleMedium)
         listOf(
          "Make the bikini top smaller while keeping the person and background the same",
