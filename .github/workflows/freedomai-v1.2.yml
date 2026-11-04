@@ -9,7 +9,7 @@ on:
       - 'gradlew'
       - 'build.gradle.kts'
       - 'settings.gradle.kts'
-      - '.github/workflows/freedomai-v1.3.yml'
+      - '.github/workflows/freedomai-v1.2.yml'
 permissions:
   contents: read
 jobs:
@@ -28,7 +28,7 @@ jobs:
           gradle-version: '8.10.2'
       - name: Verify v1.3 app metadata and required features
         run: |
-          grep -q 'versionName = "1.2"' app/build.gradle.kts
+          grep -q 'versionName = "1.3"' app/build.gradle.kts
           grep -q 'android:label="Boobs v1.3"' app/src/main/AndroidManifest.xml
           grep -q 'Text("Generate Video")' app/src/main/java/com/unboundaistudio/MainActivity.kt
           grep -q 'Text("Nude")' app/src/main/java/com/unboundaistudio/MainActivity.kt
