@@ -57,6 +57,8 @@ class MainActivity : ComponentActivity() {
    var busy by remember { mutableStateOf(false) }
    var status by remember { mutableStateOf("") }
    var result by remember { mutableStateOf<Bitmap?>(null) }
+   var originalGeneratedHere by remember { mutableStateOf(false) }
+   var resultGeneratedHere by remember { mutableStateOf(false) }
    val scope = rememberCoroutineScope()
    var tab by remember { mutableStateOf(-1) }
    var adultConfirmed by remember { mutableStateOf(false) }
@@ -93,7 +95,7 @@ class MainActivity : ComponentActivity() {
      original = contentResolver.openInputStream(uri)?.use {
       BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply { inSampleSize = sample })
      }
-     brightness = 0f; saturation = 1f; strokes.clear(); result = null
+     brightness = 0f; saturation = 1f; strokes.clear(); result = null; originalGeneratedHere = false; resultGeneratedHere = false
     } catch (e: Exception) { toast("Couldn't open image") }
    }
    val edited = remember(original, brightness, saturation) { original?.let { adjust(it, brightness, saturation) } }
@@ -256,7 +258,8 @@ class MainActivity : ComponentActivity() {
           status = "The AI returned a blank white image. Your original photo is safe. Try again with lower edit strength or restart the model."
          } else {
           generationPercent = 100
-           status = "Image ready"
+           resultGeneratedHere = if (input == null) true else originalGeneratedHere
+           status = if (input != null) "AI edit complete — review the result below" else "Image ready"
          }
         } catch (e: kotlinx.coroutines.CancellationException) { throw e
         } catch (e: Exception) { status = when {
@@ -330,6 +333,7 @@ class MainActivity : ComponentActivity() {
          Text("With Nightmare, only the painted area is copied from the AI edit; everything outside stays pixel-identical. For true mask-guided generation, a compatible inpainting workflow is still needed.")
         }
         OutlinedTextField(value = prompt, onValueChange = { prompt = it }, label = { Text("Describe your AI edit") }, placeholder = { Text("Make the bikini top smaller; keep the face, pose and background unchanged.") }, modifier = Modifier.fillMaxWidth())
+        Text(if (originalGeneratedHere) "Image source: generated in FreedomAI (this session)" else "Image source: imported or unverified")
         Button(onClick = { showRemoveClothingConfirm = true }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Remove Clothing") }
         if (showRemoveClothingConfirm) {
          AlertDialog(
@@ -386,7 +390,7 @@ class MainActivity : ComponentActivity() {
        Text("Your creation", style = MaterialTheme.typography.titleLarge)
        Image(image.asImageBitmap(), contentDescription = "Generated image", modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp))
        Button(onClick = { if (tab == 2) savePrivate(image) else save(image) }) { Text(if (tab == 2) "Save Privately" else "Save Image") }
-       OutlinedButton(onClick = { original = image; brightness = 0f; saturation = 1f; strokes.clear(); maskMode = false; precisionEdit = false; result = null; tab = 1 }) { Text("Edit this image") }
+       OutlinedButton(onClick = { original = image; originalGeneratedHere = resultGeneratedHere; brightness = 0f; saturation = 1f; strokes.clear(); maskMode = false; precisionEdit = false; result = null; tab = 1 }) { Text("Edit this image") }
       }
      }
     }
