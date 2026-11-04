@@ -21,6 +21,8 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      - name: Verify v1.2 source version
+        run: grep -Eq 'versionName[[:space:]]*=[[:space:]]*"1\\.2"' app/build.gradle.kts
       - name: Make Gradle executable
         run: chmod +x ./gradlew
       - name: Test and assemble v1.2 debug APK
