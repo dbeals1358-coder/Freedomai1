@@ -342,6 +342,8 @@ class MainActivity : ComponentActivity() {
          )
         }
         Button(onClick = { status = "Starting AI photo edit…"; requestImage(bitmap) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("AI Edit Photo") }
+        Text("Edit diagnostic: ${if (busy) "Request running ($generationPercent% estimated)" else status.ifBlank { "Ready to test image editing" }}", modifier = Modifier.fillMaxWidth())
+        OutlinedButton(onClick = { requestImage(bitmap, "Change the background to a bright blue sky while keeping the subject unchanged.") }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Test AI Editing Connection") }
         Text("Quick clothing edits", style = MaterialTheme.typography.titleMedium)
         listOf(
          "Make the bikini top smaller while keeping the person and background the same",
