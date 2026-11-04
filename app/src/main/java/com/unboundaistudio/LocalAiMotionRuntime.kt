@@ -20,7 +20,7 @@ class LocalAiMotionRuntime(private val modelsDir: File) : AutoCloseable {
   if (missing.isNotEmpty()) return Readiness(false, "Missing ONNX files: " + missing.joinToString())
   val empty = required.filter { File(modelsDir, it).length() < 1024 }
   if (empty.isNotEmpty()) return Readiness(false, "Invalid or truncated models: " + empty.joinToString())
-  return Readiness(false, "ONNX files present. Model tensor contracts and actual video inference are not implemented yet.")
+  return Readiness(false, "Model files detected; checking graph compatibility is required before inference. Video generation is not implemented.")
  }
 
  /** Loads an actual ONNX graph and exposes its tensor names for integration diagnostics. */
