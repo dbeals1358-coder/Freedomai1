@@ -237,7 +237,7 @@ class MainActivity : ComponentActivity() {
            val generated = NightmareClient.generate(requestedPrompt, tokenForRun, input, requestedStrength, requestedHighQuality, resolution, editFlowForRun)
            check(!isNearlyWhiteImage(generated)) { "The AI returned a blank white image. Try a different flow or restart the model." }
            if (input != null && isSameImage(input, generated)) error("Nightmare returned the original image unchanged; verify the img2img flow and its image input.")
-           if (mask != null && input != null) compositeMaskedEdit(input, generated, mask) else preserveFraming(input, generated)
+           if (mask != null && input != null) compositeMaskedEdit(input, generated, mask) else if (input != null) preserveDetectedFace(input, preserveFraming(input, generated)) else generated
           } else if (useLocal) {
            val encoded = input?.let { bitmap ->
             ByteArrayOutputStream().use { stream -> bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream); Base64.encodeToString(stream.toByteArray(), Base64.NO_WRAP) }
@@ -556,6 +556,54 @@ private fun compositeMaskedEdit(original: Bitmap, generated: Bitmap, mask: Bitma
 private fun preserveFraming(original: Bitmap?, generated: Bitmap): Bitmap {
  if (original == null || (original.width == generated.width && original.height == generated.height)) return generated
  return Bitmap.createScaledBitmap(generated, original.width, original.height, true)
+}
+
+/**
+ * Automatically restore the source character's face after a strong full-frame edit.
+ * Android's built-in face detector can miss angled or stylized faces; in that case
+ * leave the generated result untouched rather than guessing a face location.
+ * The soft elliptical blend avoids a sharp pasted-face rectangle.
+ */
+private fun preserveDetectedFace(original: Bitmap, generated: Bitmap): Bitmap {
+ return runCatching {
+  val width = original.width
+  val height = original.height
+  val evenWidth = if (width % 2 == 0) width else width - 1
+  if (evenWidth < 2 || height < 2) return@runCatching generated
+  val detectorInput = Bitmap.createBitmap(evenWidth, height, Bitmap.Config.RGB_565)
+  android.graphics.Canvas(detectorInput).drawBitmap(original, 0f, 0f, null)
+  val faces = arrayOfNulls<android.media.FaceDetector.Face>(5)
+  val count = android.media.FaceDetector(evenWidth, height, faces.size).findFaces(detectorInput, faces)
+  detectorInput.recycle()
+  if (count != 1) return@runCatching generated
+  val face = faces[0] ?: return@runCatching generated
+  val midpoint = android.graphics.PointF()
+  face.getMidPoint(midpoint)
+  val eyeDistance = face.eyesDistance()
+  if (eyeDistance <= 1f) return@runCatching generated
+  val cx = midpoint.x
+  val cy = midpoint.y + eyeDistance * 0.55f
+  val rx = eyeDistance * 1.75f
+  val ry = eyeDistance * 2.25f
+  val result = generated.copy(Bitmap.Config.ARGB_8888, true)
+  val canvas = android.graphics.Canvas(result)
+  val layer = canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), null)
+  canvas.drawBitmap(original, 0f, 0f, null)
+  val radial = android.graphics.RadialGradient(
+   cx, cy, 1f, intArrayOf(Color.WHITE, Color.WHITE, Color.TRANSPARENT),
+   floatArrayOf(0f, 0.68f, 1f), android.graphics.Shader.TileMode.CLAMP
+  )
+  val transform = android.graphics.Matrix().apply { setScale(rx, ry, cx, cy) }
+  radial.setLocalMatrix(transform)
+  val maskPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+   shader = radial
+   xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.DST_IN)
+  }
+  canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), maskPaint)
+  maskPaint.xfermode = null
+  canvas.restoreToCount(layer)
+  result
+ }.getOrDefault(generated)
 }
 
 private fun isSameImage(a: Bitmap, b: Bitmap): Boolean {
