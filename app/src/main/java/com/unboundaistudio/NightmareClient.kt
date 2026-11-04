@@ -53,7 +53,7 @@ internal object NightmareClient {
             connection.disconnect()
         }
     }
-    fun generate(prompt: String, token: String, input: android.graphics.Bitmap?, strength: Float, highQuality: Boolean): android.graphics.Bitmap {
+    fun generate(prompt: String, token: String, input: android.graphics.Bitmap?, strength: Float, highQuality: Boolean, resolution: Int = 1024): android.graphics.Bitmap {
         require(token.isNotBlank()) { "Enter your Nightmare API token in Connection settings" }
         require(!token.contains('\n') && !token.contains('\r')) { "Invalid Nightmare API token" }
         // Check authentication before starting a potentially long image generation request.
@@ -63,6 +63,8 @@ internal object NightmareClient {
             .put("prompt", prompt)
             .put("steps", if (highQuality) 35 else 22)
             .put("cfg", 6.0)
+            .put("width", resolution)
+            .put("height", resolution)
         if (input != null) {
             val stream = java.io.ByteArrayOutputStream()
             input.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, stream)
