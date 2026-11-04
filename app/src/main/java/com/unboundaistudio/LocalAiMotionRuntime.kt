@@ -12,7 +12,7 @@ import java.security.MessageDigest
 class LocalAiMotionRuntime(private val modelsDir: File) : AutoCloseable {
  private val environment by lazy { OrtEnvironment.getEnvironment() }
  private val sessions = mutableListOf<OrtSession>()
- private val required = listOf("text_encoder.onnx", "image_encoder.onnx", "denoiser.onnx", "video_decoder.onnx")
+ private val required = listOf("vae_encoder.onnx", "qwen2_encoder.onnx", "mobilei2v_unet.onnx", "turbo_vaed.onnx")
  data class Readiness(val ready: Boolean, val reason: String)
 
  fun readiness(): Readiness {
