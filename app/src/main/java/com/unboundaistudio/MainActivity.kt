@@ -13,6 +13,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.Brush
@@ -146,12 +147,27 @@ class MainActivity : ComponentActivity() {
      }
     }
    }
+   var expandedPhoto by remember { mutableStateOf<Bitmap?>(null) }
    val edited = remember(original, brightness, saturation) { original?.let { adjust(it, brightness, saturation) } }
    MaterialTheme(colorScheme = darkColorScheme(
     primary = UiColor(0xFFB8A0FF), onPrimary = UiColor(0xFF21133F),
     secondary = UiColor(0xFF8AC7FF), background = UiColor(0xFF101116),
     surface = UiColor(0xFF191B24), surfaceVariant = UiColor(0xFF252836)
    )) {
+    expandedPhoto?.let { enlarged ->
+     androidx.compose.ui.window.Dialog(
+      onDismissRequest = { expandedPhoto = null },
+      properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+     ) {
+      Box(Modifier.fillMaxSize().background(UiColor.Black)) {
+       Image(enlarged.asImageBitmap(), contentDescription = "Expanded photo",
+        contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize().clickable { expandedPhoto = null })
+       TextButton(onClick = { expandedPhoto = null }, modifier = Modifier.align(androidx.compose.ui.Alignment.TopEnd)) {
+        Text("Close")
+       }
+      }
+     }
+    }
     Scaffold(bottomBar = {
      NavigationBar {
       NavigationBarItem(selected = tab == -1, onClick = { tab = -1 }, icon = { Text("⌂") }, label = { Text("Home") })
@@ -352,7 +368,7 @@ class MainActivity : ComponentActivity() {
        edited?.let { bitmap ->
         BoxWithConstraints(Modifier.fillMaxWidth()) {
          val displayHeight = maxWidth * bitmap.height.toFloat() / bitmap.width.toFloat()
-         Image(bitmap.asImageBitmap(), contentDescription = "Photo preview", contentScale = ContentScale.FillBounds, modifier = Modifier.fillMaxWidth().height(displayHeight))
+         Image(bitmap.asImageBitmap(), contentDescription = "Photo preview, tap to enlarge", contentScale = ContentScale.FillBounds, modifier = Modifier.fillMaxWidth().height(displayHeight).clickable { expandedPhoto = bitmap })
          if (maskMode) Canvas(Modifier.fillMaxWidth().height(displayHeight).pointerInput(bitmap, brush) {
           detectDragGestures(onDragStart = { p -> drawing = listOf(Offset(p.x / size.width, p.y / size.height)) },
            onDrag = { change, _ -> change.consume(); drawing = drawing + Offset(change.position.x / size.width, change.position.y / size.height) },
@@ -436,7 +452,7 @@ class MainActivity : ComponentActivity() {
       }
       result?.let { image ->
        Text(if (videoMode) "Video source image" else "Your creation", style = MaterialTheme.typography.titleLarge)
-       Image(image.asImageBitmap(), contentDescription = "Generated image", modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp))
+       Image(image.asImageBitmap(), contentDescription = "Generated image, tap to enlarge", contentScale = ContentScale.Fit, modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp).clickable { expandedPhoto = image })
        if (!videoMode && original != null && tab == 1) {
         val before = original!!
         Text("Before / After comparison", style = MaterialTheme.typography.titleMedium)
