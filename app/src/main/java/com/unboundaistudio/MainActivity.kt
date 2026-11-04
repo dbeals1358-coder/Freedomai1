@@ -215,11 +215,7 @@ class MainActivity : ComponentActivity() {
         if (age == null || age < 18 || age > 100) { status = "Enter an adult age from 18 to 100"; return }
         listOf("Original fictional adult woman, age $age", appearance, bodyDescription, pose, setting, photoStyle, prompt).filter { it.isNotBlank() }.joinToString(", ")
        } else (promptOverride ?: prompt)
-       val requestedStrength = if (input != null) when (preserveOriginal) {
-         "High" -> editStrength.coerceIn(0.25f, 0.40f)
-         "Medium" -> editStrength.coerceIn(0.26f, 0.45f)
-         else -> editStrength
-        } else editStrength
+       val requestedStrength = if (input != null) editStrength.coerceIn(0.0f, 1.0f) else editStrength
        val requestedHighQuality = highQuality
        if (input != null && precisionEdit && (!maskMode || strokes.isEmpty())) {
         precisionEdit = false // Fall back to full-frame edit instead of silently blocking.
@@ -347,7 +343,7 @@ class MainActivity : ComponentActivity() {
            showRemoveClothingConfirm = false
            prompt = "Edit this original fictional AI-generated adult character: remove clothing, preserving the original face, pose, lighting and background. The character is an adult aged 25 or older. Photorealistic."
            precisionEdit = false; maskMode = false
-           preserveOriginal = "Medium"; editStrength = 0.45f
+           preserveOriginal = "Low"; editStrength = 0.69f
            status = "Clothing edit instructions ready. Starting image edit…"
            requestImage(bitmap, "Edit this original fictional AI-generated adult character: remove clothing, preserving the original face, pose, lighting and background. The character is an adult aged 25 or older. Photorealistic.")
           }) { Text("Eligible fictional adult") } },
