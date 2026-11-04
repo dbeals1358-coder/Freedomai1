@@ -47,7 +47,9 @@ fun AssistantScreen(onCreateImage: (String) -> Unit = {}, onEditImage: (String) 
    }.onFailure { error = it.message ?: "Model import failed" }
   }
  }
- var hfToken by remember { mutableStateOf("") }
+ val embeddedHfToken = BuildConfig.HF_ACCESS_TOKEN
+ var hfToken by remember { mutableStateOf(prefs.getString("hf_token", "") ?: "") }
+ val effectiveHfToken = embeddedHfToken.ifBlank { hfToken.trim() }
  var downloadStatus by remember { mutableStateOf("") }
  var downloadPercent by remember { mutableIntStateOf(0) }
  var downloading by remember { mutableStateOf(false) }
@@ -66,13 +68,17 @@ fun AssistantScreen(onCreateImage: (String) -> Unit = {}, onEditImage: (String) 
   Text("AI Assistant", style = MaterialTheme.typography.headlineMedium)
   Text("Chat by typing or speaking. Import a compatible .task model for offline replies, or connect a chat service.")
   Text("Offline AI setup: Gemma 3 1B (one-time download, then works without internet). Accept access on the litert-community/Gemma3-1B-IT model page before downloading.")
-  OutlinedTextField(hfToken, { hfToken = it }, label = { Text("Hugging Face access token") }, modifier = Modifier.fillMaxWidth(), visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation())
+  if (embeddedHfToken.isNotBlank()) {
+   Text("Hugging Face access configured automatically.")
+  } else {
+   OutlinedTextField(hfToken, { hfToken = it; prefs.edit().putString("hf_token", it.trim()).apply() }, label = { Text("Hugging Face access token (one-time setup)") }, modifier = Modifier.fillMaxWidth(), visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation())
+  }
   Button(enabled = !downloading, onClick = {
    downloading = true
    downloadStatus = "Downloading model..."
    scope.launch {
     try {
-     val downloaded = withContext(Dispatchers.IO) { downloadGemmaModel(context, hfToken.trim()) { percent -> downloadPercent = percent } }
+     val downloaded = withContext(Dispatchers.IO) { downloadGemmaModel(context, effectiveHfToken) { percent -> downloadPercent = percent } }
      localModelPath = downloaded
      prefs.edit().putString("local_model", downloaded).apply()
      downloadStatus = "Offline AI downloaded. Ready to chat."
