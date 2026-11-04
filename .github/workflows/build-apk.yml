@@ -1,8 +1,8 @@
-name: Build Android APK
+name: Boobs v1.1 - Build Android APK
 on:
   workflow_dispatch:
   push:
-    branches: [main, feature/photo-edit-strength]
+    branches: [main, feature/photo-edit-strength, freedomai-v1.1-upload]
 permissions:
   contents: read
 jobs:
@@ -22,9 +22,19 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.10.2'
-      - run: gradle assembleDebug lintDebug testDebugUnitTest --no-daemon
+      - name: Verify source version is 1.1
+        run: |
+          grep -q 'versionCode = 11' app/build.gradle.kts
+          grep -q 'versionName = "1.1"' app/build.gradle.kts
+          grep -q 'android:label="Boobs v1.1"' app/src/main/AndroidManifest.xml
+          grep -q 'Text("Boobs v1.1"' app/src/main/java/com/unboundaistudio/MainActivity.kt
+          if grep -q 'FreedomAI v0.8' app/src/main/java/com/unboundaistudio/MainActivity.kt; then echo 'ERROR: outdated home-screen version'; exit 1; fi
+      - name: Compile and test Boobs v1.1
+        run: gradle assembleDebug lintDebug testDebugUnitTest --no-daemon
+      - name: Name APK with version
+        run: cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/Boobs-v1.1-debug.apk
       - uses: actions/upload-artifact@v4
         with:
           if-no-files-found: error
-          name: UnboundAIStudio-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: Boobs-v1.1-APK
+          path: app/build/outputs/apk/debug/Boobs-v1.1-debug.apk
