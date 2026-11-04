@@ -63,7 +63,7 @@ class MainActivity : ComponentActivity() {
    var motionPrompt by remember { mutableStateOf("") }
    var nightmareVideoFlow by remember { mutableStateOf(prefs.getString("nightmare_video_flow", "current") ?: "current") }
     var runwayKey by remember { mutableStateOf(prefs.getString("runway_key", "") ?: "") }
-   var duration by remember { mutableIntStateOf(5) }
+   var duration by remember { mutableIntStateOf(2) }
    var customSeconds by remember { mutableStateOf("") }
    var lastVideo by remember { mutableStateOf<Uri?>(null) }
    var busy by remember { mutableStateOf(false) }
@@ -463,7 +463,7 @@ class MainActivity : ComponentActivity() {
        Text("Offline video", style = MaterialTheme.typography.titleMedium)
        Text("No Runway key or online account is required. The installed offline renderer currently supports camera movement only. AI body movement will become available only after a compatible on-device motion model and inference runtime are installed.")
        Text("On-device AI video through Nightmare", style = MaterialTheme.typography.titleMedium)
-       Text("Uses Nightmare's locally installed image-to-video model. No cloud video API. Choose a video workflow in Nightmare first.")
+       Text("Uses Nightmare's local image-to-video workflow. Start with 2 seconds as tested in Nightmare. Video quality depends on Nightmare's model and workflow; the app cannot repair distorted source output.")
        OutlinedTextField(value = nightmareVideoFlow, onValueChange = {
         nightmareVideoFlow = it.trim()
         prefs.edit().putString("nightmare_video_flow", nightmareVideoFlow).apply()
@@ -471,7 +471,7 @@ class MainActivity : ComponentActivity() {
        OutlinedTextField(value = motionPrompt, onValueChange = { motionPrompt = it },
         label = { Text("Describe AI movement") }, modifier = Modifier.fillMaxWidth())
        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        listOf(5, 10).forEach { secs ->
+        listOf(2, 5, 10).forEach { secs ->
          OutlinedButton(onClick = { duration = secs; customSeconds = "" }) {
           Text(if (duration == secs) "✓ ${secs}s" else "${secs}s")
          }
@@ -486,7 +486,7 @@ class MainActivity : ComponentActivity() {
          scope.launch {
           try {
            val mp4 = withContext(Dispatchers.IO) {
-            NightmareVideoClient.generate(nightmareToken, nightmareVideoFlow, image, motionPrompt, if (duration == 10) 10 else 5)
+            NightmareVideoClient.generate(nightmareToken, nightmareVideoFlow, image, motionPrompt, duration)
            }
            val values = ContentValues().apply {
             put(MediaStore.Video.Media.DISPLAY_NAME, "FreedomAI_Motion_${System.currentTimeMillis()}.mp4")
