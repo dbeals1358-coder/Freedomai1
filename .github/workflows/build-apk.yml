@@ -27,7 +27,7 @@ jobs:
           HF_ACCESS_TOKEN: ${{ secrets.HF_ACCESS_TOKEN }}
         run: |
           grep -q 'versionName = "2.0"' app/build.gradle.kts
-          test -n "$HF_ACCESS_TOKEN" || { echo "::error::Set repository secret HF_ACCESS_TOKEN before building"; exit 1; }
+          if [ -z "$HF_ACCESS_TOKEN" ]; then echo "::warning::HF_ACCESS_TOKEN not configured; APK will not have embedded Hugging Face access"; fi
       - name: Install selected launcher photo
         run: |
           mkdir -p app/src/main/res/drawable-nodpi
