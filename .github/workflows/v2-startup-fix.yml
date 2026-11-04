@@ -1,0 +1,70 @@
+name: Boobs v2.0 - Build and Startup Smoke Test
+on:
+  workflow_dispatch:
+  push:
+    branches: [v2.0]
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+      - name: Confirm v2 source
+        run: |
+          grep -q 'versionName = "2.0"' app/build.gradle.kts
+          grep -q 'Text("Boobs v2.0"' app/src/main/java/com/unboundaistudio/MainActivity.kt
+          ! grep -q 'painterResource(id = android.R.drawable.sym_def_app_icon)' app/src/main/java/com/unboundaistudio/MainActivity.kt
+      - name: Build debug APK and run unit tests
+        run: gradle assembleDebug testDebugUnitTest --no-daemon --stacktrace
+      - name: Name replacement APK
+        run: cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/Boobs-v2.0-startup-fix.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Boobs-v2.0-startup-fix-APK
+          path: app/build/outputs/apk/debug/Boobs-v2.0-startup-fix.apk
+          if-no-files-found: error
+  startup-smoke-test:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+      - name: Build APK for emulator
+        run: gradle assembleDebug --no-daemon
+      - name: Launch app and detect fatal crash
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_6
+          script: |
+            adb install -r app/build/outputs/apk/debug/app-debug.apk
+            adb logcat -c
+            adb shell am start -n com.unboundaistudio/.MainActivity
+            sleep 12
+            adb shell dumpsys activity activities | grep -q 'com.unboundaistudio'
+            if adb logcat -d -v brief | grep -A 12 'FATAL EXCEPTION' | grep -q 'com.unboundaistudio'; then
+              adb logcat -d -v brief | grep -A 25 'FATAL EXCEPTION'
+              exit 1
+            fi
+            echo 'Startup smoke test passed'
