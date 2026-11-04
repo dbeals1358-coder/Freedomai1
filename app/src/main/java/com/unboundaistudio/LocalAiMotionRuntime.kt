@@ -20,7 +20,23 @@ class LocalAiMotionRuntime(private val modelsDir: File) : AutoCloseable {
   if (missing.isNotEmpty()) return Readiness(false, "Missing ONNX files: " + missing.joinToString())
   val empty = required.filter { File(modelsDir, it).length() < 1024 }
   if (empty.isNotEmpty()) return Readiness(false, "Invalid or truncated models: " + empty.joinToString())
-  return Readiness(false, "Model files detected; checking graph compatibility is required before inference. Video generation is not implemented.")
+  return try {
+   val diagnostics = required.map { filename ->
+    val session = openModel(filename)
+    try {
+     val inputs = session.inputInfo.keys.joinToString()
+     val outputs = session.outputInfo.keys.joinToString()
+     require(inputs.isNotBlank() && outputs.isNotBlank()) { "$filename has no usable inputs or outputs" }
+     "$filename: inputs=[$inputs], outputs=[$outputs]"
+    } finally {
+     sessions.remove(session)
+     session.close()
+    }
+   }
+   Readiness(false, "All four ONNX graphs loaded successfully. Inference pipeline is not implemented yet. " + diagnostics.joinToString("; "))
+  } catch (e: Exception) {
+   Readiness(false, "ONNX model compatibility check failed: " + (e.message ?: e.javaClass.simpleName))
+  }
  }
 
  /** Loads an actual ONNX graph and exposes its tensor names for integration diagnostics. */
