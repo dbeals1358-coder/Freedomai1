@@ -423,7 +423,10 @@ class MainActivity : ComponentActivity() {
        }
        Button(onClick = { if (tab == 2) savePrivate(image) else save(image) }) { Text(if (tab == 2) "Save Privately" else "Save Image") }
        Text("Create Video", style = MaterialTheme.typography.titleLarge)
-       Text("Offline video: animated pan and zoom, saved as MP4. Realistic body motion AI is not available offline yet.")
+       Text("Offline video: camera animation only. Realistic AI body movement requires converted model weights and a verified inference pipeline.")
+       val aiModelStatus = remember { LocalAiMotionRuntime(java.io.File(filesDir, "motion_models")).use { it.readiness() } }
+       Text("AI motion model: " + if (aiModelStatus.ready) "Ready" else "Not ready — " + aiModelStatus.reason)
+       Text("The video button below creates camera-motion MP4s, not AI-generated body movement.")
        OutlinedTextField(value = motionPrompt, onValueChange = { motionPrompt = it },
         label = { Text("Describe motion") }, modifier = Modifier.fillMaxWidth())
        Text("Duration")
