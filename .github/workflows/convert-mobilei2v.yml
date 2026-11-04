@@ -1,6 +1,6 @@
 name: Convert MobileI2V Models to ONNX
 
-on:
+'on':
   workflow_dispatch:
     inputs:
       optimize:
@@ -39,8 +39,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: pip
-          cache-dependency-path: mobilei2v-converter/scripts/convert/requirements.txt
       - name: Install conversion dependencies
         run: |
           python -m pip install --upgrade pip
