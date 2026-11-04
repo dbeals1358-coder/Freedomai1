@@ -22,7 +22,13 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.10.2'
-      - run: gradle assembleDebug lintDebug testDebugUnitTest --no-daemon
+      - name: Verify source version is 1.1
+        run: |
+          grep -q 'versionCode = 11' app/build.gradle.kts
+          grep -q 'versionName = "1.1"' app/build.gradle.kts
+          grep -q 'android:label="Boobs v1.1"' app/src/main/AndroidManifest.xml
+      - name: Compile and test Boobs v1.1
+        run: gradle assembleDebug lintDebug testDebugUnitTest --no-daemon
       - name: Name APK with version
         run: cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/Boobs-v1.1-debug.apk
       - uses: actions/upload-artifact@v4
