@@ -423,11 +423,7 @@ class MainActivity : ComponentActivity() {
        }
        Button(onClick = { if (tab == 2) savePrivate(image) else save(image) }) { Text(if (tab == 2) "Save Privately" else "Save Image") }
        Text("Create Video", style = MaterialTheme.typography.titleLarge)
-       Text("Video rendering requires a connected engine. Offline realistic AI motion is not yet installed.")
-       OutlinedTextField(value = videoUrl, onValueChange = {
-        videoUrl = it.trim()
-        prefs.edit().putString("video_url", videoUrl).apply()
-       }, label = { Text("HTTPS video API endpoint") }, modifier = Modifier.fillMaxWidth())
+       Text("Offline video: animated pan and zoom, saved as MP4. Realistic body motion AI is not available offline yet.")
        OutlinedTextField(value = motionPrompt, onValueChange = { motionPrompt = it },
         label = { Text("Describe motion") }, modifier = Modifier.fillMaxWidth())
        Text("Duration")
@@ -444,14 +440,20 @@ class MainActivity : ComponentActivity() {
        Button(enabled = !busy, onClick = {
         val seconds = customSeconds.toIntOrNull() ?: duration
         if (seconds !in 1..120) { status = "Choose 1–120 seconds" }
-        else if (motionPrompt.isBlank()) { status = "Describe motion first" }
-        else if (!videoUrl.startsWith("https://")) { status = "Offline AI video engine is not installed yet. Video cannot be generated without an engine." }
+        else if (motionPrompt.isBlank()) { status = "Describe camera motion: zoom, left, right, up or down" }
         else {
          busy = true
-         status = "Creating video…"
+         generationPercent = 0
+         status = "Rendering offline video…"
          scope.launch {
           try {
-           val mp4 = withContext(Dispatchers.IO) { generateVideoMp4(videoUrl, image, motionPrompt, seconds) }
+           val mp4 = withContext(Dispatchers.IO) {
+            val file = java.io.File(cacheDir, "offline_${System.currentTimeMillis()}.mp4")
+            try {
+             OfflineVideoEngine.render(image, seconds, motionPrompt, file) { pct -> generationPercent = pct }
+             file.readBytes()
+            } finally { file.delete() }
+           }
            val values = ContentValues().apply {
             put(MediaStore.Video.Media.DISPLAY_NAME, "FreedomAI_${System.currentTimeMillis()}.mp4")
             put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
@@ -463,7 +465,7 @@ class MainActivity : ComponentActivity() {
             withContext(Dispatchers.IO) { contentResolver.openOutputStream(uri)?.use { it.write(mp4) } ?: error("Cannot write MP4") }
             contentResolver.update(uri, ContentValues().apply { put(MediaStore.Video.Media.IS_PENDING, 0) }, null, null)
             lastVideo = uri
-            status = "Video saved to Movies/FreedomAI"
+            status = "Offline video saved to Movies/FreedomAI"
            } catch (e: Exception) { contentResolver.delete(uri, null, null); throw e }
           } catch (e: Exception) { status = "Video failed: ${e.message}" }
           finally { busy = false }
