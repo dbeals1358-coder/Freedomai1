@@ -1,4 +1,4 @@
-name: FreedomAI v1.2 Android APK
+name: FreedomAI v1.3 Android APK
 on:
   workflow_dispatch:
   push:
@@ -9,7 +9,7 @@ on:
       - 'gradlew'
       - 'build.gradle.kts'
       - 'settings.gradle.kts'
-      - '.github/workflows/freedomai-v1.2.yml'
+      - '.github/workflows/freedomai-v1.3.yml'
 permissions:
   contents: read
 jobs:
@@ -26,21 +26,21 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.10.2'
-      - name: Verify v1.2 app metadata and required features
+      - name: Verify v1.3 app metadata and required features
         run: |
           grep -q 'versionName = "1.2"' app/build.gradle.kts
-          grep -q 'android:label="Boobs v1.2"' app/src/main/AndroidManifest.xml
+          grep -q 'android:label="Boobs v1.3"' app/src/main/AndroidManifest.xml
           grep -q 'Text("Generate Video")' app/src/main/java/com/unboundaistudio/MainActivity.kt
           grep -q 'Text("Nude")' app/src/main/java/com/unboundaistudio/MainActivity.kt
           grep -q 'Text("AI Edit")' app/src/main/java/com/unboundaistudio/MainActivity.kt
           grep -q 'generateVideoMp4' app/src/main/java/com/unboundaistudio/MainActivity.kt
-      - name: Test and assemble v1.2 debug APK
+      - name: Test and assemble v1.3 debug APK
         run: gradle --no-daemon testDebugUnitTest assembleDebug
       - name: Verify APK produced
         run: test -s app/build/outputs/apk/debug/app-debug.apk
       - name: Upload installable debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: FreedomAI-v1.2-debug
+          name: FreedomAI-v1.3-debug
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
