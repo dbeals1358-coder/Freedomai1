@@ -409,20 +409,21 @@ class MainActivity : ComponentActivity() {
         }
         OutlinedTextField(value = prompt, onValueChange = { prompt = it }, label = { Text("Describe your AI edit") }, placeholder = { Text("Make the bikini top smaller; keep the face, pose and background unchanged.") }, modifier = Modifier.fillMaxWidth())
         Text(if (originalGeneratedHere) "Image source: generated in FreedomAI (this session)" else "Image source: imported or unverified")
-        Button(onClick = { showRemoveClothingConfirm = true }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Swimwear Edit") }
+        Button(onClick = { showRemoveClothingConfirm = true }, enabled = !busy && originalGeneratedHere, modifier = Modifier.fillMaxWidth()) { Text("Nude") }
         if (showRemoveClothingConfirm) {
          AlertDialog(
           onDismissRequest = { showRemoveClothingConfirm = false },
-          title = { Text("Swimwear edit") },
-          text = { Text("Replace the outfit with swimwear on a fictional adult character. For precise edits, select the clothing area using Paint area to change.") },
+          title = { Text("Fictional adult nude edit") },
+          text = { Text("Create a natural nude portrait from an AI-generated fictional adult image. This option is only available for images generated in this session.") },
           confirmButton = { TextButton(onClick = {
            showRemoveClothingConfirm = false
-           prompt = "Edit the clothing only: replace the existing outfit with a simple two-piece swimsuit. Preserve the same adult character, face, hairstyle, body proportions, pose, camera angle, lighting and background. Do not change anything outside the outfit. Photorealistic result."
+           val nudeEditPrompt = "Edit this AI-generated fictional adult character into a natural, nonsexual full-body nude portrait. Remove the outfit completely, with no replacement clothing or swimwear. Keep the exact same adult character, face, hairstyle, body proportions, pose, camera angle, lighting, and background. Preserve all non-clothing details. Photorealistic, natural anatomy."
+           prompt = nudeEditPrompt
            precisionEdit = strokes.isNotEmpty(); maskMode = strokes.isNotEmpty()
            preserveOriginal = "High"; editStrength = 0.35f
-           status = "Clothing edit instructions ready. Starting image edit…"
-           requestImage(bitmap, "Edit the clothing only: replace the existing outfit with a simple two-piece swimsuit. Preserve the same adult character, face, hairstyle, body proportions, pose, camera angle, lighting and background. Do not change anything outside the outfit. Photorealistic result.")
-          }) { Text("Apply swimwear edit") } },
+           status = "Starting fictional adult nude edit…"
+           requestImage(bitmap, nudeEditPrompt)
+          }) { Text("Create nude edit") } },
           dismissButton = { TextButton(onClick = { showRemoveClothingConfirm = false }) { Text("Cancel") } }
          )
         }
