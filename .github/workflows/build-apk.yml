@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Boobs v1.1 - Build Android APK
 on:
   workflow_dispatch:
   push:
@@ -23,8 +23,10 @@ jobs:
         with:
           gradle-version: '8.10.2'
       - run: gradle assembleDebug lintDebug testDebugUnitTest --no-daemon
+      - name: Name APK with version
+        run: cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/Boobs-v1.1-debug.apk
       - uses: actions/upload-artifact@v4
         with:
           if-no-files-found: error
-          name: FreedomAI-v1.1-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: Boobs-v1.1-APK
+          path: app/build/outputs/apk/debug/Boobs-v1.1-debug.apk
