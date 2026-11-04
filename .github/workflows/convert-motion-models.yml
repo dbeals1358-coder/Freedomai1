@@ -1,0 +1,54 @@
+name: Convert AI motion models (experimental)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  convert:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android /opt/hostedtoolcache/CodeQL /usr/share/dotnet
+          df -h
+      - name: Get upstream conversion scripts
+        run: |
+          git clone --depth 1 https://github.com/himadriHK/MobileI2VConsole.git /tmp/mobilei2v-converter
+          test -f /tmp/mobilei2v-converter/scripts/convert/convert_all.py
+      - name: Install conversion dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r /tmp/mobilei2v-converter/scripts/convert/requirements.txt
+      - name: Convert models to ONNX
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/converted_models"
+          cd /tmp/mobilei2v-converter/scripts/convert
+          python convert_all.py --output "$GITHUB_WORKSPACE/converted_models"
+      - name: Verify converted model files
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib, json
+          root = Path('converted_models')
+          models = list(root.rglob('*.onnx'))
+          if len(models) < 4:
+              raise SystemExit(f'Conversion incomplete: expected at least four ONNX files, found {len(models)}')
+          for model in models:
+              size = model.stat().st_size
+              if size < 1024:
+                  raise SystemExit(f'Invalid ONNX file: {model}')
+              digest = hashlib.file_digest(model.open('rb'), 'sha256').hexdigest()
+              print(f'{model.name}: {size} bytes SHA256={digest}')
+          PY
+      - name: Upload converted models
+        uses: actions/upload-artifact@v4
+        with:
+          name: MobileI2V-ONNX-models
+          path: converted_models/
+          retention-days: 3
+          if-no-files-found: error
