@@ -24,6 +24,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
@@ -69,6 +71,8 @@ class MainActivity : ComponentActivity() {
    var resultGeneratedHere by remember { mutableStateOf(false) }
    val scope = rememberCoroutineScope()
    var tab by remember { mutableStateOf(-1) }
+   var videoMode by remember { mutableStateOf(false) }
+   var comparePosition by remember { mutableFloatStateOf(0.5f) }
    var adultConfirmed by remember { mutableStateOf(false) }
    var showAdultConfirm by remember { mutableStateOf(false) }
    var fictionalAdultMode by remember { mutableStateOf(false) }
@@ -103,6 +107,7 @@ class MainActivity : ComponentActivity() {
      original = contentResolver.openInputStream(uri)?.use {
       BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply { inSampleSize = sample })
      }
+     if (videoMode) result = original
      brightness = 0f; saturation = 1f; strokes.clear(); result = null; originalGeneratedHere = false; resultGeneratedHere = false
     } catch (e: Exception) { toast("Couldn't open image") }
    }
@@ -120,8 +125,8 @@ class MainActivity : ComponentActivity() {
      }
     }) { inset ->
      Column(Modifier.padding(inset).fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-      Text("Boobs v1.2", style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.primary)
-      Text(if (tab == -1) "What will you create?" else if (tab == 0) "Turn your ideas into images" else if (tab == 2) "Private 18+ studio" else "Give your photos a fresh look", style = MaterialTheme.typography.titleLarge)
+      Text("Boobs v1.3", style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.primary)
+      Text(if (videoMode) "Create video from a photo" else if (tab == -1) "What will you create?" else if (tab == 0) "Turn your ideas into images" else if (tab == 2) "Private 18+ studio" else "Give your photos a fresh look", style = MaterialTheme.typography.titleLarge)
       if (tab == -1) {
        Column(Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(UiColor(0xFF332451), UiColor(0xFF192F49))), RoundedCornerShape(28.dp)).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text("✦", style = MaterialTheme.typography.displayMedium, color = MaterialTheme.colorScheme.secondary)
@@ -129,6 +134,7 @@ class MainActivity : ComponentActivity() {
         Text("Start with an idea or a photo. Make something your own.", color = UiColor(0xFFD3D0E3))
         Button(onClick = { tab = 0 }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("Create Image") }
         OutlinedButton(onClick = { tab = 1 }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("Edit Photo") }
+        OutlinedButton(onClick = { videoMode = true; tab = 1; result = null }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("Create Video") }
         OutlinedButton(onClick = { showAdultConfirm = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("18+ Private Studio") }
        }
        Text("Start with an idea", style = MaterialTheme.typography.titleMedium)
@@ -394,11 +400,31 @@ class MainActivity : ComponentActivity() {
        } ?: Text("Pick a photo to edit its brightness and color saturation.")
       }
       result?.let { image ->
-       Text("Your creation", style = MaterialTheme.typography.titleLarge)
+       Text(if (videoMode) "Video source image" else "Your creation", style = MaterialTheme.typography.titleLarge)
        Image(image.asImageBitmap(), contentDescription = "Generated image", modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp))
+       if (!videoMode && original != null && tab == 1) {
+        val before = original!!
+        Text("Before / After comparison", style = MaterialTheme.typography.titleMedium)
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+         val w = constraints.maxWidth.coerceAtLeast(1)
+         val h = (w.toFloat() * image.height / image.width).toInt().coerceAtLeast(1)
+         val beforePixels = remember(before, image) {
+          val base = Bitmap.createScaledBitmap(before, w.coerceAtMost(1080), (w.coerceAtMost(1080) * h / w).coerceAtLeast(1), true)
+          base
+         }
+         Box(Modifier.fillMaxWidth().heightIn(max = 420.dp)) {
+          Image(image.asImageBitmap(), contentDescription = "After", modifier = Modifier.fillMaxWidth())
+          Image(beforePixels.asImageBitmap(), contentDescription = "Before", modifier = Modifier.fillMaxWidth().drawWithContent {
+           clipRect(right = size.width * comparePosition) { this@drawWithContent.drawContent() }
+          })
+         }
+        }
+        Text("Before  ←  Slide to compare  →  After")
+        Slider(value = comparePosition, onValueChange = { comparePosition = it }, valueRange = 0f..1f)
+       }
        Button(onClick = { if (tab == 2) savePrivate(image) else save(image) }) { Text(if (tab == 2) "Save Privately" else "Save Image") }
        Text("Create Video", style = MaterialTheme.typography.titleLarge)
-       Text("Requires an image-to-video API that returns an MP4. Nightmare image generation alone cannot produce video.")
+       Text("Video generation needs a compatible HTTPS video API. Nightmare image generation alone cannot create an MP4.")
        OutlinedTextField(value = videoUrl, onValueChange = {
         videoUrl = it.trim()
         prefs.edit().putString("video_url", videoUrl).apply()
@@ -453,7 +479,7 @@ class MainActivity : ComponentActivity() {
          })
         }) { Text("Play saved MP4") }
        }
-       OutlinedButton(onClick = { original = image; originalGeneratedHere = resultGeneratedHere; brightness = 0f; saturation = 1f; strokes.clear(); maskMode = false; precisionEdit = false; result = null; tab = 1 }) { Text("Edit this image") }
+       OutlinedButton(onClick = { videoMode = false; original = image; originalGeneratedHere = resultGeneratedHere; brightness = 0f; saturation = 1f; strokes.clear(); maskMode = false; precisionEdit = false; result = null; tab = 1 }) { Text("Edit this image") }
       }
      }
     }
