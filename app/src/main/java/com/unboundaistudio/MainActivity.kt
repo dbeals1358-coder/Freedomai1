@@ -182,7 +182,7 @@ class MainActivity : ComponentActivity() {
      }
     }) { inset ->
      Column(Modifier.padding(inset).fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-      Text("Boobs v1.5", style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.primary)
+      Text("Boobs v1.6", style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.primary)
       Text(if (videoMode) "Create video from a photo" else if (tab == -1) "What will you create?" else if (tab == 0) "Turn your ideas into images" else if (tab == 2) "Private 18+ studio" else "Give your photos a fresh look", style = MaterialTheme.typography.titleLarge)
       if (tab == -1) {
        Column(Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(UiColor(0xFF332451), UiColor(0xFF192F49))), RoundedCornerShape(28.dp)).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -484,6 +484,7 @@ class MainActivity : ComponentActivity() {
         Text("Before  ←  Slide to compare  →  After")
         Slider(value = comparePosition, onValueChange = { comparePosition = it }, valueRange = 0f..1f)
        }
+       if (!videoMode) OutlinedButton(onClick = { original = image; originalGeneratedHere = resultGeneratedHere; result = null; videoMode = false; tab = 1; maskMode = false; strokes.clear(); status = "Image loaded for editing. Choose an edit below."; }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Edit Image") }
        if (!videoMode) Button(onClick = { if (tab == 2) savePrivate(image) else save(image) }) { Text(if (tab == 2) "Save Privately" else "Save Image") }
        Text("Create Video", style = MaterialTheme.typography.titleLarge)
        if (status.isNotBlank()) Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
