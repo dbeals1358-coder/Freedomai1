@@ -203,10 +203,6 @@ class MainActivity : ComponentActivity() {
         OutlinedButton(onClick = { showAdultConfirm = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("18+ Private Studio") }
         OutlinedButton(onClick = { tab = 3 }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("AI Assistant") }
        }
-       Text("Start with an idea", style = MaterialTheme.typography.titleMedium)
-       listOf("A mountain lake under a sky full of stars", "A cozy cabin in an autumn forest", "A neon city street in the rain").forEach { idea ->
-        OutlinedButton(onClick = { prompt = idea; tab = 0 }, modifier = Modifier.fillMaxWidth()) { Text(idea) }
-       }
       }
       if (showAdultConfirm) AlertDialog(onDismissRequest = { showAdultConfirm = false }, title = { Text("18+ private editor") }, text = { Text("Only continue if you are 18 or older and have permission to use the images. Imported photos remain on this device unless you choose an online AI server. This is an age confirmation, not identity verification.") }, confirmButton = { TextButton(onClick = { adultConfirmed = true; showAdultConfirm = false; tab = 2; fictionalAdultMode = false; result = null }) { Text("I am 18 or older") } }, dismissButton = { TextButton(onClick = { showAdultConfirm = false }) { Text("Cancel") } })
       TextButton(onClick = { showConnection = !showConnection }) { Text(if (showConnection) "Hide connection settings ↑" else "Connection settings ↓") }
