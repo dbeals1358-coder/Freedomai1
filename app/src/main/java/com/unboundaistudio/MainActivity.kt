@@ -333,8 +333,8 @@ class MainActivity : ComponentActivity() {
            // This action does not require painting a mask or a second button press.
            precisionEdit = false
            maskMode = false
-           editStrength = 0.40f
-           preserveOriginal = "Medium"
+           editStrength = 0.65f
+           preserveOriginal = "Low"
            status = "Starting automatic AI edit…"
            requestImage(bitmap, clothingEditPrompt)
           }) { Text("Eligible fictional adult") } },
@@ -369,7 +369,7 @@ class MainActivity : ComponentActivity() {
          Text("High keeps more of the original; Low allows larger changes. Paint an area to protect the rest of the photo exactly.")
          Text("AI edit strength: ${(editStrength * 100).roundToInt()}%")
         Slider(value = editStrength, onValueChange = { editStrength = it }, valueRange = 0.15f..0.85f)
-        Text("For clothing edits, start around 25–40%. Higher strength may change the face or background. Precise clothing-only editing needs a compatible inpainting model.")
+        Text("For substantial clothing changes, try 55–70%. Higher strength may change the face or background. Precise clothing-only editing needs a compatible inpainting model.")
         Text("Brightness")
         Slider(value = brightness, onValueChange = { brightness = it }, valueRange = -0.5f..0.5f)
         Text("Saturation")
