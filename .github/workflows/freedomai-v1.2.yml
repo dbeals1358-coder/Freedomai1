@@ -30,7 +30,7 @@ jobs:
         run: |
           grep -q 'versionName = "1.4"' app/build.gradle.kts
           grep -q 'android:label="Boobs v1.4"' app/src/main/AndroidManifest.xml
-          grep -q 'Text("Generate Video")' app/src/main/java/com/unboundaistudio/MainActivity.kt
+          grep -q 'RunwayVideoClient.generate' app/src/main/java/com/unboundaistudio/MainActivity.kt
           grep -q 'Text("Nude")' app/src/main/java/com/unboundaistudio/MainActivity.kt
           grep -q 'Text("AI Edit")' app/src/main/java/com/unboundaistudio/MainActivity.kt
           grep -q 'OfflineVideoEngine.render' app/src/main/java/com/unboundaistudio/MainActivity.kt
