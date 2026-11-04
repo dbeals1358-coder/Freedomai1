@@ -49,6 +49,7 @@ fun AssistantScreen() {
  }
  var hfToken by remember { mutableStateOf(prefs.getString("hf_token", "") ?: "") }
  var downloadStatus by remember { mutableStateOf("") }
+ var downloadPercent by remember { mutableIntStateOf(0) }
  var downloading by remember { mutableStateOf(false) }
  var message by remember { mutableStateOf("") }
  var busy by remember { mutableStateOf(false) }
@@ -71,7 +72,7 @@ fun AssistantScreen() {
    downloadStatus = "Downloading model..."
    scope.launch {
     try {
-     val downloaded = withContext(Dispatchers.IO) { downloadGemmaModel(context, hfToken.trim()) }
+     val downloaded = withContext(Dispatchers.IO) { downloadGemmaModel(context, hfToken.trim()) { percent -> downloadPercent = percent } }
      localModelPath = downloaded
      prefs.edit().putString("local_model", downloaded).putString("hf_token", hfToken.trim()).apply()
      downloadStatus = "Offline AI ready"
@@ -80,6 +81,7 @@ fun AssistantScreen() {
    }
   }) { Text(if (downloading) "Downloading..." else "Install offline AI") }
   if (downloadStatus.isNotBlank()) Text(downloadStatus)
+  if (downloading) { LinearProgressIndicator(progress = { downloadPercent / 100f }, modifier = Modifier.fillMaxWidth()); Text("$downloadPercent% downloaded") }
   OutlinedButton(onClick = { modelPicker.launch(arrayOf("*/*")) }) { Text("Import offline AI model (.task)") }
   Text(if (localModelPath.isNotBlank()) "Offline model installed" else "No offline AI model installed")
   OutlinedTextField(endpoint, { endpoint = it }, label = { Text("Chat API URL (HTTPS)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
@@ -166,7 +168,7 @@ private fun offlineAssistantReply(context: android.content.Context, path: String
  } finally { engine.close() }
 }
 
-private fun downloadGemmaModel(context: android.content.Context, token: String): String {
+private suspend fun downloadGemmaModel(context: android.content.Context, token: String, onProgress: (Int) -> Unit): String {
  require(token.isNotBlank()) { "Enter a Hugging Face token after accepting the Gemma license." }
  val target = File(context.filesDir, "assistant-model.task")
  val partial = File(context.filesDir, "assistant-model.task.partial")
@@ -180,10 +182,28 @@ private fun downloadGemmaModel(context: android.content.Context, token: String):
   val status = connection.responseCode
   require(status in 200..299) { "Model download HTTP $status. Accept the Gemma license and check your token." }
   require(connection.contentType?.contains("text/html") != true) { "Received a webpage, not a model." }
-  connection.inputStream.use { input -> partial.outputStream().use { output -> input.copyTo(output) } }
+  val expectedBytes = connection.contentLengthLong
+  connection.inputStream.use { input ->
+   partial.outputStream().use { output ->
+    val buffer = ByteArray(262144)
+    var received = 0L
+    while (true) {
+     val count = input.read(buffer)
+     if (count < 0) break
+     output.write(buffer, 0, count)
+     received += count
+     if (expectedBytes > 0) {
+      val percent = (received * 100 / expectedBytes).toInt().coerceIn(0, 99)
+      withContext(Dispatchers.Main) { onProgress(percent) }
+     }
+    }
+   }
+  }
+  if (expectedBytes > 0) require(partial.length() == expectedBytes) { "Model download interrupted; retry." }
   require(partial.length() > 100_000_000L) { "Downloaded model is incomplete." }
   if (target.exists()) target.delete()
   require(partial.renameTo(target)) { "Could not save model." }
+  withContext(Dispatchers.Main) { onProgress(100) }
   return target.absolutePath
  } finally { connection.disconnect() }
 }
