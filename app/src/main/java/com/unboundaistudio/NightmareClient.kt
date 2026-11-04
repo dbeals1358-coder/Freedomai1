@@ -53,13 +53,14 @@ internal object NightmareClient {
             connection.disconnect()
         }
     }
-    fun generate(prompt: String, token: String, input: android.graphics.Bitmap?, strength: Float, highQuality: Boolean, resolution: Int = 1024): android.graphics.Bitmap {
+    fun generate(prompt: String, token: String, input: android.graphics.Bitmap?, strength: Float, highQuality: Boolean, resolution: Int = 1024, editFlow: String = "current"): android.graphics.Bitmap {
         require(token.isNotBlank()) { "Enter your Nightmare API token in Connection settings" }
         require(!token.contains('\n') && !token.contains('\r')) { "Invalid Nightmare API token" }
         // Check authentication before starting a potentially long image generation request.
         authenticatedGet("/info", token)
+        require(editFlow == "current" || editFlow == "img2img" || editFlow.startsWith("saved:")) { "Invalid edit workflow" }
         val payload = JSONObject()
-            .put("flow", if (input == null) "saved:FreedomAI RealVis" else "img2img")
+            .put("flow", if (input == null) "saved:FreedomAI RealVis" else editFlow)
             .put("prompt", prompt)
             .put("steps", if (highQuality) 35 else 22)
             .put("cfg", 6.0)
