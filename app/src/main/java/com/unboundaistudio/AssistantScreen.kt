@@ -32,6 +32,7 @@ fun AssistantScreen() {
  var endpoint by remember { mutableStateOf(prefs.getString("endpoint", "") ?: "") }
  var model by remember { mutableStateOf(prefs.getString("model", "") ?: "") }
  var apiKey by remember { mutableStateOf(prefs.getString("api_key", "") ?: "") }
+ var error by remember { mutableStateOf("") }
  var localModelPath by remember { mutableStateOf(prefs.getString("local_model", "") ?: "") }
  val modelPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
   if (uri != null) {
@@ -47,7 +48,6 @@ fun AssistantScreen() {
   }
  }
  var message by remember { mutableStateOf("") }
- var error by remember { mutableStateOf("") }
  var busy by remember { mutableStateOf(false) }
  var speak by remember { mutableStateOf(true) }
  val history = remember { mutableStateListOf<Pair<String, String>>() }
