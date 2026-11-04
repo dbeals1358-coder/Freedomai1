@@ -481,7 +481,6 @@ class MainActivity : ComponentActivity() {
        if (busy) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
        Text("Choose a photo and describe movement.")
 
-       Text("Camera motion only; not AI video.")
        Text("Requires a working Nightmare video model.")
        OutlinedTextField(value = nightmareVideoFlow, onValueChange = {
         nightmareVideoFlow = it.trim()
