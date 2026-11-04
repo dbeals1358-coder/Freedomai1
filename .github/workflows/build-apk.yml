@@ -1,4 +1,4 @@
-name: Boobs - Build Android APK
+name: Boobs v1.5 - Build Android APK
 on:
   workflow_dispatch:
   push:
@@ -24,14 +24,14 @@ jobs:
           gradle-version: '8.10.2'
       - name: Verify current source version
         run: |
-          grep -q 'versionName = "1.4"' app/build.gradle.kts
-          grep -q 'Text("Boobs v1.4"' app/src/main/java/com/unboundaistudio/MainActivity.kt
-      - name: Compile and test Boobs v1.4
+          grep -q 'versionName = "1.5"' app/build.gradle.kts
+          grep -q 'Text("Boobs v1.5"' app/src/main/java/com/unboundaistudio/MainActivity.kt
+      - name: Compile and test Boobs v1.5
         run: gradle assembleDebug lintDebug testDebugUnitTest --no-daemon
       - name: Name APK with version
-        run: cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/Boobs-v1.4-debug.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/Boobs-v1.5-debug.apk
       - uses: actions/upload-artifact@v4
         with:
           if-no-files-found: error
-          name: Boobs-v1.4-APK
-          path: app/build/outputs/apk/debug/Boobs-v1.4-debug.apk
+          name: Boobs-v1.5-APK
+          path: app/build/outputs/apk/debug/Boobs-v1.5-debug.apk
