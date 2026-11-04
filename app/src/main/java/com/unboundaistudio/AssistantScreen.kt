@@ -47,7 +47,7 @@ fun AssistantScreen() {
    }.onFailure { error = it.message ?: "Model import failed" }
   }
  }
- var hfToken by remember { mutableStateOf(prefs.getString("hf_token", "") ?: "") }
+ var hfToken by remember { mutableStateOf("") }
  var downloadStatus by remember { mutableStateOf("") }
  var downloadPercent by remember { mutableIntStateOf(0) }
  var downloading by remember { mutableStateOf(false) }
@@ -65,7 +65,7 @@ fun AssistantScreen() {
  Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
   Text("AI Assistant", style = MaterialTheme.typography.headlineMedium)
   Text("Chat by typing or speaking. Import a compatible .task model for offline replies, or connect a chat service.")
-  Text("Offline AI setup: Gemma 3 1B (one-time download, then works without internet). Accept the model license on Hugging Face before downloading.")
+  Text("Offline AI setup: Gemma 3 1B (one-time download, then works without internet). Accept access on the litert-community/Gemma3-1B-IT model page before downloading.")
   OutlinedTextField(hfToken, { hfToken = it }, label = { Text("Hugging Face access token") }, modifier = Modifier.fillMaxWidth(), visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation())
   Button(enabled = !downloading, onClick = {
    downloading = true
@@ -74,8 +74,8 @@ fun AssistantScreen() {
     try {
      val downloaded = withContext(Dispatchers.IO) { downloadGemmaModel(context, hfToken.trim()) { percent -> downloadPercent = percent } }
      localModelPath = downloaded
-     prefs.edit().putString("local_model", downloaded).putString("hf_token", hfToken.trim()).apply()
-     downloadStatus = "Offline AI ready"
+     prefs.edit().putString("local_model", downloaded).apply()
+     downloadStatus = "Offline AI downloaded. Ready to chat."
     } catch (e: Exception) { downloadStatus = e.message ?: "Download failed" }
     finally { downloading = false }
    }
@@ -83,7 +83,7 @@ fun AssistantScreen() {
   if (downloadStatus.isNotBlank()) Text(downloadStatus)
   if (downloading) { LinearProgressIndicator(progress = { downloadPercent / 100f }, modifier = Modifier.fillMaxWidth()); Text("$downloadPercent% downloaded") }
   OutlinedButton(onClick = { modelPicker.launch(arrayOf("*/*")) }) { Text("Import offline AI model (.task)") }
-  Text(if (localModelPath.isNotBlank()) "Offline model installed" else "No offline AI model installed")
+  Text(if (localModelPath.isNotBlank() && File(localModelPath).length() > 100_000_000L) "Offline model installed" else "No offline AI model installed")
   OutlinedTextField(endpoint, { endpoint = it }, label = { Text("Chat API URL (HTTPS)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
   OutlinedTextField(model, { model = it }, label = { Text("Model name") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
   OutlinedTextField(apiKey, { apiKey = it }, label = { Text("API key (optional)") }, modifier = Modifier.fillMaxWidth(), singleLine = true, visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation())
@@ -169,41 +169,75 @@ private fun offlineAssistantReply(context: android.content.Context, path: String
 }
 
 private suspend fun downloadGemmaModel(context: android.content.Context, token: String, onProgress: (Int) -> Unit): String {
- require(token.isNotBlank()) { "Enter a Hugging Face token after accepting the Gemma license." }
+ require(token.startsWith("hf_") && token.length > 10) { "Enter a valid Hugging Face read token." }
  val target = File(context.filesDir, "assistant-model.task")
  val partial = File(context.filesDir, "assistant-model.task.partial")
- val url = URL("https://huggingface.co/litert-community/Gemma3-1B-IT/resolve/main/gemma3-1b-it-int4.task?download=true")
- val connection = url.openConnection() as HttpURLConnection
+ // Access to google/gemma-3-1b-it does not grant access to this separate LiteRT repository.
+ val modelUrl = "https://huggingface.co/litert-community/Gemma3-1B-IT/resolve/main/gemma3-1b-it-int4.task"
+ var current = URL(modelUrl)
+ var connection: HttpURLConnection? = null
  try {
-  connection.connectTimeout = 30000
-  connection.readTimeout = 120000
-  connection.setRequestProperty("Authorization", "Bearer $token")
-  connection.instanceFollowRedirects = true
-  val status = connection.responseCode
-  require(status in 200..299) { "Model download HTTP $status. Accept the Gemma license and check your token." }
-  require(connection.contentType?.contains("text/html") != true) { "Received a webpage, not a model." }
-  val expectedBytes = connection.contentLengthLong
-  connection.inputStream.use { input ->
-   partial.outputStream().use { output ->
-    val buffer = ByteArray(262144)
-    var received = 0L
-    while (true) {
-     val count = input.read(buffer)
-     if (count < 0) break
-     output.write(buffer, 0, count)
-     received += count
-     if (expectedBytes > 0) {
-      val percent = (received * 100 / expectedBytes).toInt().coerceIn(0, 99)
-      withContext(Dispatchers.Main) { onProgress(percent) }
+  var redirects = 0
+  while (true) {
+   require(current.protocol == "https") { "Model download requires HTTPS." }
+   connection = current.openConnection() as HttpURLConnection
+   connection.connectTimeout = 30000
+   connection.readTimeout = 120000
+   connection.instanceFollowRedirects = false
+   // Only send the secret to Hugging Face, never to redirected file storage hosts.
+   if (current.host == "huggingface.co") connection.setRequestProperty("Authorization", "Bearer $token")
+   val status = connection.responseCode
+   if (status in listOf(301, 302, 303, 307, 308)) {
+    val location = connection.getHeaderField("Location") ?: error("Model server redirected without a destination.")
+    val next = URL(current, location)
+    require(next.protocol == "https") { "Unsafe model download redirect." }
+    require(++redirects <= 8) { "Too many model download redirects." }
+    connection.disconnect()
+    connection = null
+    current = next
+    continue
+   }
+   if (status == 401 || status == 403) {
+    error("Hugging Face HTTP $status: grant access to litert-community/Gemma3-1B-IT (not just google/gemma-3-1b-it), and use a token with read permission for that repository.")
+   }
+   if (status == 404) error("Gemma model file not found (404). The model download path must be updated.")
+   require(status in 200..299) { "Model download failed: HTTP $status." }
+   val type = connection.contentType.orEmpty()
+   require(!type.contains("text/html", ignoreCase = true) && !type.contains("application/json", ignoreCase = true)) { "Model server returned a webpage or error instead of a model." }
+   val expectedBytes = connection.contentLengthLong
+   partial.delete()
+   connection.inputStream.use { input ->
+    partial.outputStream().use { output ->
+     val buffer = ByteArray(262144)
+     var received = 0L
+     while (true) {
+      val count = input.read(buffer)
+      if (count < 0) break
+      output.write(buffer, 0, count)
+      received += count
+      if (expectedBytes > 0) {
+       val percent = (received * 100 / expectedBytes).toInt().coerceIn(0, 99)
+       withContext(Dispatchers.Main) { onProgress(percent) }
+      }
      }
     }
    }
+   require(expectedBytes <= 0 || partial.length() == expectedBytes) { "Model download interrupted; retry." }
+   require(partial.length() > 100_000_000L) { "Downloaded file is too small to be a Gemma model." }
+   // Keep a previously installed model until the new download is complete.
+   val backup = File(context.filesDir, "assistant-model.task.backup")
+   backup.delete()
+   if (target.exists()) require(target.renameTo(backup)) { "Could not back up existing model." }
+   if (!partial.renameTo(target)) {
+    if (backup.exists()) backup.renameTo(target)
+    error("Could not save the downloaded model.")
+   }
+   backup.delete()
+   withContext(Dispatchers.Main) { onProgress(100) }
+   return target.absolutePath
   }
-  if (expectedBytes > 0) require(partial.length() == expectedBytes) { "Model download interrupted; retry." }
-  require(partial.length() > 100_000_000L) { "Downloaded model is incomplete." }
-  if (target.exists()) target.delete()
-  require(partial.renameTo(target)) { "Could not save model." }
-  withContext(Dispatchers.Main) { onProgress(100) }
-  return target.absolutePath
- } finally { connection.disconnect() }
+ } finally {
+  connection?.disconnect()
+  partial.delete()
+ }
 }
