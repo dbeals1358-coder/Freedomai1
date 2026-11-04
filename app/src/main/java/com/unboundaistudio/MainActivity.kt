@@ -54,6 +54,7 @@ class MainActivity : ComponentActivity() {
    var localMode by remember { mutableStateOf(prefs.getBoolean("local", true)) }
    var nightmareMode by remember { mutableStateOf(prefs.getBoolean("nightmare", true)) }
    var nightmareToken by remember { mutableStateOf(prefs.getString("nightmare_token", "") ?: "") }
+   var nightmareEditFlow by remember { mutableStateOf(prefs.getString("nightmare_edit_flow", "current") ?: "current") }
    var busy by remember { mutableStateOf(false) }
    var status by remember { mutableStateOf("") }
    var result by remember { mutableStateOf<Bitmap?>(null) }
@@ -142,7 +143,8 @@ class MainActivity : ComponentActivity() {
        nightmareToken = it.trim()
        prefs.edit().putString("nightmare_token", nightmareToken).apply()
       }, label = { Text("Nightmare API token (kept on this phone)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-      Text("Uses your saved FreedomAI RealVis flow for creation and Nightmare's img2img flow for photo edits.")
+      Text("Creation uses your saved RealVis flow. Editing uses the selected Nightmare workflow.")
+      OutlinedTextField(value = nightmareEditFlow, onValueChange = { nightmareEditFlow = it.trim(); prefs.edit().putString("nightmare_edit_flow", nightmareEditFlow).apply() }, label = { Text("Nightmare edit workflow ID") }, supportingText = { Text("Use current for the workflow open in Nightmare, img2img for its standard image-to-image recipe, or saved:Your Flow Name.") }, singleLine = true, modifier = Modifier.fillMaxWidth())
       OutlinedButton(enabled = !busy, onClick = {
        busy = true
        scope.launch {
@@ -207,6 +209,7 @@ class MainActivity : ComponentActivity() {
        val useLocal = localMode
        val useNightmare = nightmareMode
        val tokenForRun = nightmareToken
+       val editFlowForRun = nightmareEditFlow
        val requestedPrompt = if (tab == 2 && fictionalAdultMode && input == null) {
         val age = characterAge.toIntOrNull()
         if (age == null || age < 18 || age > 100) { status = "Enter an adult age from 18 to 100"; return }
@@ -235,7 +238,7 @@ class MainActivity : ComponentActivity() {
         try {
          result = withContext(Dispatchers.IO) {
           if (useNightmare) {
-           val generated = NightmareClient.generate(requestedPrompt, tokenForRun, input, requestedStrength, requestedHighQuality, resolution)
+           val generated = NightmareClient.generate(requestedPrompt, tokenForRun, input, requestedStrength, requestedHighQuality, resolution, editFlowForRun)
            check(!isNearlyWhiteImage(generated)) { "The AI returned a blank white image. Try a different flow or restart the model." }
            if (input != null && isSameImage(input, generated)) error("Nightmare returned the original image unchanged; verify the img2img flow and its image input.")
            if (mask != null && input != null) compositeMaskedEdit(input, generated, mask) else preserveFraming(input, generated)
@@ -263,7 +266,7 @@ class MainActivity : ComponentActivity() {
          }
         } catch (e: kotlinx.coroutines.CancellationException) { throw e
         } catch (e: Exception) { status = when {
-          useNightmare -> "Nightmare generation failed: ${e.message ?: "connection failed"}. Check your API token and saved flow."
+          useNightmare -> "Nightmare ${if (input != null) "edit" else "generation"} failed (flow: ${if (input != null) editFlowForRun else "saved:FreedomAI RealVis"}): ${e.message ?: "connection failed"}. Open the matching flow in Nightmare, check its model and image input."
           useLocal -> "Local Dream: ${e.message ?: "connection failed"}. Keep the model loaded; try split screen if disconnected."
           else -> "Could not create image: ${e.message ?: "connection failed"}"
          }
