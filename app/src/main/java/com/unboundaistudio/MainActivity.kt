@@ -492,7 +492,10 @@ class MainActivity : ComponentActivity() {
        if (busy) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
        Text("Choose a photo and describe movement.")
 
-       Text("AI video uses the selected local Nightmare workflow.")
+       Text("Offline AI model status: MobileI2V inference is not yet integrated. The existing Generate button uses Nightmare on this phone, not a standalone video model.")
+        OutlinedButton(onClick = {
+         status = LocalAiMotionRuntime(java.io.File(filesDir, "models/video-v1")).use { it.readiness().reason }
+        }, modifier = Modifier.fillMaxWidth()) { Text("Check offline AI model") }
        OutlinedTextField(value = nightmareVideoFlow, onValueChange = {
         nightmareVideoFlow = it.trim()
         prefs.edit().putString("nightmare_video_flow", nightmareVideoFlow).apply()
