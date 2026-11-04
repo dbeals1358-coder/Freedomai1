@@ -23,10 +23,11 @@ jobs:
           java-version: '17'
       - name: Show source version
         run: grep 'versionName' app/build.gradle.kts
-      - name: Make Gradle executable
-        run: chmod +x ./gradlew
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
       - name: Test and assemble v1.2 debug APK
-        run: ./gradlew --no-daemon testDebugUnitTest assembleDebug
+        run: gradle --no-daemon testDebugUnitTest assembleDebug
       - name: Upload installable debug APK
         uses: actions/upload-artifact@v4
         with:
