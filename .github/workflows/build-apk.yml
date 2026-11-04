@@ -26,6 +26,11 @@ jobs:
         run: |
           grep -q 'versionName = "1.5"' app/build.gradle.kts
           grep -q 'Text("Boobs v1.5"' app/src/main/java/com/unboundaistudio/MainActivity.kt
+      - name: Install selected launcher photo
+        run: |
+          mkdir -p app/src/main/res/drawable-nodpi
+          base64 --decode app/icon_source.b64 > app/src/main/res/drawable-nodpi/boobs_launcher.jpg
+          test -s app/src/main/res/drawable-nodpi/boobs_launcher.jpg
       - name: Compile and test Boobs v1.5
         run: gradle assembleDebug lintDebug testDebugUnitTest --no-daemon
       - name: Name APK with version
