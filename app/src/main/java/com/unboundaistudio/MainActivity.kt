@@ -176,13 +176,13 @@ class MainActivity : ComponentActivity() {
      }
     }) { inset ->
      Column(Modifier.padding(inset).fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-      Text("Boobs v1.4", style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.primary)
+      Text("Boobs v1.5", style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.primary)
       Text(if (videoMode) "Create video from a photo" else if (tab == -1) "What will you create?" else if (tab == 0) "Turn your ideas into images" else if (tab == 2) "Private 18+ studio" else "Give your photos a fresh look", style = MaterialTheme.typography.titleLarge)
       if (tab == -1) {
        Column(Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(UiColor(0xFF332451), UiColor(0xFF192F49))), RoundedCornerShape(28.dp)).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text("✦", style = MaterialTheme.typography.displayMedium, color = MaterialTheme.colorScheme.secondary)
         Text("A little imagination.\nEndless possibilities.", style = MaterialTheme.typography.headlineMedium)
-        Text("Start with an idea or a photo. Make something your own.", color = UiColor(0xFFD3D0E3))
+        Text("Create or edit photos and videos.", color = UiColor(0xFFD3D0E3))
         Button(onClick = { tab = 0 }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("Create Image") }
         OutlinedButton(onClick = { tab = 1 }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("Edit Photo") }
         OutlinedButton(onClick = { videoMode = true; tab = 1; result = null }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("Create Video") }
@@ -479,12 +479,12 @@ class MainActivity : ComponentActivity() {
         Text(status, modifier = Modifier.fillMaxWidth().padding(12.dp))
        }
        if (busy) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-       Text("Select a source photo, enter movement instructions, then choose the video engine below.")
+       Text("Choose a photo and describe movement.")
 
        Text("Offline video", style = MaterialTheme.typography.titleMedium)
-       Text("No Runway key or online account is required. The installed offline renderer currently supports camera movement only. AI body movement will become available only after a compatible on-device motion model and inference runtime are installed.")
+       Text("Camera motion only; not AI video.")
        Text("On-device AI video through Nightmare", style = MaterialTheme.typography.titleMedium)
-       Text("Uses Nightmare's local image-to-video workflow. Start with 2 seconds as tested in Nightmare. Video quality depends on Nightmare's model and workflow; the app cannot repair distorted source output.")
+       Text("Requires a working Nightmare video model.")
        OutlinedTextField(value = nightmareVideoFlow, onValueChange = {
         nightmareVideoFlow = it.trim()
         prefs.edit().putString("nightmare_video_flow", nightmareVideoFlow).apply()
@@ -529,15 +529,15 @@ class MainActivity : ComponentActivity() {
         }
        }, modifier = Modifier.fillMaxWidth()) { Text("Generate AI Motion (Nightmare offline)") }
        Text("Camera motion renderer", style = MaterialTheme.typography.titleMedium)
-       Text("Offline video: camera animation only. Realistic AI body movement requires converted model weights and a verified inference pipeline.")
+       
        val aiModelStatus = LocalAiMotionRuntime(java.io.File(filesDir, "motion_models")).use { it.readiness() }
        Text("AI motion model: " + if (aiModelStatus.ready) "Ready" else "Not ready — " + aiModelStatus.reason)
        OutlinedButton(enabled = !busy, onClick = { motionModelPicker.launch(arrayOf("application/octet-stream", "*/*")) }) {
         Text("Import ONNX motion model file")
        }
        if (motionModelMessage.isNotBlank()) Text(motionModelMessage)
-       Text("Importing model files does not enable AI video until a compatible inference pipeline is implemented.")
-       Text("The video button below creates camera-motion MP4s, not AI-generated body movement.")
+       
+       
        OutlinedTextField(value = motionPrompt, onValueChange = { motionPrompt = it },
         label = { Text("Describe camera motion") }, modifier = Modifier.fillMaxWidth())
        Text("Duration")
