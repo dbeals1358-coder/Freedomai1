@@ -362,7 +362,7 @@ class MainActivity : ComponentActivity() {
        OutlinedTextField(value = prompt, onValueChange = { prompt = it }, label = { Text("Describe your image") }, placeholder = { Text("A peaceful beach at sunset, warm light, gentle waves…") }, modifier = Modifier.fillMaxWidth().height(170.dp))
        Button(onClick = { requestImage(null) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text(if (busy) "Creating…" else "Create Image") }
 
-      } else if (tab == 1 || (tab == 2 && adultConfirmed && !fictionalAdultMode)) {
+      } else if (!videoMode && (tab == 1 || (tab == 2 && adultConfirmed && !fictionalAdultMode))) {
        if (tab == 2) Text("Private editing: adjust brightness and saturation, then save to app-private storage. AI edits may send your photo to the selected model/server. Only use images you have permission to edit.")
        Button(enabled = !busy, onClick = { picker.launch("image/*") }, modifier = Modifier.fillMaxWidth()) { Text("Choose Photo") }
        edited?.let { bitmap ->
@@ -450,7 +450,12 @@ class MainActivity : ComponentActivity() {
         OutlinedButton(onClick = { brightness = 0f; saturation = 1f }) { Text("Reset") }
        } ?: Text("Pick a photo to edit its brightness and color saturation.")
       }
-      result?.let { image ->
+      if (videoMode) {
+       Text("Create Video", style = MaterialTheme.typography.titleLarge)
+       Button(enabled = !busy, onClick = { picker.launch("image/*") }, modifier = Modifier.fillMaxWidth()) { Text("Choose Photo for Video") }
+       if (result == null && original == null) Text("Choose a photo to start video generation.")
+      }
+      (if (videoMode) result ?: original else result)?.let { image ->
        Text(if (videoMode) "Video source image" else "Your creation", style = MaterialTheme.typography.titleLarge)
        Image(image.asImageBitmap(), contentDescription = "Generated image, tap to enlarge", contentScale = ContentScale.Fit, modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp).clickable { expandedPhoto = image })
        if (!videoMode && original != null && tab == 1) {
@@ -473,7 +478,7 @@ class MainActivity : ComponentActivity() {
         Text("Before  ←  Slide to compare  →  After")
         Slider(value = comparePosition, onValueChange = { comparePosition = it }, valueRange = 0f..1f)
        }
-       Button(onClick = { if (tab == 2) savePrivate(image) else save(image) }) { Text(if (tab == 2) "Save Privately" else "Save Image") }
+       if (!videoMode) Button(onClick = { if (tab == 2) savePrivate(image) else save(image) }) { Text(if (tab == 2) "Save Privately" else "Save Image") }
        Text("Create Video", style = MaterialTheme.typography.titleLarge)
        if (status.isNotBlank()) Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
         Text(status, modifier = Modifier.fillMaxWidth().padding(12.dp))
@@ -591,7 +596,7 @@ class MainActivity : ComponentActivity() {
          })
         }) { Text("Play saved MP4") }
        }
-       OutlinedButton(onClick = { videoMode = false; original = image; originalGeneratedHere = resultGeneratedHere; brightness = 0f; saturation = 1f; strokes.clear(); maskMode = false; precisionEdit = false; result = null; tab = 1 }) { Text("Edit this image") }
+       if (!videoMode) OutlinedButton(onClick = { videoMode = false; original = image; originalGeneratedHere = resultGeneratedHere; brightness = 0f; saturation = 1f; strokes.clear(); maskMode = false; precisionEdit = false; result = null; tab = 1 }) { Text("Edit this image") }
       }
      }
     }
