@@ -481,14 +481,12 @@ class MainActivity : ComponentActivity() {
        if (busy) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
        Text("Choose a photo and describe movement.")
 
-       Text("Offline video", style = MaterialTheme.typography.titleMedium)
        Text("Camera motion only; not AI video.")
-       Text("On-device AI video through Nightmare", style = MaterialTheme.typography.titleMedium)
        Text("Requires a working Nightmare video model.")
        OutlinedTextField(value = nightmareVideoFlow, onValueChange = {
         nightmareVideoFlow = it.trim()
         prefs.edit().putString("nightmare_video_flow", nightmareVideoFlow).apply()
-       }, label = { Text("Nightmare video flow (current or saved:Name)") }, modifier = Modifier.fillMaxWidth())
+       }, label = { Text("Video workflow (current or saved:Name)") }, modifier = Modifier.fillMaxWidth())
        OutlinedTextField(value = motionPrompt, onValueChange = { motionPrompt = it },
         label = { Text("Describe AI movement") }, modifier = Modifier.fillMaxWidth())
        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -527,8 +525,7 @@ class MainActivity : ComponentActivity() {
           finally { busy = false }
          }
         }
-       }, modifier = Modifier.fillMaxWidth()) { Text("Generate AI Motion (Nightmare offline)") }
-       Text("Camera motion renderer", style = MaterialTheme.typography.titleMedium)
+       }, modifier = Modifier.fillMaxWidth()) { Text("Generate AI Video") }
        
        val aiModelStatus = LocalAiMotionRuntime(java.io.File(filesDir, "motion_models")).use { it.readiness() }
        Text("AI motion model: " + if (aiModelStatus.ready) "Ready" else "Not ready — " + aiModelStatus.reason)
