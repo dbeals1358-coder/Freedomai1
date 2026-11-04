@@ -85,6 +85,9 @@ internal object NightmareClient {
             val code = connection.responseCode
             val body = (if (code in 200..299) connection.inputStream else connection.errorStream)
                 ?.bufferedReader()?.use { it.readText() }.orEmpty()
+            if (code == 500 && body.contains("backend did not start", ignoreCase = true)) {
+                error("Nightmare could not start the processing backend for flow '${payload.optString("flow")}'. This is a Nightmare model/runtime startup failure, not a button or image-upload failure. Open that exact flow in Nightmare and run a simple image-to-image edit; check model loading, available RAM and Nightmare logs. Run ID: ${runCatching { JSONObject(body).optString("run") }.getOrDefault("unknown")}")
+            }
             check(code in 200..299) { "Nightmare HTTP $code: ${body.take(350)}" }
             check(body.isNotBlank()) { "Nightmare returned an empty response" }
             JSONObject(body)
