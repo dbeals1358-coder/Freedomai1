@@ -262,7 +262,7 @@ class MainActivity : ComponentActivity() {
         LinearProgressIndicator(progress = { generationPercent / 100f }, modifier = Modifier.fillMaxWidth())
         Text("Creating image: $generationPercent% (estimated until image arrives)")
        }
-      if (status.isNotEmpty()) Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceVariant) { Text(status, modifier = Modifier.fillMaxWidth().padding(16.dp)) }
+      if (status.isNotEmpty() && !status.startsWith("Nightmare v")) Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceVariant) { Text(status, modifier = Modifier.fillMaxWidth().padding(16.dp)) }
       fun requestImage(input: Bitmap?, promptOverride: String? = null) {
        if ((promptOverride ?: prompt).isBlank() && !(tab == 2 && fictionalAdultMode && (appearance.isNotBlank() || bodyDescription.isNotBlank()))) { status = "Describe the image first"; return }
        val address = server.trim().trimEnd('/')
