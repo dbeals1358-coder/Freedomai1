@@ -75,9 +75,10 @@ class MainActivity : ComponentActivity() {
    var original by remember { mutableStateOf<Bitmap?>(null) }
    var brightness by remember { mutableFloatStateOf(0f) }
    var saturation by remember { mutableFloatStateOf(1f) }
-   var editStrength by remember { mutableFloatStateOf(0.20f) }
+   var editStrength by remember { mutableFloatStateOf(0.35f) }
     var preserveOriginal by remember { mutableStateOf("High") }
     var precisionEdit by remember { mutableStateOf(false) }
+    var resolution by remember { mutableIntStateOf(prefs.getInt("resolution", 1024)) }
     var generationPercent by remember { mutableStateOf(0) }
    var maskMode by remember { mutableStateOf(false) }
    var brush by remember { mutableFloatStateOf(0.06f) }
@@ -109,7 +110,7 @@ class MainActivity : ComponentActivity() {
      }
     }) { inset ->
      Column(Modifier.padding(inset).fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-      Text("FreedomAI", style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.primary)
+      Text("FreedomAI v0.8", style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.primary)
       Text(if (tab == -1) "What will you create?" else if (tab == 0) "Turn your ideas into images" else if (tab == 2) "Private 18+ studio" else "Give your photos a fresh look", style = MaterialTheme.typography.titleLarge)
       if (tab == -1) {
        Column(Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(UiColor(0xFF332451), UiColor(0xFF192F49))), RoundedCornerShape(28.dp)).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -181,6 +182,14 @@ class MainActivity : ComponentActivity() {
       }
       }
       }
+      if (tab == 0 || tab == 2) {
+       Text("Image resolution")
+       Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        listOf(512, 768, 1024).forEach { size ->
+         OutlinedButton(onClick = { resolution = size; prefs.edit().putInt("resolution", size).apply() }) { Text(if (resolution == size) "✓ $size" else "$size") }
+        }
+       }
+      }
       if (busy) {
         LinearProgressIndicator(progress = { generationPercent / 100f }, modifier = Modifier.fillMaxWidth())
         Text("Creating image: $generationPercent% (estimated until image arrives)")
@@ -202,17 +211,16 @@ class MainActivity : ComponentActivity() {
         listOf("Original fictional adult woman, age $age", appearance, bodyDescription, pose, setting, photoStyle, prompt).filter { it.isNotBlank() }.joinToString(", ")
        } else prompt
        val requestedStrength = if (input != null) when (preserveOriginal) {
-         "High" -> editStrength.coerceAtMost(if (precisionEdit) 0.16f else 0.25f)
+         "High" -> editStrength.coerceIn(0.25f, 0.40f)
          "Medium" -> editStrength.coerceIn(0.26f, 0.45f)
          else -> editStrength
         } else editStrength
        val requestedHighQuality = highQuality
        if (input != null && precisionEdit && (!maskMode || strokes.isEmpty())) {
-        status = "Precision Edit needs a painted selection. Turn off Precision Edit or paint the area you want changed."
-        return
+        precisionEdit = false // Fall back to full-frame edit instead of silently blocking.
        }
        val mask = if (input != null && maskMode && strokes.isNotEmpty()) makeMask(input.width, input.height, strokes.toList(), brush) else null
-              busy = true; generationPercent = 0; status = "Creating image…"
+              busy = true; generationPercent = 0; status = if (input != null) "Editing photo…" else "Creating image…"
         // Nightmare does not currently expose generation progress through this client.
         // Show an explicitly estimated percentage, capped below 100 until an image arrives.
         val progressJob = scope.launch {
@@ -225,8 +233,9 @@ class MainActivity : ComponentActivity() {
         try {
          result = withContext(Dispatchers.IO) {
           if (useNightmare) {
-           val generated = NightmareClient.generate(requestedPrompt, tokenForRun, input, requestedStrength, requestedHighQuality)
+           val generated = NightmareClient.generate(requestedPrompt, tokenForRun, input, requestedStrength, requestedHighQuality, resolution)
            check(!isNearlyWhiteImage(generated)) { "The AI returned a blank white image. Try a different flow or restart the model." }
+           if (input != null && isSameImage(input, generated)) error("Nightmare returned the original image unchanged; verify the img2img flow and its image input.")
            if (mask != null && input != null) compositeMaskedEdit(input, generated, mask) else preserveFraming(input, generated)
           } else if (useLocal) {
            val encoded = input?.let { bitmap ->
@@ -335,6 +344,7 @@ class MainActivity : ComponentActivity() {
           dismissButton = { TextButton(onClick = { showRemoveClothingConfirm = false }) { Text("Cancel") } }
          )
         }
+        Button(onClick = { status = "Starting AI photo edit…"; requestImage(bitmap) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("AI Edit Photo") }
         Text("Quick clothing edits", style = MaterialTheme.typography.titleMedium)
         listOf(
          "Make the bikini top smaller while keeping the person and background the same",
@@ -361,7 +371,6 @@ class MainActivity : ComponentActivity() {
          Text("AI edit strength: ${(editStrength * 100).roundToInt()}%")
         Slider(value = editStrength, onValueChange = { editStrength = it }, valueRange = 0.15f..0.85f)
         Text("For clothing edits, start around 25–40%. Higher strength may change the face or background. Precise clothing-only editing needs a compatible inpainting model.")
-        Button(onClick = { status = "Starting AI photo edit…"; requestImage(bitmap) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("AI Edit Photo") }
         Text("Brightness")
         Slider(value = brightness, onValueChange = { brightness = it }, valueRange = -0.5f..0.5f)
         Text("Saturation")
@@ -374,7 +383,7 @@ class MainActivity : ComponentActivity() {
        Text("Your creation", style = MaterialTheme.typography.titleLarge)
        Image(image.asImageBitmap(), contentDescription = "Generated image", modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp))
        Button(onClick = { if (tab == 2) savePrivate(image) else save(image) }) { Text(if (tab == 2) "Save Privately" else "Save Image") }
-       OutlinedButton(onClick = { original = image; brightness = 0f; saturation = 1f; strokes.clear(); maskMode = true; precisionEdit = true; result = null; tab = 1 }) { Text("Edit this image") }
+       OutlinedButton(onClick = { original = image; brightness = 0f; saturation = 1f; strokes.clear(); maskMode = false; precisionEdit = false; result = null; tab = 1 }) { Text("Edit this image") }
       }
      }
     }
@@ -541,4 +550,16 @@ private fun compositeMaskedEdit(original: Bitmap, generated: Bitmap, mask: Bitma
 private fun preserveFraming(original: Bitmap?, generated: Bitmap): Bitmap {
  if (original == null || (original.width == generated.width && original.height == generated.height)) return generated
  return Bitmap.createScaledBitmap(generated, original.width, original.height, true)
+}
+
+private fun isSameImage(a: Bitmap, b: Bitmap): Boolean {
+ if (a.width != b.width || a.height != b.height) return false
+ val sx = (a.width / 24).coerceAtLeast(1)
+ val sy = (a.height / 24).coerceAtLeast(1)
+ var different = 0
+ for (y in 0 until a.height step sy) for (x in 0 until a.width step sx) {
+  val c = a.getPixel(x, y); val d = b.getPixel(x, y)
+  if (kotlin.math.abs(Color.red(c)-Color.red(d)) + kotlin.math.abs(Color.green(c)-Color.green(d)) + kotlin.math.abs(Color.blue(c)-Color.blue(d)) > 24) different++
+ }
+ return different < 3
 }
