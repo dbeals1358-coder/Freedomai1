@@ -39,6 +39,7 @@ object OfflineVideoEngine {
   val pixels = IntArray(w * h)
   var submitted = 0
   var ended = false
+  var eosQueued = false
   val lower = motion.lowercase()
   try {
    codec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
@@ -81,13 +82,13 @@ object OfflineVideoEngine {
         vp.buffer.put((y/2) * vp.rowStride + (x/2) * vp.pixelStride, (vSum/4).toByte())
        }
       } finally { yuv.close() }
-      codec.queueInputBuffer(inputIndex, 0, 0, submitted * 1_000_000L / fps, 0)
+      codec.queueInputBuffer(inputIndex, 0, w * h * 3 / 2, submitted * 1_000_000L / fps, 0)
       submitted++
       if (submitted % fps == 0) progress(submitted * 100 / total)
      }
-    } else {
+    } else if (!eosQueued) {
      val index = codec.dequeueInputBuffer(10000)
-     if (index >= 0) codec.queueInputBuffer(index, 0, 0, total * 1_000_000L / fps, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+     if (index >= 0) { codec.queueInputBuffer(index, 0, 0, total * 1_000_000L / fps, MediaCodec.BUFFER_FLAG_END_OF_STREAM); eosQueued = true }
     }
     while (true) {
      val outIndex = codec.dequeueOutputBuffer(info, 10000)
