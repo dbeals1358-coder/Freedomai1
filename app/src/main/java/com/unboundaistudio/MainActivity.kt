@@ -425,59 +425,15 @@ class MainActivity : ComponentActivity() {
        Button(onClick = { if (tab == 2) savePrivate(image) else save(image) }) { Text(if (tab == 2) "Save Privately" else "Save Image") }
        Text("Create Video", style = MaterialTheme.typography.titleLarge)
 
-       Text("Runway AI — primary video generator", style = MaterialTheme.typography.titleMedium)
-       OutlinedTextField(value = runwayKey, onValueChange = {
-        runwayKey = it.trim()
-        prefs.edit().putString("runway_key", runwayKey).apply()
-       }, label = { Text("Runway API key") }, singleLine = true,
-        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-        modifier = Modifier.fillMaxWidth())
-       Text("Online service; requires API credits. Your photo will be sent to Runway. Select 5 or 10 seconds.")
-       OutlinedTextField(value = motionPrompt, onValueChange = { motionPrompt = it },
-        label = { Text("Describe body movement") }, modifier = Modifier.fillMaxWidth())
-       Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        listOf(5, 10).forEach { seconds ->
-         OutlinedButton(onClick = { duration = seconds; customSeconds = "" }) { Text(if (duration == seconds) "✓ ${seconds}s" else "${seconds}s") }
-        }
-       }
-       Button(enabled = !busy, onClick = {
-        if (runwayKey.isBlank()) status = "Enter your Runway API key."
-        else if (motionPrompt.isBlank()) status = "Describe the motion."
-        else {
-         busy = true
-         status = "Submitting video to Runway…"
-         scope.launch {
-          try {
-           val mp4 = withContext(Dispatchers.IO) {
-            RunwayVideoClient.generate(runwayKey, image, motionPrompt, if (duration == 10) 10 else 5) { message ->
-             runOnUiThread { status = message }
-            }
-           }
-           val values = ContentValues().apply {
-            put(MediaStore.Video.Media.DISPLAY_NAME, "FreedomAI_Runway_${System.currentTimeMillis()}.mp4")
-            put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
-            put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/FreedomAI")
-            put(MediaStore.Video.Media.IS_PENDING, 1)
-           }
-           val uri = contentResolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values) ?: error("Cannot save video")
-           try {
-            withContext(Dispatchers.IO) { contentResolver.openOutputStream(uri)?.use { it.write(mp4) } ?: error("Cannot write MP4") }
-            contentResolver.update(uri, ContentValues().apply { put(MediaStore.Video.Media.IS_PENDING, 0) }, null, null)
-            lastVideo = uri
-            status = "Runway video saved to Movies/FreedomAI"
-           } catch (e: Exception) { contentResolver.delete(uri, null, null); throw e }
-          } catch (e: Exception) { status = "Runway failed: ${e.message}" }
-          finally { busy = false }
-         }
-        }
-       }, modifier = Modifier.fillMaxWidth()) { Text("Generate AI Video with Runway") }
-       Text("Offline camera-motion backup", style = MaterialTheme.typography.titleMedium)
+       Text("Offline video", style = MaterialTheme.typography.titleMedium)
+       Text("No Runway key or online account is required. The installed offline renderer currently supports camera movement only. AI body movement will become available only after a compatible on-device motion model and inference runtime are installed.")
+       Text("Camera motion renderer", style = MaterialTheme.typography.titleMedium)
        Text("Offline video: camera animation only. Realistic AI body movement requires converted model weights and a verified inference pipeline.")
        val aiModelStatus = remember { LocalAiMotionRuntime(java.io.File(filesDir, "motion_models")).use { it.readiness() } }
        Text("AI motion model: " + if (aiModelStatus.ready) "Ready" else "Not ready — " + aiModelStatus.reason)
        Text("The video button below creates camera-motion MP4s, not AI-generated body movement.")
        OutlinedTextField(value = motionPrompt, onValueChange = { motionPrompt = it },
-        label = { Text("Describe motion") }, modifier = Modifier.fillMaxWidth())
+        label = { Text("Describe camera motion") }, modifier = Modifier.fillMaxWidth())
        Text("Duration")
        listOf(3, 5, 10, 15, 30, 60).chunked(3).forEach { row ->
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
