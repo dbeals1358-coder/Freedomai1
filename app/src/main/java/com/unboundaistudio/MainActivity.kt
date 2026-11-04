@@ -475,6 +475,11 @@ class MainActivity : ComponentActivity() {
        }
        Button(onClick = { if (tab == 2) savePrivate(image) else save(image) }) { Text(if (tab == 2) "Save Privately" else "Save Image") }
        Text("Create Video", style = MaterialTheme.typography.titleLarge)
+       if (status.isNotBlank()) Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
+        Text(status, modifier = Modifier.fillMaxWidth().padding(12.dp))
+       }
+       if (busy) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+       Text("Select a source photo, enter movement instructions, then choose the video engine below.")
 
        Text("Offline video", style = MaterialTheme.typography.titleMedium)
        Text("No Runway key or online account is required. The installed offline renderer currently supports camera movement only. AI body movement will become available only after a compatible on-device motion model and inference runtime are installed.")
