@@ -186,7 +186,11 @@ class MainActivity : ComponentActivity() {
       Text("Boobs v2.0", style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.primary)
       Text(if (videoMode) "Create video from a photo" else if (tab == -1) "What will you create?" else if (tab == 0) "Turn your ideas into images" else if (tab == 3) "Your conversational AI" else if (tab == 2) "Private 18+ studio" else "Give your photos a fresh look", style = MaterialTheme.typography.titleLarge)
       if (tab == 3) {
-       AssistantScreen()
+       AssistantScreen(
+         onCreateImage = { request -> prompt = request; videoMode = false; tab = 0; status = "Image prompt ready. Tap Create Image." },
+         onEditImage = { request -> prompt = request; videoMode = false; tab = 1; status = "Edit instructions ready. Select an image and tap AI Edit." },
+         onCreateVideo = { request -> prompt = request; videoMode = true; tab = 1; status = "Video request ready. Select a photo to animate." }
+        )
       }
       if (tab == -1) {
        Column(Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(UiColor(0xFF332451), UiColor(0xFF192F49))), RoundedCornerShape(28.dp)).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
