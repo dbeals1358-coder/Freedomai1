@@ -339,7 +339,10 @@ class MainActivity : ComponentActivity() {
           confirmButton = { TextButton(onClick = {
            showRemoveClothingConfirm = false
            prompt = "Edit this original fictional AI-generated adult character: remove clothing, preserving the original face, pose, lighting and background. The character is an adult aged 25 or older. Photorealistic."
-           status = "Edit instructions prepared. Tap AI Edit Photo below to start."
+           precisionEdit = false; maskMode = false
+           preserveOriginal = "Medium"; editStrength = 0.45f
+           status = "Clothing edit instructions ready. Starting image edit…"
+           requestImage(bitmap)
           }) { Text("Eligible fictional adult") } },
           dismissButton = { TextButton(onClick = { showRemoveClothingConfirm = false }) { Text("Cancel") } }
          )
