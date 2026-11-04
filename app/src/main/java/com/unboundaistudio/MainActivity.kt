@@ -85,7 +85,7 @@ class MainActivity : ComponentActivity() {
    var original by remember { mutableStateOf<Bitmap?>(null) }
    var brightness by remember { mutableFloatStateOf(0f) }
    var saturation by remember { mutableFloatStateOf(1f) }
-   var editStrength by remember { mutableFloatStateOf(0.69f) }
+   var editStrength by remember { mutableFloatStateOf(0.30f) }
     var preserveOriginal by remember { mutableStateOf("High") }
     var precisionEdit by remember { mutableStateOf(false) }
     var resolution by remember { mutableIntStateOf(prefs.getInt("resolution", 1024)) }
@@ -222,8 +222,9 @@ class MainActivity : ComponentActivity() {
         if (age == null || age < 18 || age > 100) { status = "Enter an adult age from 18 to 100"; return }
         listOf("Original fictional adult woman, age $age", appearance, bodyDescription, pose, setting, photoStyle, prompt).filter { it.isNotBlank() }.joinToString(", ")
        } else (promptOverride ?: prompt)
-       val requestedStrength = if (input != null) editStrength.coerceIn(0.0f, 1.0f) else editStrength
+       val requestedStrength = if (input != null) editStrength.coerceIn(0.10f, 0.80f) else editStrength
        val requestedHighQuality = highQuality
+       val editPrompt = if (input != null) "Edit the supplied source image. Apply only the requested modification. Preserve all unrelated facial features, body proportions, pose, camera framing, lighting, colors, and background. Do not regenerate a different person or scene. Requested change: $requestedPrompt" else editPrompt
        if (input != null && precisionEdit && (!maskMode || strokes.isEmpty())) {
         precisionEdit = false // Fall back to full-frame edit instead of silently blocking.
        }
@@ -241,7 +242,7 @@ class MainActivity : ComponentActivity() {
         try {
          result = withContext(Dispatchers.IO) {
           if (useNightmare) {
-           val generated = NightmareClient.generate(requestedPrompt, tokenForRun, input, requestedStrength, requestedHighQuality, resolution, editFlowForRun)
+           val generated = NightmareClient.generate(editPrompt, tokenForRun, input, requestedStrength, requestedHighQuality, resolution, editFlowForRun)
            check(!isNearlyWhiteImage(generated)) { "The AI returned a blank white image. Try a different flow or restart the model." }
            if (input != null && isSameImage(input, generated)) error("Nightmare returned the original image unchanged; verify the img2img flow and its image input.")
            if (mask != null && input != null) compositeMaskedEdit(input, generated, mask) else if (input != null) preserveDetectedFace(input, preserveFraming(input, generated)) else generated
@@ -250,12 +251,12 @@ class MainActivity : ComponentActivity() {
             ByteArrayOutputStream().use { stream -> bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream); Base64.encodeToString(stream.toByteArray(), Base64.NO_WRAP) }
            }
            if (mask != null) error("Painted-area edits require an HTTPS AUTOMATIC1111 server")
-           val frame = LocalDreamClient.generate(requestedPrompt, encoded, requestedStrength) { step, total ->
+           val frame = LocalDreamClient.generate(editPrompt, encoded, requestedStrength) { step, total ->
             runOnUiThread { status = "Creating image: step $step of $total" }
            }
            Bitmap.createBitmap(frame.pixels, frame.width, frame.height, Bitmap.Config.ARGB_8888)
           } else {
-           val generated = generateImage(address, requestedPrompt, input, requestedStrength, mask, requestedHighQuality)
+           val generated = generateImage(address, editPrompt, input, requestedStrength, mask, requestedHighQuality)
            if (input != null && mask == null) preserveFraming(input, generated) else generated
           }
          }
@@ -350,7 +351,7 @@ class MainActivity : ComponentActivity() {
            showRemoveClothingConfirm = false
            prompt = "Image-to-image edit of the PROVIDED SOURCE IMAGE, not a new scene. Keep exactly the same fictional adult character, blonde hair, facial features, identity, body proportions, seated pose, camera framing, beach, rocks, trees, water, lighting and colors. Change only the requested clothing area. Do not replace the person, change hair color, change the background, or move the camera. Photorealistic adult character aged 25 or older."
            precisionEdit = false; maskMode = false
-           preserveOriginal = "Low"; editStrength = 0.69f
+           preserveOriginal = "High"; editStrength = 0.35f
            status = "Clothing edit instructions ready. Starting image edit…"
            requestImage(bitmap, "Image-to-image edit of the PROVIDED SOURCE IMAGE, not a new scene. Keep exactly the same fictional adult character, blonde hair, facial features, identity, body proportions, seated pose, camera framing, beach, rocks, trees, water, lighting and colors. Change only the requested clothing area. Do not replace the person, change hair color, change the background, or move the camera. Photorealistic adult character aged 25 or older.")
           }) { Text("Eligible fictional adult") } },
