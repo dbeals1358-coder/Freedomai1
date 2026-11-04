@@ -13,7 +13,13 @@ android {
         versionCode = 20
         versionName = "2.0"
     }
-    buildFeatures { compose = true }
+    // The build injects this into the APK; it can be extracted from the APK.
+    val hfToken = System.getenv("HF_ACCESS_TOKEN").orEmpty()
+    require(hfToken.isEmpty() || Regex("hf_[A-Za-z0-9]+").matches(hfToken)) { "Invalid HF token format" }
+    buildFeatures { compose = true; buildConfig = true }
+    defaultConfig {
+        buildConfigField("String", "HF_ACCESS_TOKEN", "\"$hfToken\"")
+    }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
 }
