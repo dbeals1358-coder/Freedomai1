@@ -55,19 +55,28 @@ import java.net.HttpURLConnection
 import java.io.ByteArrayOutputStream
 
 class MainActivity : ComponentActivity() {
+ // Older APKs may have saved a setting under a different type. Never let
+ // incompatible preferences prevent the home screen from opening.
+ private fun safeString(prefs: android.content.SharedPreferences, key: String, fallback: String): String =
+  try { prefs.getString(key, fallback) ?: fallback } catch (_: ClassCastException) { fallback }
+ private fun safeBoolean(prefs: android.content.SharedPreferences, key: String, fallback: Boolean): Boolean =
+  try { prefs.getBoolean(key, fallback) } catch (_: ClassCastException) { fallback }
+ private fun safeInt(prefs: android.content.SharedPreferences, key: String, fallback: Int): Int =
+  try { prefs.getInt(key, fallback) } catch (_: ClassCastException) { fallback }
+
  override fun onCreate(savedInstanceState: Bundle?) {
   super.onCreate(savedInstanceState)
   setContent {
    val prefs = remember { getSharedPreferences("server", MODE_PRIVATE) }
-   var server by remember { mutableStateOf(prefs.getString("url", "") ?: "") }
-   var localMode by remember { mutableStateOf(prefs.getBoolean("local", true)) }
-   var nightmareMode by remember { mutableStateOf(prefs.getBoolean("nightmare", true)) }
-   var nightmareToken by remember { mutableStateOf(prefs.getString("nightmare_token", "") ?: "") }
-   var nightmareEditFlow by remember { mutableStateOf(prefs.getString("nightmare_edit_flow", "img2img") ?: "img2img") }
-   var videoUrl by remember { mutableStateOf(prefs.getString("video_url", "") ?: "") }
+   var server by remember { mutableStateOf(safeString(prefs, "url", "") ?: "") }
+   var localMode by remember { mutableStateOf(safeBoolean(prefs, "local", true)) }
+   var nightmareMode by remember { mutableStateOf(safeBoolean(prefs, "nightmare", true)) }
+   var nightmareToken by remember { mutableStateOf(safeString(prefs, "nightmare_token", "") ?: "") }
+   var nightmareEditFlow by remember { mutableStateOf(safeString(prefs, "nightmare_edit_flow", "img2img") ?: "img2img") }
+   var videoUrl by remember { mutableStateOf(safeString(prefs, "video_url", "") ?: "") }
    var motionPrompt by remember { mutableStateOf("") }
-   var nightmareVideoFlow by remember { mutableStateOf(prefs.getString("nightmare_video_flow", "current") ?: "current") }
-    var runwayKey by remember { mutableStateOf(prefs.getString("runway_key", "") ?: "") }
+   var nightmareVideoFlow by remember { mutableStateOf(safeString(prefs, "nightmare_video_flow", "current") ?: "current") }
+    var runwayKey by remember { mutableStateOf(safeString(prefs, "runway_key", "") ?: "") }
    var duration by remember { mutableIntStateOf(2) }
    var customSeconds by remember { mutableStateOf("") }
    var lastVideo by remember { mutableStateOf<Uri?>(null) }
@@ -101,7 +110,7 @@ class MainActivity : ComponentActivity() {
    var editStrength by remember { mutableFloatStateOf(0.30f) }
     var preserveOriginal by remember { mutableStateOf("High") }
     var precisionEdit by remember { mutableStateOf(false) }
-    var resolution by remember { mutableIntStateOf(prefs.getInt("resolution", 1024)) }
+    var resolution by remember { mutableIntStateOf(safeInt(prefs, "resolution", 1024)) }
     var generationPercent by remember { mutableStateOf(0) }
    var maskMode by remember { mutableStateOf(false) }
    var brush by remember { mutableFloatStateOf(0.06f) }
