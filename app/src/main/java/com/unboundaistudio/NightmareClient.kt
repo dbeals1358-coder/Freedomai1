@@ -56,7 +56,8 @@ internal object NightmareClient {
     fun generate(prompt: String, token: String, input: android.graphics.Bitmap?, strength: Float, highQuality: Boolean, resolution: Int = 1024, editFlow: String = "auto"): android.graphics.Bitmap {
         require(token.isNotBlank()) { "Enter your Nightmare API token in Connection settings" }
         require(!token.contains('\n') && !token.contains('\r')) { "Invalid Nightmare API token" }
-        authenticatedGet("/info", token)
+        // Skip the redundant authenticated /info round trip on every generation.
+        // The actual flow request validates the token and reports backend errors.
         require(editFlow == "auto" || editFlow == "current" || editFlow == "img2img" ||
                 editFlow == "inpaint" || editFlow == "flux_edit" || editFlow.startsWith("saved:")) {
             "Invalid Nightmare edit workflow: $editFlow"
