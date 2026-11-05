@@ -61,7 +61,7 @@ internal object NightmareClient {
         return Pair(w.coerceAtLeast(512), h.coerceAtLeast(512))
     }
 
-    fun generate(prompt: String, token: String, input: android.graphics.Bitmap?, strength: Float, highQuality: Boolean, resolution: Int = 1024, editFlow: String = "auto"): android.graphics.Bitmap {
+    fun generate(prompt: String, token: String, input: android.graphics.Bitmap?, strength: Float, highQuality: Boolean, resolution: Int = 1024, editFlow: String = "auto", speed: String = "BALANCED"): android.graphics.Bitmap {
         require(token.isNotBlank()) { "Enter your Nightmare API token in Connection settings" }
         require(!token.contains('\n') && !token.contains('\r')) { "Invalid Nightmare API token" }
         // Skip the redundant authenticated /info round trip on every generation.
@@ -75,7 +75,7 @@ internal object NightmareClient {
             .put("prompt", if (input == null) prompt else EditRequestRouting.promptFor(actualFlow, prompt))
 
         if (input == null) {
-            payload.put("steps", if (highQuality) 35 else 22)
+            payload.put("steps", when (speed) { "FAST" -> 14; "MAX QUALITY" -> 35; else -> if (highQuality) 35 else 22 })
                 .put("cfg", 6.0).put("width", resolution).put("height", resolution)
         } else {
             val (editWidth, editHeight) = editDimensions(input.width, input.height)
