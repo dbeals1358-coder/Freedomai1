@@ -7,7 +7,7 @@ package com.unboundaistudio
  */
 internal object EditRequestRouting {
     private val clothing = Regex(
-        "\\b(bikini|swim\\s*suit|swimsuit|swimwear|bathing\\s*suit|bra|top|shirt|shorts|pants|dress|skirt|outfit|clothing|clothes|garment|underwear|sleeves?)\\b",
+        "\\b(bikini|swim\\s*suit|swimsuit|swimwear|bathing\\s*suit|bra|top|shirt|jacket|coat|sweater|hoodie|socks|hat|shorts|pants|dress|skirt|outfit|clothing|clothes|garment|underwear|sleeves?)\\b",
         RegexOption.IGNORE_CASE
     )
     private val restyle = Regex(
