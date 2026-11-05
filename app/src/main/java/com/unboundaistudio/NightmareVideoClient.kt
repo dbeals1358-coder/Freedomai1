@@ -33,7 +33,7 @@ internal object NightmareVideoClient {
 
   // Unlike top-level width/height (which affect image samplers only),
   // params.<video node id> changes the actual Wan video generator.
-  val encodedFlow = URLEncoder.encode(flow, "UTF-8")
+  val encodedFlow = flow.split(":").joinToString(":") { URLEncoder.encode(it, "UTF-8") }
   val schema = JSONObject(NightmareClient.authenticatedGet("/flows/$encodedFlow", token))
 
   val scale = minOf(1f, 480f / maxOf(image.width, image.height))
@@ -54,15 +54,15 @@ internal object NightmareVideoClient {
   val response = try {
    run(token, flow, prompt, base64Image, plan)
   } catch (e: Exception) {
-   if (!memoryError(e.message.orEmpty()) || (plan.seconds == 1 && plan.width <= 384 && plan.height <= 384)) throw e
+   if (!memoryError(e.message.orEmpty()) || plan.width <= 384 && plan.height <= 384) throw e
    // A smaller video node and shorter clip substantially reduce NPU memory pressure.
    // Never silently retry with a different person or an image pan/zoom effect.
-   plan = NightmareVideoFlowPlanner.plan(schema, 1, targetSide = 384)
+   plan = NightmareVideoFlowPlanner.plan(schema, seconds, targetSide = 384)
    reduced = true
    try {
     run(token, flow, prompt, base64Image, plan)
    } catch (retry: Exception) {
-    error("Nightmare ran out of video model memory even at ${plan.width}x${plan.height} / 1s. Use a smaller Nightmare video model. ${retry.message}")
+    error("Nightmare ran out of video model memory even at ${plan.width}x${plan.height} / ${seconds}s. Use a smaller Nightmare video model. ${retry.message}")
    }
   }
 
@@ -82,7 +82,18 @@ internal object NightmareVideoClient {
    download.instanceFollowRedirects = false
    download.setRequestProperty("Authorization", "Bearer $token")
    check(download.responseCode == 200) { "Video download HTTP ${download.responseCode}" }
-   val mp4 = download.inputStream.use { it.readBytes() }
+   val mp4 = download.inputStream.use { input ->
+    ByteArrayOutputStream().use { output ->
+     val buffer = ByteArray(65536)
+     while (true) {
+      val count = input.read(buffer)
+      if (count < 0) break
+      check(output.size() + count <= 200 * 1024 * 1024) { "Video exceeds 200MB" }
+      output.write(buffer, 0, count)
+     }
+     output.toByteArray()
+    }
+   }
    require(mp4.size >= 12 && String(mp4, 4, 4, Charsets.US_ASCII) == "ftyp") {
     "Nightmare returned an invalid MP4 file"
    }
