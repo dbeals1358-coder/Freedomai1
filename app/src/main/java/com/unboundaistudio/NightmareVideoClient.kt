@@ -18,7 +18,7 @@ internal object NightmareVideoClient {
   // Nightmare /run does not accept duration fields; duration belongs to the selected workflow configuration.
   NightmareClient.authenticatedGet("/info", token)
   // Reduce input frame memory; the selected workflow may still override video dimensions.
-  val scale = minOf(1f, 640f / maxOf(image.width, image.height))
+  val scale = minOf(1f, 480f / maxOf(image.width, image.height))
   val input = if (scale < 1f) Bitmap.createScaledBitmap(image,
    maxOf(2, (image.width * scale).toInt()), maxOf(2, (image.height * scale).toInt()), true) else image
   val bytes = try {
@@ -42,7 +42,7 @@ internal object NightmareVideoClient {
    if (code !in 200..299) {
     if (body.contains("working memory", ignoreCase = true) ||
         body.contains("NPU could not hold", ignoreCase = true)) {
-     error("Nightmare NPU memory limit. Input was reduced, but the selected workflow controls video resolution and duration. Set its video node to 480p and 1 second, then retry.")
+     error("Nightmare NPU memory limit. Input was reduced, but the selected workflow controls video resolution and duration. The selected Nightmare workflow is still requesting more NPU memory than the phone has (for example 928×928 at 2 seconds). Set the workflow video node to 480×480 and 1 second, or use a lower-memory video model. Scaling the uploaded photo alone cannot override the workflow video node.")
     }
     error("Nightmare video HTTP $code: ${body.take(350)}")
    }
