@@ -76,7 +76,7 @@ class MainActivity : ComponentActivity() {
    }
    var videoUrl by remember { mutableStateOf(prefs.getString("video_url", "") ?: "") }
    var motionPrompt by remember { mutableStateOf("") }
-   var nightmareVideoFlow by remember { mutableStateOf(prefs.getString("nightmare_video_flow", "current") ?: "current") }
+   var nightmareVideoFlow by remember { mutableStateOf(prefs.getString("nightmare_video_flow", "auto") ?: "auto") }
     var runwayKey by remember { mutableStateOf(prefs.getString("runway_key", "") ?: "") }
    var duration by remember { mutableIntStateOf(1) }
    var customSeconds by remember { mutableStateOf("") }
@@ -699,7 +699,7 @@ class MainActivity : ComponentActivity() {
          scope.launch {
           try {
            val video = withContext(Dispatchers.IO) {
-            NightmareVideoClient.generate(nightmareToken, nightmareVideoFlow, image, motionPrompt, duration)
+            NightmareVideoClient.generate(nightmareToken, if (nightmareVideoFlow == "current") "auto" else nightmareVideoFlow, image, motionPrompt, duration)
            }
            val values = ContentValues().apply {
             put(MediaStore.Video.Media.DISPLAY_NAME, "FreedomAI_Motion_${System.currentTimeMillis()}.mp4")
