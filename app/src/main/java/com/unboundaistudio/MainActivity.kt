@@ -430,9 +430,20 @@ class MainActivity : ComponentActivity() {
 
       } else if (!videoMode && (tab == 1 || (tab == 2 && adultConfirmed && !fictionalAdultMode))) {
        if (tab == 2) Text("Private editing: adjust brightness and saturation, then save to app-private storage. AI edits may send your photo to the selected model/server. Only use images you have permission to edit.")
+       var showAdvancedEditing by remember { mutableStateOf(false) }
+       Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.weight(1f)) {
+         Text("AI editing", style = MaterialTheme.typography.titleMedium)
+         Text(if (nightmareMode) "Automatic · Nightmare" else if (onlineQwen) "Online Qwen" else if (nativeQwen) "Offline Qwen" else "Automatic", style = MaterialTheme.typography.bodySmall)
+        }
+        TextButton(onClick = { showAdvancedEditing = !showAdvancedEditing }) {
+         Text(if (showAdvancedEditing) "Hide settings" else "Advanced")
+        }
+       }
+       if (showAdvancedEditing) {
        Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-         Text("Qwen image editing", style = MaterialTheme.typography.titleMedium)
+         Text("Editing options", style = MaterialTheme.typography.titleMedium)
           Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
            Text("Use online Qwen for AI Edit", modifier = Modifier.weight(1f))
            Switch(checked = onlineQwen, enabled = !busy, onCheckedChange = {
@@ -457,7 +468,7 @@ class MainActivity : ComponentActivity() {
            }, label = { Text("Provider API key (required)") }, modifier = Modifier.fillMaxWidth(), singleLine = true,
             visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation())
           }
-          Text("Offline Qwen (keeps downloaded 11 GB model)")
+          Text("Offline Qwen (optional)")
          Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
           Text("Use Qwen for AI Edit (offline)", modifier = Modifier.weight(1f))
           Switch(checked = nativeQwen, enabled = !busy, onCheckedChange = {
@@ -465,7 +476,7 @@ class MainActivity : ComponentActivity() {
           })
          }
          Text(if (qwenReady) "Qwen editing model installed ✓" else "Qwen editing model not installed on this app. One-time download ~11 GB. Nightmare model files cannot be reused across Android app sandboxes.")
-         Text("When Nightmare is enabled, FreedomAI uses Nightmare’s installed editing model instead of the built-in 11 GB Qwen model or paid online Qwen. The separate built-in editor is optional. Qwen model weights have a separate Qwen Research License.")
+         Text("Nightmare uses its own installed editing model. Other options may require a separate download or provider account.")
          Text("Qwen editing quality (Fast preserves identity better in upstream testing):")
          Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
           listOf("TINY" to "320", "FAST" to "384", "STANDARD" to "512").forEach { (tier, label) ->
@@ -502,6 +513,7 @@ class MainActivity : ComponentActivity() {
           }, modifier = Modifier.fillMaxWidth()) { Text("Download Qwen Turbo editing models") }
          }
         }
+       }
        }
        Button(enabled = !busy, onClick = { picker.launch("image/*") }, modifier = Modifier.fillMaxWidth()) { Text("Choose Photo") }
        edited?.let { bitmap ->
