@@ -17,7 +17,7 @@ android {
     // The build injects this into the APK; it can be extracted from the APK.
     val hfToken = System.getenv("HF_ACCESS_TOKEN").orEmpty()
     val nightmareBuildToken = System.getenv("NIGHTMARE_API_TOKEN").orEmpty()
-    require(!nightmareBuildToken.contains('\\n') && !nightmareBuildToken.contains('\\r') && !nightmareBuildToken.contains('"') && !nightmareBuildToken.contains('\\')) { "Invalid Nightmare token characters" }
+    require(nightmareBuildToken.none { it.code == 10 || it.code == 13 || it.code == 34 || it.code == 92 }) { "Invalid Nightmare token characters" }
     require(hfToken.isEmpty() || Regex("hf_[A-Za-z0-9]+").matches(hfToken)) { "Invalid HF token format" }
     buildFeatures { compose = true; buildConfig = true }
     defaultConfig {
