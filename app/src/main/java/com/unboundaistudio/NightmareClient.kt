@@ -107,6 +107,8 @@ internal object NightmareClient {
                         .put("width", editWidth).put("height", editHeight)
                         .put("params", JSONObject().put("inpaint", JSONObject()
                             .put("pick_select", "true")
+                            // Nightmare validates dimensions on the inpaint node itself.
+                            .put("width", editWidth).put("height", editHeight)
                             .put("auto_crop", "true")
                             .put("only_masked", "true")
                             .put("stitch", "true")))
