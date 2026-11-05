@@ -97,13 +97,18 @@ internal object NightmareClient {
                     val installed = JSONObject(authenticatedGet("/models", token)).optJSONArray("models")
                         ?: error("Nightmare did not report its installed picture models.")
                     val supported = setOf("FLUX2", "FLUX3", "QWEN21", "FIBO2")
-                    val model = (0 until installed.length()).mapNotNull { installed.optJSONObject(it) }
-                        .firstOrNull { it.optString("family") in supported }
-                        ?.optString("id").orEmpty()
+                    // Prefer an already-installed Qwen checkpoint; do not download a
+                    // duplicate model into FreedomAI's private storage.
+                    val candidates = (0 until installed.length()).mapNotNull { installed.optJSONObject(it) }
+                        .filter { it.optString("family").uppercase() in supported }
+                    val model = candidates.firstOrNull { it.optString("family").equals("QWEN21", true) }
+                        ?.optString("id")
+                        ?: candidates.firstOrNull()?.optString("id").orEmpty()
                     check(model.isNotBlank()) {
                         "Nightmare has no instruction-edit model installed. Open Nightmare → Models → Edit and install a compatible FLUX Klein or Qwen Image model. Your RealVis/SDXL image-to-image flow only restyles the photo."
                     }
-                    // On 12 GB phones, a 512px reference edit is more memory-safe.
+                    // Use Nightmare's existing model and runtime, not the separate
+                    // Qwen engine inside FreedomAI. Keep the first edit small on 12 GB phones.
                     payload.put("model", model).put("cfg", 1.0).put("denoise", 1.0)
                         .put("width", 512).put("height", 512)
                 }
