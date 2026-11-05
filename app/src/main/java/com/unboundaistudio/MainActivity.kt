@@ -697,15 +697,12 @@ class MainActivity : ComponentActivity() {
          status = "Upscaling image to 4K…"
          generationJob = scope.launch {
           try {
-           val upscaled = withContext(Dispatchers.Default) {
-            val scale = 4096f / maxOf(source.width, source.height).toFloat()
-            val targetWidth = (source.width * scale).toInt().coerceAtLeast(1)
-            val targetHeight = (source.height * scale).toInt().coerceAtLeast(1)
-            Bitmap.createScaledBitmap(source, targetWidth, targetHeight, true)
+           val upscaled = withContext(Dispatchers.IO) {
+            AiSuperResolution.upscale(this@MainActivity, source)
            }
            kotlinx.coroutines.currentCoroutineContext().ensureActive()
            result = upscaled
-           status = "4K image ready (${upscaled.width}×${upscaled.height}). High-quality resizing, not AI detail enhancement. Tap Save Image."
+           status = "AI-enhanced 4K image ready. Tap Save Image."
           } catch (e: kotlinx.coroutines.CancellationException) { throw e }
           catch (e: OutOfMemoryError) { status = "Not enough memory for 4K upscale. Original image is safe." }
           catch (e: Exception) { status = "4K upscale failed: ${e.message}" }
