@@ -76,7 +76,7 @@ class MainActivity : ComponentActivity() {
    var motionPrompt by remember { mutableStateOf("") }
    var nightmareVideoFlow by remember { mutableStateOf(prefs.getString("nightmare_video_flow", "current") ?: "current") }
     var runwayKey by remember { mutableStateOf(prefs.getString("runway_key", "") ?: "") }
-   var duration by remember { mutableIntStateOf(2) }
+   var duration by remember { mutableIntStateOf(1) }
    var customSeconds by remember { mutableStateOf("") }
    var lastVideo by remember { mutableStateOf<Uri?>(null) }
    var busy by remember { mutableStateOf(false) }
@@ -515,7 +515,7 @@ class MainActivity : ComponentActivity() {
        if (busy) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
        Text("Choose a photo and describe movement.")
 
-       Text("Offline AI model status: MobileI2V inference is not yet integrated. The existing Generate button uses Nightmare on this phone, not a standalone video model.")
+       Text("AI video is rendered by Nightmare's installed model. FreedomAI now sends video resolution and duration directly to the Nightmare video node; if the NPU runs out of memory, it retries at a smaller size and 1 second. Standalone MobileI2V is not integrated yet.")
         OutlinedButton(onClick = {
          status = LocalAiMotionRuntime(java.io.File(filesDir, "models/video-v1")).use { it.readiness().reason }
         }, modifier = Modifier.fillMaxWidth()) { Text("Check offline AI model") }
@@ -526,7 +526,7 @@ class MainActivity : ComponentActivity() {
        OutlinedTextField(value = motionPrompt, onValueChange = { motionPrompt = it },
         label = { Text("Describe AI movement") }, modifier = Modifier.fillMaxWidth())
        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        listOf(2, 5, 10).forEach { secs ->
+        listOf(1, 2, 5, 10).forEach { secs ->
          OutlinedButton(onClick = { duration = secs; customSeconds = "" }) {
           Text(if (duration == secs) "✓ ${secs}s" else "${secs}s")
          }
@@ -540,7 +540,7 @@ class MainActivity : ComponentActivity() {
          status = "Generating AI motion in Nightmare…"
          scope.launch {
           try {
-           val mp4 = withContext(Dispatchers.IO) {
+           val video = withContext(Dispatchers.IO) {
             NightmareVideoClient.generate(nightmareToken, nightmareVideoFlow, image, motionPrompt, duration)
            }
            val values = ContentValues().apply {
@@ -551,11 +551,11 @@ class MainActivity : ComponentActivity() {
            }
            val uri = contentResolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values) ?: error("Cannot save video")
            try {
-            withContext(Dispatchers.IO) { contentResolver.openOutputStream(uri)?.use { it.write(mp4) } ?: error("Cannot write MP4") }
+            withContext(Dispatchers.IO) { contentResolver.openOutputStream(uri)?.use { it.write(video.bytes) } ?: error("Cannot write MP4") }
             contentResolver.update(uri, ContentValues().apply { put(MediaStore.Video.Media.IS_PENDING, 0) }, null, null)
             lastVideo = uri
             generationPercent = 100
-            status = "AI video saved to Movies/FreedomAI"
+            status = if (video.reducedForMemory) "AI video saved to Movies/FreedomAI (reduced to \\${video.width}×\\${video.height}, \\${video.seconds}s to fit NPU memory)." else "AI video saved to Movies/FreedomAI (\\${video.width}×\\${video.height}, \\${video.seconds}s)."
            } catch (e: Exception) { contentResolver.delete(uri, null, null); throw e }
           } catch (e: Exception) { status = "AI video failed: ${e.message}" }
           finally { busy = false }
