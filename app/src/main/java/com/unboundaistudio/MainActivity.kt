@@ -299,6 +299,7 @@ class MainActivity : ComponentActivity() {
       }
       }
       }
+      }
       if (tab == 0 || tab == 2) {
        Text("Image resolution")
        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -720,7 +721,6 @@ class MainActivity : ComponentActivity() {
     }
    }
   }
- }
  }
  private fun savePrivate(bitmap: Bitmap) {
   try {
