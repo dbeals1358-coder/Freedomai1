@@ -140,7 +140,7 @@ class MainActivity : ComponentActivity() {
       BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply { inSampleSize = sample })
      }
      brightness = 0f; saturation = 1f; strokes.clear(); result = if (videoMode) original else null; originalGeneratedHere = false; resultGeneratedHere = false
-    } catch (e: Exception) { toast("Couldn't open image") }
+    } catch (e: Exception) { Toast.makeText(this@MainActivity, "Couldn't open image", Toast.LENGTH_LONG).show() }
    }
    var motionModelMessage by remember { mutableStateOf("") }
    val motionModelPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -280,7 +280,7 @@ class MainActivity : ComponentActivity() {
        Text("1. Open Local Dream and load CyberRealistic v10.\n2. Keep its model screen open, then switch back here.\n3. Check connection, then generate.")
        OutlinedButton(enabled = !busy, onClick = {
         val intent = packageManager.getLaunchIntentForPackage("io.github.xororz.localdream")
-        if (intent != null) startActivity(intent) else toast("Open Local Dream from your phone's app list")
+        if (intent != null) startActivity(intent) else Toast.makeText(this@MainActivity, "Open Local Dream from your phone's app list", Toast.LENGTH_LONG).show()
        }) { Text("Open Local Dream") }
        OutlinedButton(enabled = !busy, onClick = {
         busy = true
