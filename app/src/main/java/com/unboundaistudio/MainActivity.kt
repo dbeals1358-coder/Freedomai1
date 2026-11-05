@@ -688,6 +688,31 @@ class MainActivity : ComponentActivity() {
         Slider(value = comparePosition, onValueChange = { comparePosition = it }, valueRange = 0f..1f)
        }
        if (!videoMode) OutlinedButton(onClick = { original = image; originalGeneratedHere = resultGeneratedHere; result = null; videoMode = false; tab = 1; maskMode = false; strokes.clear(); status = "Image loaded for editing. Choose an edit below."; }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Edit Image") }
+       if (!videoMode) OutlinedButton(onClick = {
+        if (image.width >= 4096 || image.height >= 4096) {
+         status = "Image is already 4K or larger."
+        } else {
+         val source = image
+         busy = true
+         status = "Upscaling image to 4K…"
+         generationJob = scope.launch {
+          try {
+           val upscaled = withContext(Dispatchers.Default) {
+            val scale = 4096f / maxOf(source.width, source.height).toFloat()
+            val targetWidth = (source.width * scale).toInt().coerceAtLeast(1)
+            val targetHeight = (source.height * scale).toInt().coerceAtLeast(1)
+            Bitmap.createScaledBitmap(source, targetWidth, targetHeight, true)
+           }
+           kotlinx.coroutines.currentCoroutineContext().ensureActive()
+           result = upscaled
+           status = "4K image ready (${upscaled.width}×${upscaled.height}). High-quality resizing, not AI detail enhancement. Tap Save Image."
+          } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+          catch (e: OutOfMemoryError) { status = "Not enough memory for 4K upscale. Original image is safe." }
+          catch (e: Exception) { status = "4K upscale failed: ${e.message}" }
+          finally { if (generationJob == kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job]) { busy = false; generationJob = null } }
+         }
+        }
+       }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("4K Upscale") }
        if (!videoMode) Button(onClick = { if (tab == 2) this@MainActivity.savePrivate(image) else this@MainActivity.save(image) }) { Text(if (tab == 2) "Save Privately" else "Save Image") }
        Text("Create Video", style = MaterialTheme.typography.titleLarge)
        if (status.isNotBlank()) Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
