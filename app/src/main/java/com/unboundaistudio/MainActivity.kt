@@ -84,13 +84,6 @@ class MainActivity : ComponentActivity() {
    var lastVideo by remember { mutableStateOf<Uri?>(null) }
    var busy by remember { mutableStateOf(false) }
    var generationJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
-   fun cancelGeneration() {
-    generationJob?.cancel()
-    generationJob = null
-    busy = false
-    generationPercent = 0
-    status = "Generation cancelled. A Nightmare request already running may continue on its server."
-   }
    // Native Qwen editor is fully on-device. Image generation still uses the selected backend.
    var nativeQwen by remember { mutableStateOf(prefs.getBoolean("native_qwen", true)) }
    var onlineQwen by remember { mutableStateOf(prefs.getBoolean("online_qwen", false)) }
@@ -136,6 +129,14 @@ class MainActivity : ComponentActivity() {
     var precisionEdit by remember { mutableStateOf(false) }
     var resolution by remember { mutableIntStateOf(prefs.getInt("resolution", 1024)) }
     var generationPercent by remember { mutableStateOf(0) }
+   fun cancelGeneration() {
+    generationJob?.cancel()
+    generationJob = null
+    busy = false
+    generationPercent = 0
+    status = "Generation cancelled. A Nightmare request already running may continue on its server."
+   }
+
    var maskMode by remember { mutableStateOf(false) }
    var brush by remember { mutableFloatStateOf(0.06f) }
    val strokes = remember { mutableStateListOf<List<Offset>>() }
