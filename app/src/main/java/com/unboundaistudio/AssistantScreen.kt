@@ -137,7 +137,7 @@ fun AssistantScreen(onCreateImage: (String) -> Unit = {}, onEditImage: (String) 
     error = ""
     scope.launch {
      try {
-      val answer = withContext(Dispatchers.IO) { if (localModelPath.isNotBlank()) offlineAssistantReply(context, localModelPath, history.toList()) else assistantReply(endpoint, model, apiKey, history.toList()) }
+      val answer = withContext(Dispatchers.IO) { if (localModelPath.isNotBlank() && File(localModelPath).length() > 100_000_000L) offlineAssistantReply(context, localModelPath, history.toList()) else if (endpoint.isBlank()) throw IllegalStateException("No AI model is installed or chat service connected. Tap Install offline AI, or enter an HTTPS chat API URL and model name.") else assistantReply(endpoint, model, apiKey, history.toList()) }
       history.add("assistant" to answer.replace(Regex("^(Assistant:\\s*)+", RegexOption.IGNORE_CASE), "").trim())
       if (speak) tts.speak(answer, TextToSpeech.QUEUE_FLUSH, null, "assistant-reply")
      } catch (e: Exception) {
@@ -150,6 +150,7 @@ fun AssistantScreen(onCreateImage: (String) -> Unit = {}, onEditImage: (String) 
 }
 
 private fun assistantReply(endpoint: String, model: String, apiKey: String, history: List<Pair<String, String>>): String {
+ require(endpoint.trim().startsWith("https://", ignoreCase = true)) { "Enter an HTTPS chat API URL, or install the offline AI model." }
  val url = URL(endpoint.trim())
  require(url.protocol == "https" && url.host.isNotBlank() && url.userInfo == null) { "Enter a valid HTTPS chat API URL." }
  require(model.isNotBlank()) { "Enter the chat model name." }
