@@ -61,7 +61,7 @@ internal object NightmareVideoClient {
    plan = NightmareVideoFlowPlanner.plan(schema, seconds, targetSide = 384)
    reduced = true
    try {
-    run(token, flow, prompt, base64Image, plan)
+    run(token, selected, prompt, base64Image, plan)
    } catch (retry: Exception) {
     error("Nightmare ran out of video model memory even at ${plan.width}x${plan.height} / ${seconds}s. Use a smaller Nightmare video model. ${retry.message}")
    }
@@ -107,22 +107,39 @@ internal object NightmareVideoClient {
   val catalog = JSONObject(raw)
   val candidates = mutableListOf<String>()
   if (preferred == "current") candidates.add("current")
-  val entries = catalog.optJSONArray("flows") ?: catalog.optJSONArray("saved")
-  if (entries != null) for (i in 0 until entries.length()) {
-   val item = entries.opt(i)
-   val name = if (item is JSONObject) item.optString("id", item.optString("name")) else item?.toString().orEmpty()
-   if (name.isNotBlank()) candidates.add(if (name == "current" || name.startsWith("saved:")) name else "saved:$name")
+  // Nightmare versions expose flow catalogs as arrays or keyed objects.
+  // Probe the exact identifiers returned by the server before trying saved: aliases.
+  for (key in listOf("flows", "saved", "workflows")) {
+   val entries = catalog.optJSONArray(key)
+   if (entries != null) for (i in 0 until entries.length()) {
+    val item = entries.opt(i)
+    val name = if (item is JSONObject) listOf("id", "name", "key").map { item.optString(it) }.firstOrNull { it.isNotBlank() }.orEmpty() else item?.toString().orEmpty()
+    if (name.isNotBlank()) {
+     candidates.add(name)
+     if (name != "current" && !name.startsWith("saved:")) candidates.add("saved:$name")
+    }
+   }
+   val entriesObject = catalog.optJSONObject(key)
+   if (entriesObject != null) {
+    val keys = entriesObject.keys()
+    while (keys.hasNext()) {
+     val name = keys.next()
+     candidates.add(name)
+     if (name != "current" && !name.startsWith("saved:")) candidates.add("saved:$name")
+    }
+   }
   }
   candidates.add("current")
+  val diagnostics = mutableListOf<String>()
   for (candidate in candidates.distinct()) {
    try {
     val encoded = URLEncoder.encode(candidate, "UTF-8")
     val schema = JSONObject(NightmareClient.authenticatedGet("/flows/$encoded", token))
     NightmareVideoFlowPlanner.plan(schema, 2)
     return candidate
-   } catch (_: Exception) { /* Try the next installed flow. */ }
+   } catch (e: Exception) { diagnostics.add("$candidate: ${e.message.orEmpty().take(120)}") }
   }
-  error("No compatible image-to-video workflow was found in Nightmare. Install or save a Wan image-to-video workflow first.")
+  error("No compatible image-to-video workflow found. Checked ${candidates.distinct().size} flows. ${diagnostics.take(3).joinToString(" | ")}. Verify a saved image-to-video workflow is installed in Nightmare.")
  }
 
  private fun run(
