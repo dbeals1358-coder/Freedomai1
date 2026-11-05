@@ -21,6 +21,10 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+          log-accepted-android-sdk-licenses: false
       - name: Show source version
         run: grep 'versionName' app/build.gradle.kts
       - uses: gradle/actions/setup-gradle@v4
@@ -33,7 +37,16 @@ jobs:
           grep -q 'Text("AI Edit")' app/src/main/java/com/unboundaistudio/MainActivity.kt
           grep -q 'AssistantScreen(' app/src/main/java/com/unboundaistudio/MainActivity.kt
           grep -q 'fun AssistantScreen(' app/src/main/java/com/unboundaistudio/AssistantScreen.kt
+      # The launcher drawable is generated from the checked-in source photo.
+      # Without this step AAPT fails: drawable/boobs_launcher not found.
+      - name: Restore selected launcher icon
+        run: |
+          mkdir -p app/src/main/res/drawable-nodpi
+          base64 --decode app/icon_source.b64 > app/src/main/res/drawable-nodpi/boobs_launcher.jpg
+          test -s app/src/main/res/drawable-nodpi/boobs_launcher.jpg
       - name: Test and assemble v2.0 debug APK
+        env:
+          HF_ACCESS_TOKEN: ${{ secrets.HF_ACCESS_TOKEN }}
         run: gradle --no-daemon testDebugUnitTest assembleDebug
       - name: Verify APK produced
         run: test -s app/build/outputs/apk/debug/app-debug.apk
