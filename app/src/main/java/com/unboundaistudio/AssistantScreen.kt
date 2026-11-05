@@ -36,6 +36,7 @@ fun AssistantScreen(onCreateImage: (String) -> Unit = {}, onEditImage: (String) 
  var error by remember { mutableStateOf("") }
  var localModelPath by remember { mutableStateOf(prefs.getString("local_model", "") ?: "") }
  var offlineSettingsVisible by remember { mutableStateOf(false) }
+ var showAssistantSettings by remember { mutableStateOf(false) }
  var useOfflineAssistant by remember { mutableStateOf(prefs.getBoolean("use_offline_assistant", false)) }
  val modelPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
   if (uri != null) {
@@ -69,7 +70,9 @@ fun AssistantScreen(onCreateImage: (String) -> Unit = {}, onEditImage: (String) 
  }
  Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
   Text("AI Assistant", style = MaterialTheme.typography.headlineMedium)
-  Text("Chat by typing or speaking. Online AI uses provider credits; offline AI requires a compatible .task language model.")
+  Text("Speak or type your message, then tap Send.")
+  TextButton(onClick = { showAssistantSettings = !showAssistantSettings }) { Text(if (showAssistantSettings) "Hide settings ↑" else "Assistant settings ↓") }
+  if (showAssistantSettings) {
   Text("Online assistant: Hugging Face Inference Providers. HTTP 402 means provider credits or billing are required. When a compatible offline model is installed, online failures can fall back to offline automatically.")
   if (BuildConfig.HF_ACCESS_TOKEN.isNotBlank()) {
    Text("Hugging Face access configured for this build.")
@@ -182,7 +185,14 @@ fun AssistantScreen(onCreateImage: (String) -> Unit = {}, onEditImage: (String) 
            throw IllegalStateException("Online assistant failed: ${onlineError.message}. Offline fallback failed: ${offlineError.message}")
           }
          } else {
-          throw IllegalStateException("${onlineError.message}. Install a compatible offline .task language model under Offline model setup to enable free local fallback.")
+          downloading = true
+           downloadStatus = "Online chat unavailable. Setting up free offline assistant..."
+           val downloaded = downloadGemmaModel(context, effectiveHfToken) { percent -> downloadPercent = percent }
+           localModelPath = downloaded
+           prefs.edit().putString("local_model", downloaded).apply()
+           downloading = false
+           downloadStatus = "Offline assistant ready."
+           offlineAssistantReply(context, downloaded, history.toList())
          }
         }
        }
@@ -191,7 +201,7 @@ fun AssistantScreen(onCreateImage: (String) -> Unit = {}, onEditImage: (String) 
       if (speak) tts.speak(answer, TextToSpeech.QUEUE_FLUSH, null, "assistant-reply")
      } catch (e: Exception) {
       error = e.message ?: "Assistant connection failed."
-     } finally { busy = false }
+     } finally { busy = false; downloading = false }
     }
    }) { Text(if (busy) "Thinking…" else "Send") }
   }
