@@ -409,7 +409,7 @@ class MainActivity : ComponentActivity() {
               com.scsonic.qwenimage21.QwenImage21.Size.Tier.valueOf(qwenTier)
              ) { percentage -> runOnUiThread { generationPercent = percentage } }
             } else if (maskUnavailable) {
-             runOnUiThread { status = "Clothing mask unavailable. Trying Nightmare's installed Qwen instruction editor…" }
+             runOnUiThread { status = "Automatic clothing masking is unavailable in Nightmare. Checking whether its installed instruction editor can handle this edit…" }
              NightmareClient.generate(editPrompt, tokenForRun, input, requestedStrength, requestedHighQuality, resolution, "flux_edit")
             } else throw nightmareError
            }
