@@ -18,6 +18,12 @@ class AutomaticClothingEditTest {
         assertEquals("red", req!!.color)
     }
 
+    @Test fun backgroundColorDoesNotOverrideGarmentTarget() {
+        val req = AutomaticClothingEdit.parse("red bikini; keep the blue water and beach unchanged")
+        assertNotNull(req)
+        assertEquals("red", req!!.color)
+    }
+
     @Test fun topOnlyIsRecognized() {
         val req = AutomaticClothingEdit.parse("Make the bikini top purple")
         assertNotNull(req)
