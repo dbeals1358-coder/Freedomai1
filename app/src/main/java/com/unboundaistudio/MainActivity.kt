@@ -131,9 +131,9 @@ class MainActivity : ComponentActivity() {
          if (cursor.moveToFirst()) cursor.getString(0) else null
         }
        } ?: ""
-       val allowed = setOf("text_encoder.onnx", "image_encoder.onnx", "denoiser.onnx", "video_decoder.onnx")
+       val allowed = setOf("vae_encoder.onnx", "qwen2_encoder.onnx", "mobilei2v_unet.onnx", "turbo_vaed.onnx")
        require(filename in allowed) { "Choose one of: " + allowed.joinToString() }
-       val dir = java.io.File(filesDir, "motion_models").apply { mkdirs() }
+       val dir = java.io.File(filesDir, "models/video-v1").apply { mkdirs() }
        val target = java.io.File(dir, filename)
        withContext(Dispatchers.IO) {
         val temp = java.io.File(dir, filename + ".partial")
