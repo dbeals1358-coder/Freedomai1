@@ -27,7 +27,7 @@ internal object AutomaticClothingEdit {
         "purple" to 275f, "pink" to 330f, "magenta" to 305f
     )
     private val colors = Regex("\\b(red|crimson|orange|yellow|green|teal|turquoise|blue|navy|purple|pink|magenta)\\b", RegexOption.IGNORE_CASE)
-    private val bikini = Regex("\\b(bikini|two[- ]piece)\\b", RegexOption.IGNORE_CASE)
+    private val bikini = Regex("\\b(bikini|two[- ]piece|swimsuit|swimwear|bathing\\s+suit)\\b", RegexOption.IGNORE_CASE)
     private val otherChanges = Regex("\\b(nude|naked|remove|erase|add|shorts|jeans|pants|dress|skirt|smaller|larger|resize|replace|reposition|background to|different person)\\b", RegexOption.IGNORE_CASE)
 
     /** A short color-only command, e.g. 'red bikini' or 'change the blue bikini to red'. */
@@ -38,9 +38,9 @@ internal object AutomaticClothingEdit {
         val palette = "(red|crimson|orange|yellow|green|teal|turquoise|blue|navy|purple|pink|magenta)"
         val targetAfterTo = Regex("\\b(?:to|into)\\s+" + palette + "\\b", RegexOption.IGNORE_CASE)
             .findAll(prompt).lastOrNull()?.groupValues?.get(1)
-        val beforeBikini = Regex("\\b" + palette + "\\s+(?:\\w+\\s+){0,2}(?:bikini|two[- ]piece)\\b", RegexOption.IGNORE_CASE)
+        val beforeBikini = Regex("\\b" + palette + "\\s+(?:\\w+\\s+){0,2}(?:bikini|two[- ]piece|swimsuit|swimwear|bathing\\s+suit)\\b", RegexOption.IGNORE_CASE)
             .find(prompt)?.groupValues?.get(1)
-        val afterBikini = Regex("\\b(?:bikini|two[- ]piece)(?:\\s+(?:top|bottoms?))?\\s+(?:color\\s+)?(?:is\\s+|be\\s+)?" + palette + "\\b", RegexOption.IGNORE_CASE)
+        val afterBikini = Regex("\\b(?:bikini|two[- ]piece|swimsuit|swimwear|bathing\\s+suit)(?:\\s+(?:top|bottoms?))?\\s+(?:color\\s+)?(?:is\\s+|be\\s+)?" + palette + "\\b", RegexOption.IGNORE_CASE)
             .find(prompt)?.groupValues?.get(1)
         val name = (targetAfterTo ?: beforeBikini ?: afterBikini)?.lowercase() ?: return null
         val targetHue = colorNames[name] ?: return null
