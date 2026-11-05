@@ -300,7 +300,7 @@ class MainActivity : ComponentActivity() {
        val useOnlineEdit = input != null && onlineQwen
         val useNativeEdit = input != null && nativeQwen && !useOnlineEdit
        // Native edits receive the actual input bitmap, even for simple color changes.
-       val autoColorRequest = if (input != null && !maskMode && !useNativeEdit) AutomaticClothingEdit.parse(promptOverride ?: prompt) else null
+       val autoColorRequest = if (input != null && !maskMode && !useNativeEdit && !useOnlineEdit) AutomaticClothingEdit.parse(promptOverride ?: prompt) else null
        if (useOnlineEdit && (onlineQwenUrl.isBlank() || onlineQwenModel.isBlank())) {
          status = "Online Qwen needs an image-edit API endpoint and model name. Enter them in the Edit tab."
          return
