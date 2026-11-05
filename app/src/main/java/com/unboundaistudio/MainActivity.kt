@@ -129,6 +129,8 @@ class MainActivity : ComponentActivity() {
     var precisionEdit by remember { mutableStateOf(false) }
     var resolution by remember { mutableIntStateOf(prefs.getInt("resolution", 1024)) }
     var generationPercent by remember { mutableStateOf(0) }
+    var generationSpeed by remember { mutableStateOf(prefs.getString("generation_speed", "BALANCED") ?: "BALANCED") }
+    var imageElapsedSeconds by remember { mutableIntStateOf(0) }
    fun cancelGeneration() {
     generationJob?.cancel()
     videoJob?.cancel()
@@ -137,6 +139,7 @@ class MainActivity : ComponentActivity() {
     busy = false
     nativeProgress = false
     generationPercent = 0
+    imageElapsedSeconds = 0
     status = "Cancelled. Remote Nightmare processing may continue on its server."
    }
 
@@ -331,6 +334,13 @@ class MainActivity : ComponentActivity() {
       }
       }
       if (tab == 0 || tab == 2) {
+       Text("Generation speed")
+       Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        listOf("FAST", "BALANCED", "MAX QUALITY").forEach { speed ->
+         OutlinedButton(onClick = { generationSpeed = speed; prefs.edit().putString("generation_speed", speed).apply() }) { Text(if (generationSpeed == speed) "✓ $speed" else speed) }
+        }
+       }
+       Text("FAST: 768px / 14 steps • BALANCED: selected resolution / 22 steps • MAX QUALITY: selected resolution / 35 steps")
        Text("Image resolution")
        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         listOf(512, 768, 1024).forEach { size ->
@@ -341,6 +351,7 @@ class MainActivity : ComponentActivity() {
       if (busy) {
         Button(onClick = { cancelGeneration() }, colors = ButtonDefaults.buttonColors(containerColor = UiColor(0xFFB3261E), contentColor = UiColor.White), modifier = Modifier.fillMaxWidth()) { Text("Cancel") }
         LinearProgressIndicator(progress = { generationPercent / 100f }, modifier = Modifier.fillMaxWidth())
+        Text("Elapsed: ${imageElapsedSeconds}s")
         Text(if (nativeProgress) "Qwen editing: $generationPercent% (model progress)" else "AI is processing your image… ${generationPercent}% is an estimate; final rendering may take longer.")
        }
       if (status.isNotEmpty() && !status.startsWith("Nightmare v")) Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceVariant) { Text(status, modifier = Modifier.fillMaxWidth().padding(16.dp)) }
@@ -374,7 +385,8 @@ class MainActivity : ComponentActivity() {
         listOf("Original fictional adult woman, age $age", appearance, bodyDescription, pose, setting, photoStyle, prompt).filter { it.isNotBlank() }.joinToString(", ")
        } else (promptOverride ?: prompt)
        val requestedStrength = if (input != null) editStrength.coerceIn(0.10f, 0.80f) else editStrength
-       val requestedHighQuality = highQuality
+       val requestedHighQuality = generationSpeed == "MAX QUALITY"
+       val requestedResolution = if (input == null && generationSpeed == "FAST") 768 else resolution
        val editPrompt = if (input != null) "$requestedPrompt. Keep the same person, face, pose, camera and background." else requestedPrompt
        if (input != null && precisionEdit && (!maskMode || strokes.isEmpty())) {
         status = "Precision Edit requires a painted area. Paint the region to change or disable Precision Edit."
@@ -387,9 +399,13 @@ class MainActivity : ComponentActivity() {
         // Nightmare does not currently expose generation progress through this client.
         // Show an explicitly estimated percentage, capped below 100 until an image arrives.
         val progressJob = if (useNativeEdit) null else scope.launch {
+         imageElapsedSeconds = 0
          while (isActive && busy) {
-          delay(1500)
-          if (busy) generationPercent = (generationPercent + 1).coerceAtMost(80)
+          delay(1000)
+          if (busy) {
+           imageElapsedSeconds++
+           generationPercent = (generationPercent + 1).coerceAtMost(80)
+          }
          }
         }
        generationJob = scope.launch {
@@ -416,7 +432,7 @@ class MainActivity : ComponentActivity() {
             ?: error("Unable to confidently identify colored bikini fabric in this photo. Original image was not changed. Automatic color editing currently supports vivid bikini fabric in a front-facing portrait.")
           } else if (useNightmare) {
            val generated = try {
-            NightmareClient.generate(editPrompt, tokenForRun, input, requestedStrength, requestedHighQuality, resolution, editFlowForRun)
+            NightmareClient.generate(editPrompt, tokenForRun, input, requestedStrength, requestedHighQuality, requestedResolution, editFlowForRun)
            } catch (nightmareError: Exception) {
             val maskUnavailable = input != null && nightmareError.message.orEmpty().contains("automatic clothing mask is unavailable", ignoreCase = true)
             if (maskUnavailable && qwenReady) {
