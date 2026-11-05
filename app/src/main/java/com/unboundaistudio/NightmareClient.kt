@@ -140,11 +140,7 @@ internal object NightmareClient {
             if (code !in 200..299 && actualFlow == "inpaint" &&
                 (body.contains("parser", true) || body.contains("picked by name", true) ||
                  body.contains("auto mask", true))) {
-                return try {
-                    generate(prompt, token, input, strength, highQuality, resolution, "flux_edit")
-                } catch (fallback: Exception) {
-                    error("Clothes Auto Mask is unavailable and instruction-edit fallback failed: ${fallback.message}. Install Clothes Auto Mask in Nightmare Models > Tools, or a compatible instruction-edit model in Models > Edit. Original photo was not changed.")
-                }
+                error("Nightmare automatic clothing mask is unavailable. Original photo preserved. Install or enable Clothes Auto Mask in Nightmare; full-frame AI regeneration is disabled for clothing edits to prevent changing the face and background.")
             }
             check(code in 200..299) { "Nightmare HTTP $code (flow: $actualFlow): ${body.take(350)}" }
             check(body.isNotBlank()) { "Nightmare returned an empty response" }
