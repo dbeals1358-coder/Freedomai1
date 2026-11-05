@@ -1,0 +1,63 @@
+name: FreedomAI 2.1 Native Qwen APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/native-qwen-edit
+    paths:
+      - 'app/**'
+      - '.github/workflows/build-native-qwen.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+          log-accepted-android-sdk-licenses: false
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+      - name: Fetch native Qwen 2.1 Android runtime (upstream v0.4.0 AAR)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p app/libs "$RUNNER_TEMP/qwen-aar"
+          gh release download v0.4.0 --repo scsonic/libQwenImage21 --pattern '*.aar' --dir "$RUNNER_TEMP/qwen-aar"
+          count=$(find "$RUNNER_TEMP/qwen-aar" -type f -name '*.aar' | wc -l)
+          test "$count" -eq 1
+          cp "$(find "$RUNNER_TEMP/qwen-aar" -type f -name '*.aar' -print -quit)" app/libs/qwenimage21.aar
+          test -s app/libs/qwenimage21.aar
+          unzip -l app/libs/qwenimage21.aar | grep -E 'classes.jar|jni/arm64-v8a/libqwenimage21_jni.so'
+      - name: Install existing FreedomAI launcher icon
+        run: |
+          mkdir -p app/src/main/res/drawable-nodpi
+          base64 --decode app/icon_source.b64 > app/src/main/res/drawable-nodpi/boobs_launcher.jpg
+          test -s app/src/main/res/drawable-nodpi/boobs_launcher.jpg
+      - name: Assemble and run unit tests
+        env:
+          HF_ACCESS_TOKEN: ${{ secrets.HF_ACCESS_TOKEN }}
+        run: gradle --no-daemon testDebugUnitTest assembleDebug
+      - name: Verify package metadata and name APK
+        run: |
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          unzip -l app/build/outputs/apk/debug/app-debug.apk | grep 'lib/arm64-v8a/libqwenimage21_jni.so'
+          cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/FreedomAI-2.1-Qwen-debug.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FreedomAI-2.1-Qwen-APK
+          path: app/build/outputs/apk/debug/FreedomAI-2.1-Qwen-debug.apk
+          if-no-files-found: error
+          retention-days: 14
