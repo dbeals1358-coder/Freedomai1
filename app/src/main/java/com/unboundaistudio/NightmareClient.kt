@@ -134,7 +134,11 @@ internal object NightmareClient {
             if (code !in 200..299 && actualFlow == "inpaint" &&
                 (body.contains("parser", true) || body.contains("picked by name", true) ||
                  body.contains("auto mask", true))) {
-                error("Automatic clothing selection requires Nightmare's Clothes Auto Mask tool (29 MB). Install it under Nightmare → Models → Tools, then retry. Original photo was not changed.")
+                return try {
+                    generate(prompt, token, input, strength, highQuality, resolution, "flux_edit")
+                } catch (fallback: Exception) {
+                    error("Clothes Auto Mask is unavailable and instruction-edit fallback failed: ${fallback.message}. Install Clothes Auto Mask in Nightmare Models > Tools, or a compatible instruction-edit model in Models > Edit. Original photo was not changed.")
+                }
             }
             check(code in 200..299) { "Nightmare HTTP $code (flow: $actualFlow): ${body.take(350)}" }
             check(body.isNotBlank()) { "Nightmare returned an empty response" }
