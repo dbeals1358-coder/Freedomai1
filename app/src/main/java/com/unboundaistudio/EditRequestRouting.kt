@@ -15,7 +15,7 @@ internal object EditRequestRouting {
         RegexOption.IGNORE_CASE
     )
     private val change = Regex(
-        "\\b(change|alter|edit|make|turn|replace|remove|add|swap|recolor|resize|shrink|enlarge|shorten|lengthen|different|color|colour|red|blue|green|yellow|pink|white|black|purple|orange|nude|naked)\\b",
+        "\\b(change|alter|turn|replace|remove|add|swap|recolor|resize|shrink|enlarge|shorten|lengthen|different|color|colour|red|blue|green|yellow|pink|white|black|purple|orange|nude|naked)\\b",
         RegexOption.IGNORE_CASE
     )
     fun clothingRequested(prompt: String): Boolean = clothing.containsMatchIn(prompt)
