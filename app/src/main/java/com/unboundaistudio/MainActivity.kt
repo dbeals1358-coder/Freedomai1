@@ -721,6 +721,7 @@ class MainActivity : ComponentActivity() {
    }
   }
  }
+ }
  private fun savePrivate(bitmap: Bitmap) {
   try {
    val dir = java.io.File(filesDir, "private_photos").apply { mkdirs() }
