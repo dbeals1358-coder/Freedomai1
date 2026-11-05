@@ -115,6 +115,7 @@ class MainActivity : ComponentActivity() {
    var photoStyle by remember { mutableStateOf("Photorealistic natural lighting") }
    var highQuality by remember { mutableStateOf(true) }
    var showConnection by remember { mutableStateOf(false) }
+   var showAdvancedConnection by remember { mutableStateOf(false) }
    var prompt by remember { mutableStateOf("") }
    var showRemoveClothingConfirm by remember { mutableStateOf(false) }
    var original by remember { mutableStateOf<Bitmap?>(null) }
@@ -218,7 +219,7 @@ class MainActivity : ComponentActivity() {
      }
     }) { inset ->
      Column(Modifier.padding(inset).fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-      Text("Boobs v2.3", style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.primary)
+      Text("FreedomAI", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary)
       Text(if (videoMode) "Create video from a photo" else if (tab == -1) "What will you create?" else if (tab == 0) "Turn your ideas into images" else if (tab == 3) "Your conversational AI" else if (tab == 2) "Private 18+ studio" else "Give your photos a fresh look", style = MaterialTheme.typography.titleLarge)
       if (tab == 3) {
        AssistantScreen(
@@ -230,7 +231,7 @@ class MainActivity : ComponentActivity() {
       if (tab == -1) {
        Column(Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(UiColor(0xFF332451), UiColor(0xFF192F49))), RoundedCornerShape(28.dp)).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text("✦", style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.primary)
-        Text("Dream It. Build It.\nCrank It.", style = MaterialTheme.typography.headlineLarge)
+        Text("Your AI Studio", style = MaterialTheme.typography.headlineLarge)
         Text("Create or edit photos and videos.", color = UiColor(0xFFD3D0E3))
         Button(onClick = { tab = 0 }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("Create Image") }
         OutlinedButton(onClick = { tab = 1 }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("Edit Photo") }
@@ -240,11 +241,11 @@ class MainActivity : ComponentActivity() {
        }
       }
       if (showAdultConfirm) AlertDialog(onDismissRequest = { showAdultConfirm = false }, title = { Text("18+ private editor") }, text = { Text("Only continue if you are 18 or older and have permission to use the images. Imported photos remain on this device unless you choose an online AI server. This is an age confirmation, not identity verification.") }, confirmButton = { TextButton(onClick = { adultConfirmed = true; showAdultConfirm = false; tab = 2; fictionalAdultMode = false; result = null }) { Text("I am 18 or older") } }, dismissButton = { TextButton(onClick = { showAdultConfirm = false }) { Text("Cancel") } })
-      TextButton(onClick = { showConnection = !showConnection }) { Text(if (showConnection) "Hide connection settings ↑" else "Connection settings ↓") }
+      if (tab != -1) TextButton(onClick = { showConnection = !showConnection }) { Text(if (showConnection) "Hide connections ↑" else "Connections & settings ↓") }
       if (showConnection) {
       Card(Modifier.fillMaxWidth()) {
       Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-      Text("Nightmare (RealVis XL V5)", style = MaterialTheme.typography.titleMedium)
+      Text("Nightmare", style = MaterialTheme.typography.titleMedium)
       Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
        Text("Use Nightmare for images")
        Switch(checked = nightmareMode, enabled = !busy, onCheckedChange = { nightmareMode = it; prefs.edit().putBoolean("nightmare", it).apply() })
