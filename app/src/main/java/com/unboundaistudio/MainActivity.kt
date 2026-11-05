@@ -64,7 +64,7 @@ class MainActivity : ComponentActivity() {
    var server by remember { mutableStateOf(prefs.getString("url", "") ?: "") }
    var localMode by remember { mutableStateOf(prefs.getBoolean("local", true)) }
    var nightmareMode by remember { mutableStateOf(prefs.getBoolean("nightmare", true)) }
-   var nightmareToken by remember { mutableStateOf(prefs.getString("nightmare_token", "") ?: "") }
+   var nightmareToken by remember { mutableStateOf((BuildConfig.NIGHTMARE_API_TOKEN.ifBlank { prefs.getString("nightmare_token", "") ?: "" })) }
    var nightmareEditFlow by remember {
     // Migrate the old img2img default. That flow restyles instead of making precise changes.
     if (!prefs.getBoolean("edit_flow_migrated_v3", false)) {
