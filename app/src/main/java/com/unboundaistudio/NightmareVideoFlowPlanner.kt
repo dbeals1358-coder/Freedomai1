@@ -3,6 +3,7 @@ package com.unboundaistudio
 import org.json.JSONArray
 import org.json.JSONObject
 import kotlin.math.ceil
+import kotlin.math.abs
 
 /**
  * Uses Nightmare's GET /flows/<id> schema to override the ACTUAL video node.
@@ -13,6 +14,7 @@ internal object NightmareVideoFlowPlanner {
   val params: JSONObject,
   val imageNodeIds: Set<String>,
   val seconds: Int,
+  val durationLabel: String,
   val width: Int,
   val height: Int
  )
@@ -39,6 +41,7 @@ internal object NightmareVideoFlowPlanner {
 
   val params = JSONObject()
   var duration = 0
+  var durationLabel = ""
   var width = targetSide
   var height = targetSide
   for (node in videoNodes) {
@@ -60,6 +63,7 @@ internal object NightmareVideoFlowPlanner {
     error("This workflow supports at most ${maxSeconds}s per video. Choose a shorter duration.")
    }
    val secondValue = lengthValue(secondsWidget, perPart)
+   durationLabel = if (parts > 1) "${secondValue.toDoubleOrNull()?.times(parts) ?: requestedSeconds.toDouble()}" else secondValue
    val overrides = JSONObject().put("width", w.toString()).put("height", h.toString())
     .put("seconds", secondValue)
    if (parts > 1) overrides.put("parts", parts.toString())
@@ -68,7 +72,7 @@ internal object NightmareVideoFlowPlanner {
    height = h
    duration = requestedSeconds
   }
-  return Plan(params, imageNodes, duration, width, height)
+  return Plan(params, imageNodes, duration, durationLabel, width, height)
  }
 
  private fun widget(node: JSONObject, name: String): JSONObject? {
@@ -93,8 +97,9 @@ internal object NightmareVideoFlowPlanner {
    val values = (0 until options.length()).map { options.optString(it) }
    // A model with a fixed menu (e.g. MiniMax) must receive its literal option,
    // rather than an invented duration the API will reject.
-   val exact = values.firstOrNull { it == requested.toString() || it == "$requested.0" }
-   return exact ?: error("The selected video model uses fixed duration choices: ${values.joinToString()}. Choose a supported duration in Nightmare.")
+   val choice = values.mapNotNull { value -> value.toDoubleOrNull()?.let { value to it } }
+    .minByOrNull { (_, n) -> abs(n - requested.toDouble()) }
+   return choice?.first ?: error("Unsupported video duration choices: ${values.joinToString()}")
   }
   val min = widget.optInt("min", 0)
   val max = widget.optInt("max", requested)
