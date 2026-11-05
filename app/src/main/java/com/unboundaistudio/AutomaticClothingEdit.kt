@@ -33,9 +33,16 @@ internal object AutomaticClothingEdit {
     /** A short color-only command, e.g. 'red bikini' or 'change the blue bikini to red'. */
     fun parse(prompt: String): Request? {
         if (!bikini.containsMatchIn(prompt) || otherChanges.containsMatchIn(prompt)) return null
-        val matches = colors.findAll(prompt).toList()
-        if (matches.isEmpty()) return null
-        val name = matches.last().value.lowercase()
+        // Associate the color with the garment, not unrelated colors in the scenery.
+        // "red bikini; keep the blue ocean" must select RED, not BLUE.
+        val palette = "(red|crimson|orange|yellow|green|teal|turquoise|blue|navy|purple|pink|magenta)"
+        val targetAfterTo = Regex("\\b(?:to|into)\\s+" + palette + "\\b", RegexOption.IGNORE_CASE)
+            .findAll(prompt).lastOrNull()?.groupValues?.get(1)
+        val beforeBikini = Regex("\\b" + palette + "\\s+(?:\\w+\\s+){0,2}(?:bikini|two[- ]piece)\\b", RegexOption.IGNORE_CASE)
+            .find(prompt)?.groupValues?.get(1)
+        val afterBikini = Regex("\\b(?:bikini|two[- ]piece)(?:\\s+(?:top|bottoms?))?\\s+(?:color\\s+)?(?:is\\s+|be\\s+)?" + palette + "\\b", RegexOption.IGNORE_CASE)
+            .find(prompt)?.groupValues?.get(1)
+        val name = (targetAfterTo ?: beforeBikini ?: afterBikini)?.lowercase() ?: return null
         val targetHue = colorNames[name] ?: return null
         val topOnly = Regex("\\bbikini\\s+top\\b|\\btop\\s+of\\s+(the\\s+)?bikini\\b", RegexOption.IGNORE_CASE).containsMatchIn(prompt)
         val bottomOnly = Regex("\\bbikini\\s+bottoms?\\b|\\bbottoms?\\s+of\\s+(the\\s+)?bikini\\b", RegexOption.IGNORE_CASE).containsMatchIn(prompt)
