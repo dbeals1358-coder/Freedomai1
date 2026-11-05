@@ -670,7 +670,7 @@ class MainActivity : ComponentActivity() {
        if (busy) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
        Text("Choose a photo and describe movement.")
 
-       Text("AI video is rendered by Nightmare's installed model. FreedomAI now sends video resolution and duration directly to the Nightmare video node; if the NPU runs out of memory, it retries at a smaller size and 1 second. Standalone MobileI2V is not integrated yet.")
+       Text("AI video is rendered by Nightmare's installed model. FreedomAI now sends video resolution and duration directly to the Nightmare video node; if the NPU runs out of memory, it retries at a smaller resolution while keeping the requested duration. Standalone MobileI2V is not integrated yet.")
         OutlinedButton(onClick = {
          status = LocalAiMotionRuntime(java.io.File(filesDir, "models/video-v1")).use { it.readiness().reason }
         }, modifier = Modifier.fillMaxWidth()) { Text("Check offline AI model") }
