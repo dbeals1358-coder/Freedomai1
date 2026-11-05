@@ -117,6 +117,7 @@ class MainActivity : ComponentActivity() {
    var showConnection by remember { mutableStateOf(false) }
    var showAdvancedConnection by remember { mutableStateOf(false) }
    var prompt by remember { mutableStateOf("") }
+   var pendingAssistantImage by remember { mutableStateOf<String?>(null) }
    var showRemoveClothingConfirm by remember { mutableStateOf(false) }
    var original by remember { mutableStateOf<Bitmap?>(null) }
    var brightness by remember { mutableFloatStateOf(0f) }
@@ -223,7 +224,7 @@ class MainActivity : ComponentActivity() {
       Text(if (videoMode) "Create video from a photo" else if (tab == -1) "What will you create?" else if (tab == 0) "Turn your ideas into images" else if (tab == 3) "Your conversational AI" else if (tab == 2) "Private 18+ studio" else "Give your photos a fresh look", style = MaterialTheme.typography.titleLarge)
       if (tab == 3) {
        AssistantScreen(
-         onCreateImage = { request -> prompt = request; videoMode = false; tab = 0; status = "Image prompt ready. Tap Create Image." },
+         onCreateImage = { request -> prompt = request; videoMode = false; tab = 0; pendingAssistantImage = request; status = "Assistant is starting image generation…" },
          onEditImage = { request -> prompt = request; videoMode = false; tab = 1; status = "Edit instructions ready. Select an image and tap AI Edit." },
          onCreateVideo = { request -> prompt = request; videoMode = true; tab = 1; status = "Video request ready. Select a photo to animate." }
         )
@@ -455,6 +456,13 @@ class MainActivity : ComponentActivity() {
           Button(onClick = { requestImage(null) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Generate Fictional Adult Image") }
          }
         }
+       }
+      }
+      LaunchedEffect(pendingAssistantImage) {
+       val request = pendingAssistantImage
+       if (request != null) {
+        pendingAssistantImage = null
+        requestImage(null, request)
        }
       }
       if (tab == 0) {
