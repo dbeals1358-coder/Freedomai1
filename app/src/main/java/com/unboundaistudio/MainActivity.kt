@@ -84,7 +84,7 @@ class MainActivity : ComponentActivity() {
    var nativeQwen by remember { mutableStateOf(prefs.getBoolean("native_qwen", true)) }
    var onlineQwen by remember { mutableStateOf(prefs.getBoolean("online_qwen", false)) }
    var onlineQwenUrl by remember { mutableStateOf(prefs.getString("online_qwen_url", "") ?: "") }
-   var onlineQwenModel by remember { mutableStateOf(prefs.getString("online_qwen_model", "") ?: "") }
+   var onlineQwenModel by remember { mutableStateOf(prefs.getString("online_qwen_model", "qwen-image-2.1-turbo") ?: "qwen-image-2.1-turbo") }
    var onlineQwenKey by remember { mutableStateOf(prefs.getString("online_qwen_key", "") ?: "") }
    var qwenTier by remember { mutableStateOf(prefs.getString("qwen_tier", "FAST") ?: "FAST") }
    var qwenReady by remember { mutableStateOf(runCatching { NativeQwenEditor.ready(this@MainActivity) }.getOrDefault(false)) }
@@ -203,7 +203,7 @@ class MainActivity : ComponentActivity() {
      }
     }) { inset ->
      Column(Modifier.padding(inset).fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-      Text("Boobs v2.2", style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.primary)
+      Text("Boobs v2.3", style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.primary)
       Text(if (videoMode) "Create video from a photo" else if (tab == -1) "What will you create?" else if (tab == 0) "Turn your ideas into images" else if (tab == 3) "Your conversational AI" else if (tab == 2) "Private 18+ studio" else "Give your photos a fresh look", style = MaterialTheme.typography.titleLarge)
       if (tab == 3) {
        AssistantScreen(
@@ -440,16 +440,21 @@ class MainActivity : ComponentActivity() {
            })
           }
           if (onlineQwen) {
-           Text("Online editing sends your selected photo to the configured service. Requires a compatible OpenAI-style image edits API; service charges or limits may apply.")
+           Text("Online editing uploads the selected photo to your chosen provider. Alibaba Model Studio supports Qwen 2.1 Turbo. Free introductory quotas, when available, are limited; usage may be billed.")
+           OutlinedButton(onClick = {
+            onlineQwenModel = "qwen-image-2.1-turbo"
+            prefs.edit().putString("online_qwen_model", onlineQwenModel).apply()
+           }, enabled = !busy) { Text("Use Alibaba Qwen 2.1 Turbo") }
+           Text("Alibaba setup: paste your Model Studio HTTPS multimodal-generation endpoint (including your Workspace ID) and API key. Other providers can use compatible multipart /images/edits endpoints.")
            OutlinedTextField(value = onlineQwenUrl, onValueChange = {
             onlineQwenUrl = it; prefs.edit().putString("online_qwen_url", it.trim()).apply()
-           }, label = { Text("Image edits API URL (HTTPS)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+           }, label = { Text("Alibaba or other image-edit API endpoint (HTTPS)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
            OutlinedTextField(value = onlineQwenModel, onValueChange = {
             onlineQwenModel = it; prefs.edit().putString("online_qwen_model", it.trim()).apply()
-           }, label = { Text("Online Qwen image-edit model name") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+           }, label = { Text("Online model (default: qwen-image-2.1-turbo)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
            OutlinedTextField(value = onlineQwenKey, onValueChange = {
             onlineQwenKey = it; prefs.edit().putString("online_qwen_key", it).apply()
-           }, label = { Text("Provider API key (if required)") }, modifier = Modifier.fillMaxWidth(), singleLine = true,
+           }, label = { Text("Provider API key (required)") }, modifier = Modifier.fillMaxWidth(), singleLine = true,
             visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation())
           }
           Text("Offline Qwen (keeps downloaded 11 GB model)")
