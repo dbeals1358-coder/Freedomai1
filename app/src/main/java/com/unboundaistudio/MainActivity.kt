@@ -346,7 +346,8 @@ class MainActivity : ComponentActivity() {
        val requestedHighQuality = highQuality
        val editPrompt = if (input != null) "$requestedPrompt. Keep the same person, face, pose, camera and background." else requestedPrompt
        if (input != null && precisionEdit && (!maskMode || strokes.isEmpty())) {
-        precisionEdit = false // Fall back to full-frame edit instead of silently blocking.
+        status = "Precision Edit requires a painted area. Paint the region to change or disable Precision Edit."
+        return
        }
        val mask = if (input != null && maskMode && strokes.isNotEmpty()) makeMask(input.width, input.height, strokes.toList(), brush) else null
               result = null // Do not leave a previous variation visible as a failed new edit.
