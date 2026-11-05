@@ -10,8 +10,9 @@ android {
         applicationId = "com.unboundaistudio"
         minSdk = 29
         targetSdk = 35
-        versionCode = 20
-        versionName = "2.0"
+        ndk { abiFilters += "arm64-v8a" }
+        versionCode = 21
+        versionName = "2.1"
     }
     // The build injects this into the APK; it can be extracted from the APK.
     val hfToken = System.getenv("HF_ACCESS_TOKEN").orEmpty()
@@ -20,10 +21,13 @@ android {
     defaultConfig {
         buildConfigField("String", "HF_ACCESS_TOKEN", "\"$hfToken\"")
     }
+    packaging { jniLibs { pickFirsts += "lib/arm64-v8a/libc++_shared.so" } }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
 }
 dependencies {
+    // GitHub Actions pins and fetches the official native Qwen Android AAR before compiling.
+    implementation(files("libs/qwenimage21.aar"))
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")

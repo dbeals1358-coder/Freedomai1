@@ -1,15 +1,6 @@
-name: FreedomAI v2.0 Android APK
+name: FreedomAI v2.1 Legacy APK (manual)
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - 'app/**'
-      - 'gradle/**'
-      - 'gradlew'
-      - 'build.gradle.kts'
-      - 'settings.gradle.kts'
-      - '.github/workflows/freedomai-v1.2.yml'
 permissions:
   contents: read
 jobs:
@@ -30,13 +21,23 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.10.2'
-      - name: Verify v2.0 app metadata and required features
+      - name: Verify v2.1 app metadata and required features
         run: |
-          grep -q 'versionName = "2.0"' app/build.gradle.kts
-          grep -q 'android:label="Boobs v2.0"' app/src/main/AndroidManifest.xml
+          grep -q 'versionName = "2.1"' app/build.gradle.kts
+          grep -q 'android:label="Boobs v2.1"' app/src/main/AndroidManifest.xml
           grep -q 'Text("AI Edit")' app/src/main/java/com/unboundaistudio/MainActivity.kt
           grep -q 'AssistantScreen(' app/src/main/java/com/unboundaistudio/MainActivity.kt
           grep -q 'fun AssistantScreen(' app/src/main/java/com/unboundaistudio/AssistantScreen.kt
+      - name: Fetch native Qwen runtime
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p app/libs "$RUNNER_TEMP/qwen-aar"
+          gh release download v0.4.0 --repo scsonic/libQwenImage21 --pattern '*.aar' --dir "$RUNNER_TEMP/qwen-aar"
+          count=$(find "$RUNNER_TEMP/qwen-aar" -name '*.aar' -type f | wc -l)
+          test "$count" -eq 1
+          cp "$(find "$RUNNER_TEMP/qwen-aar" -name '*.aar' -type f -print -quit)" app/libs/qwenimage21.aar
       # The launcher drawable is generated from the checked-in source photo.
       # Without this step AAPT fails: drawable/boobs_launcher not found.
       - name: Restore selected launcher icon
@@ -44,7 +45,7 @@ jobs:
           mkdir -p app/src/main/res/drawable-nodpi
           base64 --decode app/icon_source.b64 > app/src/main/res/drawable-nodpi/boobs_launcher.jpg
           test -s app/src/main/res/drawable-nodpi/boobs_launcher.jpg
-      - name: Test and assemble v2.0 debug APK
+      - name: Test and assemble v2.1 debug APK
         env:
           HF_ACCESS_TOKEN: ${{ secrets.HF_ACCESS_TOKEN }}
         run: gradle --no-daemon testDebugUnitTest assembleDebug
@@ -53,6 +54,6 @@ jobs:
       - name: Upload installable debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: FreedomAI-v2.0-debug
+          name: FreedomAI-v2.1-legacy-debug
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
