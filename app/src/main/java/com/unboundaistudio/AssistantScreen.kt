@@ -167,8 +167,15 @@ fun AssistantScreen(onCreateImage: (String) -> Unit = {}, onEditImage: (String) 
      try {
       val answer = withContext(Dispatchers.IO) {
        if (useOfflineAssistant) {
-        if (localModelPath.isBlank() || File(localModelPath).length() <= 100_000_000L)
-         throw IllegalStateException("Offline model not installed. Switch off offline mode to use online chat.")
+         if (localModelPath.isBlank() || File(localModelPath).length() <= 100_000_000L) {
+          downloading = true
+          downloadStatus = "Preparing offline assistant automatically..."
+          val downloaded = downloadGemmaModel(context, effectiveHfToken) { percent -> downloadPercent = percent }
+          localModelPath = downloaded
+          prefs.edit().putString("local_model", downloaded).apply()
+          downloading = false
+          downloadStatus = "Offline assistant ready."
+         }
         offlineAssistantReply(context, localModelPath, history.toList())
        } else {
         val onlineToken = apiKey.ifBlank { BuildConfig.HF_ACCESS_TOKEN }
