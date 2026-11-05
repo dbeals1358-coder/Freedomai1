@@ -622,24 +622,7 @@ class MainActivity : ComponentActivity() {
        OutlinedButton(onClick = { listenForPrompt() }, enabled = !busy) { Text("🎤 Speak prompt") }
         Text("No-paint color edit: try 'red bikini' or 'make the bikini top blue'. For detectable vivid fabric, the app recolors original pixels without regenerating the person. Other garments and shape edits still depend on your AI model.")
         Text(if (originalGeneratedHere) "Image source: generated in FreedomAI (this session)" else "Image source: imported or unverified")
-        Button(onClick = { showRemoveClothingConfirm = true }, enabled = !busy && originalGeneratedHere, modifier = Modifier.fillMaxWidth()) { Text("Nude") }
-        if (showRemoveClothingConfirm) {
-         AlertDialog(
-          onDismissRequest = { showRemoveClothingConfirm = false },
-          title = { Text("Fictional adult nude edit") },
-          text = { Text("Create a natural nude portrait from an AI-generated fictional adult image. This option is only available for images generated in this session.") },
-          confirmButton = { TextButton(onClick = {
-           showRemoveClothingConfirm = false
-           val nudeEditPrompt = "For this entirely fictional AI-generated adult character, create a tasteful, nonsexual fine-art nude portrait. Replace the existing outfit with anatomically natural bare skin; do not retain fabric, straps, underwear, or swimwear. Preserve the same fictional adult character, facial features, hairstyle, body proportions, pose, framing, lighting, and background. Change only the outfit region. Photorealistic natural anatomy, realistic skin texture, no added accessories."
-           prompt = nudeEditPrompt
-           precisionEdit = false; maskMode = false; strokes.clear(); drawing = emptyList()
-           preserveOriginal = "High"; editStrength = 0.35f
-           status = "Starting fictional adult nude edit…"
-           requestImage(bitmap, nudeEditPrompt)
-          }) { Text("Create nude edit") } },
-          dismissButton = { TextButton(onClick = { showRemoveClothingConfirm = false }) { Text("Cancel") } }
-         )
-        }
+        Button(onClick = { prompt = "nude, naked"; status = "Prompt entered. Tap AI Edit when ready." }, enabled = !busy && originalGeneratedHere, modifier = Modifier.fillMaxWidth()) { Text("Nude") }
         Button(onClick = { status = "Starting AI photo edit…"; requestImage(result ?: bitmap) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("AI Edit") }
         Text("Quick clothing edits", style = MaterialTheme.typography.titleMedium)
         listOf(
