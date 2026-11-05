@@ -297,10 +297,10 @@ class MainActivity : ComponentActivity() {
       fun requestImage(input: Bitmap?, promptOverride: String? = null) {
        if ((promptOverride ?: prompt).isBlank() && !(tab == 2 && fictionalAdultMode && (appearance.isNotBlank() || bodyDescription.isNotBlank()))) { status = "Describe the image first"; return }
        // Color-only bikini edits operate on the source pixels, without an external model or painted mask.
-       val useOnlineEdit = input != null && onlineQwen
-        val useNativeEdit = input != null && nativeQwen && !useOnlineEdit
+       val useOnlineEdit = input != null && onlineQwen && !nightmareMode
+        val useNativeEdit = input != null && nativeQwen && !useOnlineEdit && !nightmareMode
        // Native edits receive the actual input bitmap, even for simple color changes.
-       val autoColorRequest = if (input != null && !maskMode && !useNativeEdit && !useOnlineEdit) AutomaticClothingEdit.parse(promptOverride ?: prompt) else null
+       val autoColorRequest = if (input != null && !nightmareMode && !maskMode && !useNativeEdit && !useOnlineEdit) AutomaticClothingEdit.parse(promptOverride ?: prompt) else null
        if (useOnlineEdit && (onlineQwenUrl.isBlank() || onlineQwenModel.isBlank())) {
          status = "Online Qwen needs an image-edit API endpoint and model name. Enter them in the Edit tab."
          return
@@ -386,7 +386,7 @@ class MainActivity : ComponentActivity() {
          } else {
           generationPercent = 100
            resultGeneratedHere = if (input == null) true else originalGeneratedHere
-           status = if (useOnlineEdit) "Online Qwen edit complete. Check the result against the original." else if (useNativeEdit) "Qwen Turbo edit complete. Compare the face, pose and background with the original." else if (autoColorRequest != null) "Bikini recolored to ${autoColorRequest.color}. Original face, body, pose and background pixels preserved." else if (input != null) "AI returned an edit — compare it with your requested change below" else "Image ready"
+           status = if (useOnlineEdit) "Online Qwen edit complete. Check the result against the original." else if (useNativeEdit) "Qwen Turbo edit complete. Compare the face, pose and background with the original." else if (autoColorRequest != null) "Bikini recolored to ${autoColorRequest.color}. Original face, body, pose and background pixels preserved." else if (input != null && useNightmare) "Nightmare local edit complete (requested flow: ${EditRequestRouting.chooseFlow(editFlowForRun, requestedPrompt)}). Actual model must be confirmed in Nightmare run details." else if (input != null) "AI returned an edit — compare it with your requested change below" else "Image ready"
          }
         } catch (e: kotlinx.coroutines.CancellationException) { throw e
         } catch (e: Exception) { status = when {
@@ -465,7 +465,7 @@ class MainActivity : ComponentActivity() {
           })
          }
          Text(if (qwenReady) "Qwen editing model installed ✓" else "Qwen editing model not installed on this app. One-time download ~11 GB. Nightmare model files cannot be reused across Android app sandboxes.")
-         Text("The built-in editor works without Nightmare after setup. Images stay on the phone during editing. Qwen model weights have a separate Qwen Research License.")
+         Text("When Nightmare is enabled, FreedomAI uses Nightmare’s installed editing model instead of the built-in 11 GB Qwen model or paid online Qwen. The separate built-in editor is optional. Qwen model weights have a separate Qwen Research License.")
          Text("Qwen editing quality (Fast preserves identity better in upstream testing):")
          Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
           listOf("TINY" to "320", "FAST" to "384", "STANDARD" to "512").forEach { (tier, label) ->
