@@ -22,7 +22,7 @@ android {
     buildFeatures { compose = true; buildConfig = true }
     defaultConfig {
         buildConfigField("String", "HF_ACCESS_TOKEN", "\"$hfToken\"")
-        buildConfigField("String", "NIGHTMARE_API_TOKEN", "\\\"$nightmareBuildToken\\\"")
+        buildConfigField("String", "NIGHTMARE_API_TOKEN", "\"$nightmareBuildToken\"")
     }
     packaging { jniLibs { pickFirsts += "lib/arm64-v8a/libc++_shared.so" } }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
