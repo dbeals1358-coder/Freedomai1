@@ -25,7 +25,7 @@ internal object NightmareVideoClient {
   require(token.isNotBlank() && !token.contains('\n') && !token.contains('\r')) {
    "Enter your Nightmare API token in connection settings"
   }
-  require(flow == "current" || flow.startsWith("saved:")) {
+  require(flow == "auto" || flow == "current" || flow.startsWith("saved:")) {
    "Select a saved Nightmare image-to-video workflow or current"
   }
   require(seconds in 1..10) { "Choose 1–10 seconds for AI video" }
@@ -33,7 +33,8 @@ internal object NightmareVideoClient {
 
   // Unlike top-level width/height (which affect image samplers only),
   // params.<video node id> changes the actual Wan video generator.
-  val encodedFlow = flow.split(":").joinToString(":") { URLEncoder.encode(it, "UTF-8") }
+  val selected = if (flow == "auto" || flow == "current") findVideoFlow(token, flow) else flow
+  val encodedFlow = URLEncoder.encode(selected, "UTF-8")
   val schema = JSONObject(NightmareClient.authenticatedGet("/flows/$encodedFlow", token))
 
   val scale = minOf(1f, 480f / maxOf(image.width, image.height))
@@ -52,7 +53,7 @@ internal object NightmareVideoClient {
   var plan = NightmareVideoFlowPlanner.plan(schema, seconds, targetSide = 480)
   var reduced = false
   val response = try {
-   run(token, flow, prompt, base64Image, plan)
+   run(token, selected, prompt, base64Image, plan)
   } catch (e: Exception) {
    if (!memoryError(e.message.orEmpty()) || plan.width <= 384 && plan.height <= 384) throw e
    // A smaller video node and shorter clip substantially reduce NPU memory pressure.
@@ -99,6 +100,29 @@ internal object NightmareVideoClient {
    }
    return RenderedVideo(mp4, plan.seconds, plan.durationLabel, plan.width, plan.height, reduced)
   } finally { download.disconnect() }
+ }
+
+ private fun findVideoFlow(token: String, preferred: String): String {
+  val raw = NightmareClient.authenticatedGet("/flows", token)
+  val catalog = JSONObject(raw)
+  val candidates = mutableListOf<String>()
+  if (preferred == "current") candidates.add("current")
+  val entries = catalog.optJSONArray("flows") ?: catalog.optJSONArray("saved")
+  if (entries != null) for (i in 0 until entries.length()) {
+   val item = entries.opt(i)
+   val name = if (item is JSONObject) item.optString("id", item.optString("name")) else item?.toString().orEmpty()
+   if (name.isNotBlank()) candidates.add(if (name == "current" || name.startsWith("saved:")) name else "saved:$name")
+  }
+  candidates.add("current")
+  for (candidate in candidates.distinct()) {
+   try {
+    val encoded = URLEncoder.encode(candidate, "UTF-8")
+    val schema = JSONObject(NightmareClient.authenticatedGet("/flows/$encoded", token))
+    NightmareVideoFlowPlanner.plan(schema, 2)
+    return candidate
+   } catch (_: Exception) { /* Try the next installed flow. */ }
+  }
+  error("No compatible image-to-video workflow was found in Nightmare. Install or save a Wan image-to-video workflow first.")
  }
 
  private fun run(
