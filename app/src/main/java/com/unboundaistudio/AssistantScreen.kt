@@ -29,11 +29,14 @@ import java.util.Locale
 fun AssistantScreen(onCreateImage: (String) -> Unit = {}, onEditImage: (String) -> Unit = {}, onCreateVideo: (String) -> Unit = {}) {
  val context = LocalContext.current
  val prefs = remember { context.getSharedPreferences("assistant", android.content.Context.MODE_PRIVATE) }
- var endpoint by remember { mutableStateOf(prefs.getString("endpoint", "") ?: "") }
- var model by remember { mutableStateOf(prefs.getString("model", "") ?: "") }
+ val defaultOnlineEndpoint = "https://router.huggingface.co/v1/chat/completions"
+ var endpoint by remember { mutableStateOf(prefs.getString("endpoint", defaultOnlineEndpoint).orEmpty().ifBlank { defaultOnlineEndpoint }) }
+ var model by remember { mutableStateOf(prefs.getString("model", "openai/gpt-oss-120b:fastest").orEmpty().ifBlank { "openai/gpt-oss-120b:fastest" }) }
  var apiKey by remember { mutableStateOf(prefs.getString("api_key", "") ?: "") }
  var error by remember { mutableStateOf("") }
  var localModelPath by remember { mutableStateOf(prefs.getString("local_model", "") ?: "") }
+ var offlineSettingsVisible by remember { mutableStateOf(false) }
+ var useOfflineAssistant by remember { mutableStateOf(prefs.getBoolean("use_offline_assistant", false)) }
  val modelPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
   if (uri != null) {
    val target = File(context.filesDir, "assistant-model.task")
@@ -66,33 +69,55 @@ fun AssistantScreen(onCreateImage: (String) -> Unit = {}, onEditImage: (String) 
  }
  Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
   Text("AI Assistant", style = MaterialTheme.typography.headlineMedium)
-  Text("Chat by typing or speaking. Import a compatible .task model for offline replies, or connect a chat service.")
-  Text("Offline AI setup: Gemma 3 1B (one-time download, then works without internet). Accept access on the litert-community/Gemma3-1B-IT model page before downloading.")
-  if (embeddedHfToken.isNotBlank()) {
-   Text("Hugging Face access configured automatically.")
-  } else {
-   OutlinedTextField(hfToken, { hfToken = it; prefs.edit().putString("hf_token", it.trim()).apply() }, label = { Text("Hugging Face access token (one-time setup)") }, modifier = Modifier.fillMaxWidth(), visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation())
+  Text("Chat by typing or speaking. Online AI is the default; no assistant model download required.")
+  Text("Online assistant: Hugging Face Inference Providers. Uses internet and an access token with Inference Providers permission; free monthly credits may be limited.")
+  if (BuildConfig.HF_ACCESS_TOKEN.isNotBlank()) {
+   Text("Hugging Face access configured for this build.")
   }
-  Button(enabled = !downloading, onClick = {
-   downloading = true
-   downloadStatus = "Downloading model..."
-   scope.launch {
-    try {
-     val downloaded = withContext(Dispatchers.IO) { downloadGemmaModel(context, effectiveHfToken) { percent -> downloadPercent = percent } }
-     localModelPath = downloaded
-     prefs.edit().putString("local_model", downloaded).apply()
-     downloadStatus = "Offline AI downloaded. Ready to chat."
-    } catch (e: Exception) { downloadStatus = e.message ?: "Download failed" }
-    finally { downloading = false }
+  if (BuildConfig.HF_ACCESS_TOKEN.isBlank() && apiKey.isBlank()) {
+   Text("A Hugging Face Inference Providers token is required for online chat.")
+  }
+  Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+   Text("Use offline assistant instead", modifier = Modifier.weight(1f))
+   Switch(checked = useOfflineAssistant, onCheckedChange = {
+    useOfflineAssistant = it
+    prefs.edit().putBoolean("use_offline_assistant", it).apply()
+   })
+  }
+  if (useOfflineAssistant) {
+   OutlinedButton(onClick = { offlineSettingsVisible = !offlineSettingsVisible }) {
+    Text(if (offlineSettingsVisible) "Hide offline model setup" else "Offline model setup (optional)")
    }
-  }) { Text(if (downloading) "Downloading..." else "Install offline AI") }
-  if (downloadStatus.isNotBlank()) Text(downloadStatus)
-  if (downloading) { LinearProgressIndicator(progress = { downloadPercent / 100f }, modifier = Modifier.fillMaxWidth()); Text("$downloadPercent% downloaded") }
-  OutlinedButton(onClick = { modelPicker.launch(arrayOf("*/*")) }) { Text("Import offline AI model (.task)") }
-  Text(if (localModelPath.isNotBlank() && File(localModelPath).length() > 100_000_000L) "Offline model installed" else "No offline AI model installed")
+   if (offlineSettingsVisible) {
+     Text("Offline AI setup: Gemma 3 1B (one-time download, then works without internet). Accept access on the litert-community/Gemma3-1B-IT model page before downloading.")
+     if (embeddedHfToken.isNotBlank()) {
+      Text("Hugging Face access configured automatically.")
+     } else {
+      OutlinedTextField(hfToken, { hfToken = it; prefs.edit().putString("hf_token", it.trim()).apply() }, label = { Text("Hugging Face access token (one-time setup)") }, modifier = Modifier.fillMaxWidth(), visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation())
+     }
+     Button(enabled = !downloading, onClick = {
+      downloading = true
+      downloadStatus = "Downloading model..."
+      scope.launch {
+       try {
+        val downloaded = withContext(Dispatchers.IO) { downloadGemmaModel(context, effectiveHfToken) { percent -> downloadPercent = percent } }
+        localModelPath = downloaded
+        prefs.edit().putString("local_model", downloaded).apply()
+        downloadStatus = "Offline AI downloaded. Ready to chat."
+       } catch (e: Exception) { downloadStatus = e.message ?: "Download failed" }
+       finally { downloading = false }
+      }
+     }) { Text(if (downloading) "Downloading..." else "Install offline AI") }
+     if (downloadStatus.isNotBlank()) Text(downloadStatus)
+     if (downloading) { LinearProgressIndicator(progress = { downloadPercent / 100f }, modifier = Modifier.fillMaxWidth()); Text("$downloadPercent% downloaded") }
+     OutlinedButton(onClick = { modelPicker.launch(arrayOf("*/*")) }) { Text("Import offline AI model (.task)") }
+     Text(if (localModelPath.isNotBlank() && File(localModelPath).length() > 100_000_000L) "Offline model installed" else "No offline AI model installed")
+   
+   }
+  }
   OutlinedTextField(endpoint, { endpoint = it }, label = { Text("Chat API URL (HTTPS)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
   OutlinedTextField(model, { model = it }, label = { Text("Model name") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-  OutlinedTextField(apiKey, { apiKey = it }, label = { Text("API key (optional)") }, modifier = Modifier.fillMaxWidth(), singleLine = true, visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation())
+  OutlinedTextField(apiKey, { apiKey = it }, label = { Text("Online chat API token (optional when configured in build)") }, modifier = Modifier.fillMaxWidth(), singleLine = true, visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation())
   Button(onClick = {
    prefs.edit().putString("endpoint", endpoint.trim()).putString("model", model.trim()).putString("api_key", apiKey).apply()
    error = "Connection settings saved on this device."
@@ -137,7 +162,18 @@ fun AssistantScreen(onCreateImage: (String) -> Unit = {}, onEditImage: (String) 
     error = ""
     scope.launch {
      try {
-      val answer = withContext(Dispatchers.IO) { if (localModelPath.isNotBlank() && File(localModelPath).length() > 100_000_000L) offlineAssistantReply(context, localModelPath, history.toList()) else if (endpoint.isBlank()) throw IllegalStateException("No AI model is installed or chat service connected. Tap Install offline AI, or enter an HTTPS chat API URL and model name.") else assistantReply(endpoint, model, apiKey, history.toList()) }
+      val answer = withContext(Dispatchers.IO) {
+       if (useOfflineAssistant) {
+        if (localModelPath.isBlank() || File(localModelPath).length() <= 100_000_000L)
+         throw IllegalStateException("Offline model not installed. Switch off offline mode to use online chat.")
+        offlineAssistantReply(context, localModelPath, history.toList())
+       } else {
+        val onlineToken = apiKey.ifBlank { BuildConfig.HF_ACCESS_TOKEN }
+        if (onlineToken.isBlank() && endpoint == defaultOnlineEndpoint)
+         throw IllegalStateException("Hugging Face online chat needs an Inference Providers token. Add one under API token.")
+        assistantReply(endpoint, model, onlineToken, history.toList())
+       }
+      }
       history.add("assistant" to answer.replace(Regex("^(Assistant:\\s*)+", RegexOption.IGNORE_CASE), "").trim())
       if (speak) tts.speak(answer, TextToSpeech.QUEUE_FLUSH, null, "assistant-reply")
      } catch (e: Exception) {
