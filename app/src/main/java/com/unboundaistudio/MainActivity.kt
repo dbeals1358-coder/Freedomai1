@@ -432,7 +432,7 @@ class MainActivity : ComponentActivity() {
             ?: error("Unable to confidently identify colored bikini fabric in this photo. Original image was not changed. Automatic color editing currently supports vivid bikini fabric in a front-facing portrait.")
           } else if (useNightmare) {
            val generated = try {
-            NightmareClient.generate(editPrompt, tokenForRun, input, requestedStrength, requestedHighQuality, requestedResolution, editFlowForRun)
+            NightmareClient.generate(editPrompt, tokenForRun, input, requestedStrength, requestedHighQuality, requestedResolution, editFlowForRun, generationSpeed)
            } catch (nightmareError: Exception) {
             val maskUnavailable = input != null && nightmareError.message.orEmpty().contains("automatic clothing mask is unavailable", ignoreCase = true)
             if (maskUnavailable && qwenReady) {
