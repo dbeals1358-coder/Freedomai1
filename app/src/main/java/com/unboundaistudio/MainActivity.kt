@@ -231,8 +231,8 @@ class MainActivity : ComponentActivity() {
       if (tab == -1) {
        Column(Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(UiColor(0xFF332451), UiColor(0xFF192F49))), RoundedCornerShape(28.dp)).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text("✦", style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.primary)
-        Text("Your AI Studio", style = MaterialTheme.typography.headlineLarge)
-        Text("Create or edit photos and videos.", color = UiColor(0xFFD3D0E3))
+        Text("Dream it, Build it, Crank it!", style = MaterialTheme.typography.headlineLarge)
+        Text("Your AI Studio — create or edit photos and videos.", color = UiColor(0xFFD3D0E3))
         Button(onClick = { tab = 0 }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("Create Image") }
         OutlinedButton(onClick = { tab = 1 }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("Edit Photo") }
         OutlinedButton(onClick = { videoMode = true; tab = 1; result = null }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("Create Video") }
