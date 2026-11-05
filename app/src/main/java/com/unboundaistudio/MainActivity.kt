@@ -276,8 +276,10 @@ class MainActivity : ComponentActivity() {
       if (status.isNotEmpty() && !status.startsWith("Nightmare v")) Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceVariant) { Text(status, modifier = Modifier.fillMaxWidth().padding(16.dp)) }
       fun requestImage(input: Bitmap?, promptOverride: String? = null) {
        if ((promptOverride ?: prompt).isBlank() && !(tab == 2 && fictionalAdultMode && (appearance.isNotBlank() || bodyDescription.isNotBlank()))) { status = "Describe the image first"; return }
+       // Color-only bikini edits operate on the source pixels, without an external model or painted mask.
+       val autoColorRequest = if (input != null && !maskMode) AutomaticClothingEdit.parse(promptOverride ?: prompt) else null
        val address = server.trim().trimEnd('/')
-       if (!nightmareMode && !localMode && runCatching { URL(address).let { it.protocol == "https" && it.host.isNotBlank() && it.userInfo == null && it.query == null && it.ref == null } }.getOrDefault(false).not()) {
+       if (autoColorRequest == null && !nightmareMode && !localMode && runCatching { URL(address).let { it.protocol == "https" && it.host.isNotBlank() && it.userInfo == null && it.query == null && it.ref == null } }.getOrDefault(false).not()) {
         status = "Enter a valid HTTPS server URL"; return
        }
        prefs.edit().putString("url", address).apply()
@@ -309,7 +311,10 @@ class MainActivity : ComponentActivity() {
        scope.launch {
         try {
          result = withContext(Dispatchers.IO) {
-          if (useNightmare) {
+          if (autoColorRequest != null && input != null) {
+           AutomaticClothingEdit.recolor(input, autoColorRequest)
+            ?: error("Unable to confidently identify colored bikini fabric in this photo. Original image was not changed. Automatic color editing currently supports vivid bikini fabric in a front-facing portrait.")
+          } else if (useNightmare) {
            val generated = NightmareClient.generate(editPrompt, tokenForRun, input, requestedStrength, requestedHighQuality, resolution, editFlowForRun)
            check(!isNearlyWhiteImage(generated)) { "The AI returned a blank white image. Try a different flow or restart the model." }
            if (input != null && isSameImage(input, generated)) error("Nightmare returned the original image unchanged; verify the img2img flow and its image input.")
@@ -334,10 +339,11 @@ class MainActivity : ComponentActivity() {
          } else {
           generationPercent = 100
            resultGeneratedHere = if (input == null) true else originalGeneratedHere
-           status = if (input != null) "AI edit complete — review the result below" else "Image ready"
+           status = if (autoColorRequest != null) "Bikini recolored to ${autoColorRequest.color}. Original face, body, pose and background pixels preserved." else if (input != null) "AI edit complete — review the result below" else "Image ready"
          }
         } catch (e: kotlinx.coroutines.CancellationException) { throw e
         } catch (e: Exception) { status = when {
+          autoColorRequest != null -> "Automatic color edit: ${e.message ?: "Unsupported outfit or photo"}. No changes made."
           useNightmare -> "Nightmare ${if (input != null) "edit" else "generation"} failed (flow: ${if (input != null) editFlowForRun else "saved:FreedomAI RealVis"}): ${e.message ?: "connection failed"}. Open the matching flow in Nightmare, check its model and image input."
           useLocal -> "Local Dream: ${e.message ?: "connection failed"}. Keep the model loaded; try split screen if disconnected."
           else -> "Could not create image: ${e.message ?: "connection failed"}"
@@ -408,6 +414,7 @@ class MainActivity : ComponentActivity() {
          Text("With Nightmare, only the painted area is copied from the AI edit; everything outside stays pixel-identical. For true mask-guided generation, a compatible inpainting workflow is still needed.")
         }
         OutlinedTextField(value = prompt, onValueChange = { prompt = it }, label = { Text("Describe your AI edit") }, placeholder = { Text("Make the bikini top smaller; keep the face, pose and background unchanged.") }, modifier = Modifier.fillMaxWidth())
+        Text("No-paint color edit: try 'red bikini' or 'make the bikini top blue'. For detectable vivid fabric, the app recolors original pixels without regenerating the person. Other garments and shape edits still depend on your AI model.")
         Text(if (originalGeneratedHere) "Image source: generated in FreedomAI (this session)" else "Image source: imported or unverified")
         Button(onClick = { showRemoveClothingConfirm = true }, enabled = !busy && originalGeneratedHere, modifier = Modifier.fillMaxWidth()) { Text("Nude") }
         if (showRemoveClothingConfirm) {
