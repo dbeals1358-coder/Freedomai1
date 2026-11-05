@@ -17,7 +17,13 @@ internal object NightmareVideoClient {
   require(seconds in 1..10) { "Choose 1–10 seconds for AI video" }
   // Nightmare /run does not accept duration fields; duration belongs to the selected workflow configuration.
   NightmareClient.authenticatedGet("/info", token)
-  val bytes = ByteArrayOutputStream().also { image.compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
+  // Reduce input frame memory; the selected workflow may still override video dimensions.
+  val scale = minOf(1f, 640f / maxOf(image.width, image.height))
+  val input = if (scale < 1f) Bitmap.createScaledBitmap(image,
+   maxOf(2, (image.width * scale).toInt()), maxOf(2, (image.height * scale).toInt()), true) else image
+  val bytes = try {
+   ByteArrayOutputStream().also { input.compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
+  } finally { if (input !== image) input.recycle() }
   val request = JSONObject().put("flow", flow).put("prompt", prompt)
    .put("images", JSONObject().put("image", Base64.encodeToString(bytes, Base64.NO_WRAP)))
 
@@ -33,7 +39,13 @@ internal object NightmareVideoClient {
    val code = connection.responseCode
    val body = (if (code in 200..299) connection.inputStream else connection.errorStream)
     ?.bufferedReader()?.use { it.readText() }.orEmpty()
-   check(code in 200..299) { "Nightmare video HTTP $code: ${body.take(350)}" }
+   if (code !in 200..299) {
+    if (body.contains("working memory", ignoreCase = true) ||
+        body.contains("NPU could not hold", ignoreCase = true)) {
+     error("Nightmare NPU memory limit. Input was reduced, but the selected workflow controls video resolution and duration. Set its video node to 480p and 1 second, then retry.")
+    }
+    error("Nightmare video HTTP $code: ${body.take(350)}")
+   }
    JSONObject(body)
   } finally { connection.disconnect() }
   val results = response.optJSONArray("results") ?: error("Nightmare returned no video results")
