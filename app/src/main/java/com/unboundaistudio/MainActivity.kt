@@ -250,6 +250,8 @@ class MainActivity : ComponentActivity() {
        Text("Use Nightmare for images")
        Switch(checked = nightmareMode, enabled = !busy, onCheckedChange = { nightmareMode = it; prefs.edit().putBoolean("nightmare", it).apply() })
       }
+      TextButton(onClick = { showAdvancedConnection = !showAdvancedConnection }) { Text(if (showAdvancedConnection) "Hide advanced options ↑" else "Advanced options ↓") }
+      if (showAdvancedConnection) {
       OutlinedTextField(value = nightmareToken, onValueChange = {
        nightmareToken = it.trim()
        prefs.edit().putString("nightmare_token", nightmareToken).apply()
@@ -268,6 +270,7 @@ class MainActivity : ComponentActivity() {
         } finally { busy = false }
        }
       }) { Text("Check Nightmare connection") }
+      }
       HorizontalDivider()
       Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
        Text("Local Dream on this phone")
@@ -293,7 +296,6 @@ class MainActivity : ComponentActivity() {
       } else {
        OutlinedTextField(value = server, onValueChange = { server = it }, label = { Text("Image server HTTPS URL") }, placeholder = { Text("https://your-server.example") }, enabled = !busy, modifier = Modifier.fillMaxWidth())
        Text("Connect an AUTOMATIC1111 server. Photos and prompts go to that server when you generate or AI edit.")
-      }
       }
       }
       }
