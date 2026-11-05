@@ -53,6 +53,14 @@ internal object NightmareClient {
             connection.disconnect()
         }
     }
+    internal fun editDimensions(width: Int, height: Int): Pair<Int, Int> {
+        require(width > 0 && height > 0) { "Invalid input image dimensions" }
+        val scale = minOf(1.0, 2048.0 / width, 2048.0 / height)
+        val w = (width * scale).toInt().coerceIn(1, 2048)
+        val h = (height * scale).toInt().coerceIn(1, 2048)
+        return Pair(w.coerceAtLeast(512), h.coerceAtLeast(512))
+    }
+
     fun generate(prompt: String, token: String, input: android.graphics.Bitmap?, strength: Float, highQuality: Boolean, resolution: Int = 1024, editFlow: String = "auto"): android.graphics.Bitmap {
         require(token.isNotBlank()) { "Enter your Nightmare API token in Connection settings" }
         require(!token.contains('\n') && !token.contains('\r')) { "Invalid Nightmare API token" }
@@ -70,8 +78,19 @@ internal object NightmareClient {
             payload.put("steps", if (highQuality) 35 else 22)
                 .put("cfg", 6.0).put("width", resolution).put("height", resolution)
         } else {
+            val (editWidth, editHeight) = editDimensions(input.width, input.height)
+            val scale = minOf(1.0, 2048.0 / input.width, 2048.0 / input.height)
+            val scaledWidth = (input.width * scale).toInt().coerceAtLeast(1)
+            val scaledHeight = (input.height * scale).toInt().coerceAtLeast(1)
+            val resized = if (scaledWidth == input.width && scaledHeight == input.height) input
+                else android.graphics.Bitmap.createScaledBitmap(input, scaledWidth, scaledHeight, true)
+            val editBitmap = if (resized.width == editWidth && resized.height == editHeight) resized
+                else android.graphics.Bitmap.createBitmap(editWidth, editHeight, android.graphics.Bitmap.Config.ARGB_8888).also {
+                    android.graphics.Canvas(it).drawBitmap(resized,
+                        (editWidth - resized.width) / 2f, (editHeight - resized.height) / 2f, null)
+                }
             val stream = java.io.ByteArrayOutputStream()
-            check(input.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, stream)) {
+            check(editBitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, stream)) {
                 "Failed to encode original image for editing"
             }
             payload.put("images", JSONObject().put("image",
@@ -85,7 +104,7 @@ internal object NightmareClient {
                     // running a full-frame img2img variation.
                     payload.put("denoise", strength.coerceAtLeast(0.60f).toDouble())
                         .put("steps", 35).put("cfg", 6.0)
-                        .put("width", input.width).put("height", input.height)
+                        .put("width", editWidth).put("height", editHeight)
                         .put("params", JSONObject().put("inpaint", JSONObject()
                             .put("pick_select", "true")
                             .put("auto_crop", "true")
@@ -117,7 +136,7 @@ internal object NightmareClient {
                 else -> {
                     // Explicit saved/current/img2img flows remain available for custom workflows.
                     payload.put("steps", 35).put("cfg", 6.0)
-                        .put("width", input.width).put("height", input.height)
+                        .put("width", editWidth).put("height", editHeight)
                         .put("denoise", strength.toDouble())
                 }
             }
