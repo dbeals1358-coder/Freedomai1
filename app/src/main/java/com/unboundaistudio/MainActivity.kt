@@ -82,6 +82,14 @@ class MainActivity : ComponentActivity() {
    var customSeconds by remember { mutableStateOf("") }
    var lastVideo by remember { mutableStateOf<Uri?>(null) }
    var busy by remember { mutableStateOf(false) }
+   var generationJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+   fun cancelGeneration() {
+    generationJob?.cancel()
+    generationJob = null
+    busy = false
+    generationPercent = 0
+    status = "Generation cancelled. A Nightmare request already running may continue on its server."
+   }
    // Native Qwen editor is fully on-device. Image generation still uses the selected backend.
    var nativeQwen by remember { mutableStateOf(prefs.getBoolean("native_qwen", true)) }
    var onlineQwen by remember { mutableStateOf(prefs.getBoolean("online_qwen", false)) }
@@ -326,6 +334,7 @@ class MainActivity : ComponentActivity() {
        }
       }
       if (busy) {
+        OutlinedButton(onClick = { cancelGeneration() }, modifier = Modifier.fillMaxWidth()) { Text("Cancel generation") }
         LinearProgressIndicator(progress = { generationPercent / 100f }, modifier = Modifier.fillMaxWidth())
         Text(if (nativeProgress) "Qwen editing: $generationPercent% (model progress)" else "AI is processing your image… ${generationPercent}% is an estimate; final rendering may take longer.")
        }
@@ -378,9 +387,9 @@ class MainActivity : ComponentActivity() {
           if (busy) generationPercent = (generationPercent + 1).coerceAtMost(80)
          }
         }
-       scope.launch {
+       generationJob = scope.launch {
         try {
-         result = withContext(Dispatchers.IO) {
+         val completedImage = withContext(Dispatchers.IO) {
           if (useOnlineEdit && input != null) {
             val generated = OnlineQwenEditor.edit(input, editPrompt, onlineQwenUrl, onlineQwenModel, onlineQwenKey)
             check(!isNearlyWhiteImage(generated)) { "Online editor returned a blank image." }
@@ -430,6 +439,8 @@ class MainActivity : ComponentActivity() {
            if (input != null && mask == null) preserveFraming(input, generated) else generated
           }
          }
+         kotlinx.coroutines.currentCoroutineContext().ensureActive()
+         result = completedImage
          if (result != null && isNearlyWhiteImage(result!!)) {
           result = null
           status = "The AI returned a blank white image. Your original photo is safe. Try again with lower edit strength or restart the model."
@@ -447,7 +458,7 @@ class MainActivity : ComponentActivity() {
           useLocal -> "Local Dream: ${e.message ?: "connection failed"}. Keep the model loaded; try split screen if disconnected."
           else -> "Could not create image: ${e.message ?: "connection failed"}"
          }
-        } finally { busy = false; progressJob?.cancel() }
+        } finally { progressJob?.cancel(); if (generationJob == kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job]) { busy = false; generationJob = null } }
        }
       }
       if (tab == 2 && adultConfirmed) {
@@ -723,11 +734,12 @@ class MainActivity : ComponentActivity() {
          busy = true
          generationPercent = 0
          status = "Generating AI motion in Nightmare…"
-         scope.launch {
+         generationJob = scope.launch {
           try {
            val video = withContext(Dispatchers.IO) {
             NightmareVideoClient.generate(nightmareToken, if (nightmareVideoFlow == "current") "auto" else nightmareVideoFlow, image, motionPrompt, duration)
            }
+           kotlinx.coroutines.currentCoroutineContext().ensureActive()
            val values = ContentValues().apply {
             put(MediaStore.Video.Media.DISPLAY_NAME, "FreedomAI_Motion_${System.currentTimeMillis()}.mp4")
             put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
@@ -742,12 +754,14 @@ class MainActivity : ComponentActivity() {
             generationPercent = 100
             status = if (video.reducedForMemory) "AI video saved to Movies/FreedomAI (reduced to ${video.width}×${video.height}, ${video.durationLabel}s to fit NPU memory)." else "AI video saved to Movies/FreedomAI (${video.width}×${video.height}, ${video.durationLabel}s)."
            } catch (e: Exception) { contentResolver.delete(uri, null, null); throw e }
-          } catch (e: Exception) { status = "AI video failed: ${e.message}" }
-          finally { busy = false }
+          } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+          catch (e: Exception) { status = "AI video failed: ${e.message}" }
+          finally { if (generationJob == kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job]) { busy = false; generationJob = null } }
          }
         }
        }, modifier = Modifier.fillMaxWidth()) { Text("Generate AI Video") }
        
+       if (busy) OutlinedButton(onClick = { cancelGeneration() }, modifier = Modifier.fillMaxWidth()) { Text("Cancel video generation") }
        lastVideo?.let { uri ->
         OutlinedButton(onClick = {
          startActivity(Intent(Intent.ACTION_VIEW).apply {
