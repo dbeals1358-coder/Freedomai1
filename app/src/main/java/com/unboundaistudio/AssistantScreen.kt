@@ -125,6 +125,7 @@ fun AssistantScreen(onCreateImage: (String) -> Unit = {}, onEditImage: (String) 
    prefs.edit().putString("endpoint", endpoint.trim()).putString("model", model.trim()).putString("api_key", apiKey).apply()
    error = "Connection settings saved on this device."
   }) { Text("Save connection") }
+  } // End assistant settings; keep chat visible
   Row { Checkbox(checked = speak, onCheckedChange = { speak = it }); Text("Read replies aloud") }
   Column(Modifier.fillMaxWidth().heightIn(max = 350.dp).verticalScroll(rememberScrollState())) {
    history.forEach { (role, text) ->
