@@ -382,7 +382,17 @@ class MainActivity : ComponentActivity() {
            AutomaticClothingEdit.recolor(input, autoColorRequest)
             ?: error("Unable to confidently identify colored bikini fabric in this photo. Original image was not changed. Automatic color editing currently supports vivid bikini fabric in a front-facing portrait.")
           } else if (useNightmare) {
-           val generated = NightmareClient.generate(editPrompt, tokenForRun, input, requestedStrength, requestedHighQuality, resolution, editFlowForRun)
+           val generated = try {
+            NightmareClient.generate(editPrompt, tokenForRun, input, requestedStrength, requestedHighQuality, resolution, editFlowForRun)
+           } catch (nightmareError: Exception) {
+            val maskUnavailable = input != null && nightmareError.message.orEmpty().contains("automatic clothing mask is unavailable", ignoreCase = true)
+            if (maskUnavailable && qwenReady) {
+             runOnUiThread { status = "Nightmare mask unavailable. Trying installed Qwen editor…" }
+             NativeQwenEditor.edit(this@MainActivity, input!!, editPrompt,
+              com.scsonic.qwenimage21.QwenImage21.Size.Tier.valueOf(qwenTier)
+             ) { percentage -> runOnUiThread { generationPercent = percentage } }
+            } else throw nightmareError
+           }
            check(!isNearlyWhiteImage(generated)) { "The AI returned a blank white image. Try a different flow or restart the model." }
            if (input != null && isSameImage(input, generated)) error("Nightmare returned the original image unchanged; verify the img2img flow and its image input.")
            if (mask != null && input != null) compositeMaskedEdit(input, generated, mask) else if (input != null) preserveDetectedFace(input, preserveFraming(input, generated)) else generated
