@@ -1,4 +1,4 @@
-name: FreedomAI v2.1 - Build Android APK
+name: FreedomAI v2.3 - Build Android APK
 on:
   workflow_dispatch:
   push:
@@ -25,9 +25,11 @@ jobs:
       - name: Verify source version and Hugging Face build secret
         env:
           HF_ACCESS_TOKEN: ${{ secrets.HF_ACCESS_TOKEN }}
+          NIGHTMARE_API_TOKEN: ${{ secrets.NIGHTMARE_API_TOKEN }}
         run: |
           grep -q 'versionName = "2.1"' app/build.gradle.kts
           if [ -z "$HF_ACCESS_TOKEN" ]; then echo "::warning::HF_ACCESS_TOKEN not configured; APK will not have embedded Hugging Face access"; fi
+          if [ -z "$NIGHTMARE_API_TOKEN" ]; then echo "::warning::NIGHTMARE_API_TOKEN missing; app will use saved token instead"; fi
       - name: Fetch native Qwen 2.1 runtime
         env:
           GH_TOKEN: ${{ github.token }}
@@ -44,14 +46,14 @@ jobs:
           mkdir -p app/src/main/res/drawable-nodpi
           base64 --decode app/icon_source.b64 > app/src/main/res/drawable-nodpi/boobs_launcher.jpg
           test -s app/src/main/res/drawable-nodpi/boobs_launcher.jpg
-      - name: Compile and test FreedomAI v2.1
+      - name: Compile and test FreedomAI v2.3
         env:
           HF_ACCESS_TOKEN: ${{ secrets.HF_ACCESS_TOKEN }}
         run: gradle assembleDebug lintDebug testDebugUnitTest --no-daemon
       - name: Name APK with version
-        run: cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/FreedomAI-v2.1-debug.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/FreedomAI-v2.3-debug.apk
       - uses: actions/upload-artifact@v4
         with:
           if-no-files-found: error
-          name: FreedomAI-v2.1-APK
-          path: app/build/outputs/apk/debug/FreedomAI-v2.1-debug.apk
+          name: FreedomAI-v2.3-APK
+          path: app/build/outputs/apk/debug/FreedomAI-v2.3-debug.apk
