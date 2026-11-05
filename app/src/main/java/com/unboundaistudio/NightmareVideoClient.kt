@@ -15,6 +15,7 @@ internal object NightmareVideoClient {
  data class RenderedVideo(
   val bytes: ByteArray,
   val seconds: Int,
+  val durationLabel: String,
   val width: Int,
   val height: Int,
   val reducedForMemory: Boolean
@@ -85,7 +86,7 @@ internal object NightmareVideoClient {
    require(mp4.size >= 12 && String(mp4, 4, 4, Charsets.US_ASCII) == "ftyp") {
     "Nightmare returned an invalid MP4 file"
    }
-   return RenderedVideo(mp4, plan.seconds, plan.width, plan.height, reduced)
+   return RenderedVideo(mp4, plan.seconds, plan.durationLabel, plan.width, plan.height, reduced)
   } finally { download.disconnect() }
  }
 
