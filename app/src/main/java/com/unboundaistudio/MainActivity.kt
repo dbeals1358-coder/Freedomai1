@@ -391,6 +391,9 @@ class MainActivity : ComponentActivity() {
              NativeQwenEditor.edit(this@MainActivity, input!!, editPrompt,
               com.scsonic.qwenimage21.QwenImage21.Size.Tier.valueOf(qwenTier)
              ) { percentage -> runOnUiThread { generationPercent = percentage } }
+            } else if (maskUnavailable) {
+             runOnUiThread { status = "Clothing mask unavailable. Trying Nightmare's installed Qwen instruction editor…" }
+             NightmareClient.generate(editPrompt, tokenForRun, input, requestedStrength, requestedHighQuality, resolution, "flux_edit")
             } else throw nightmareError
            }
            check(!isNearlyWhiteImage(generated)) { "The AI returned a blank white image. Try a different flow or restart the model." }
