@@ -131,6 +131,22 @@ class MainActivity : ComponentActivity() {
    var brush by remember { mutableFloatStateOf(0.06f) }
    val strokes = remember { mutableStateListOf<List<Offset>>() }
    var drawing by remember { mutableStateOf<List<Offset>>(emptyList()) }
+   val promptSpeechLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { response ->
+    val spoken = response.data?.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
+    if (!spoken.isNullOrBlank()) {
+     prompt = listOf(prompt.trim(), spoken.trim()).filter { it.isNotBlank() }.joinToString(" ")
+     status = "Voice prompt added. Review it before generating."
+    } else { status = "No speech captured. Try the microphone again." }
+   }
+   fun listenForPrompt() {
+    try {
+     promptSpeechLauncher.launch(Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+      putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+      putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE, java.util.Locale.getDefault().toLanguageTag())
+      putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT, "Describe what you want")
+     })
+    } catch (e: Exception) { status = "Speech recognition unavailable. Check voice input services." }
+   }
    val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
     if (uri != null) try {
      val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
@@ -451,6 +467,7 @@ class MainActivity : ComponentActivity() {
           OutlinedTextField(value = setting, onValueChange = { setting = it }, label = { Text("Background / location") }, modifier = Modifier.fillMaxWidth())
           OutlinedTextField(value = photoStyle, onValueChange = { photoStyle = it }, label = { Text("Photography and lighting style") }, modifier = Modifier.fillMaxWidth())
           OutlinedTextField(value = prompt, onValueChange = { prompt = it }, label = { Text("Additional details (optional)") }, modifier = Modifier.fillMaxWidth().height(110.dp))
+       OutlinedButton(onClick = { listenForPrompt() }, enabled = !busy) { Text("🎤 Speak prompt") }
           Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Text("High quality", modifier = Modifier.weight(1f)); Switch(checked = highQuality, onCheckedChange = { highQuality = it }) }
           Text("Generation depends on the connected model's capabilities. This switch does not bypass model restrictions.")
           Button(onClick = { requestImage(null) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Generate Fictional Adult Image") }
@@ -467,6 +484,7 @@ class MainActivity : ComponentActivity() {
       }
       if (tab == 0) {
        OutlinedTextField(value = prompt, onValueChange = { prompt = it }, label = { Text("Describe your image") }, placeholder = { Text("A peaceful beach at sunset, warm light, gentle waves…") }, modifier = Modifier.fillMaxWidth().height(170.dp))
+       OutlinedButton(onClick = { listenForPrompt() }, enabled = !busy) { Text("🎤 Speak prompt") }
        Button(onClick = { requestImage(null) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text(if (busy) "Creating…" else "Create Image") }
 
       } else if (!videoMode && (tab == 1 || (tab == 2 && adultConfirmed && !fictionalAdultMode))) {
@@ -589,6 +607,7 @@ class MainActivity : ComponentActivity() {
          Text("With Nightmare, only the painted area is copied from the AI edit; everything outside stays pixel-identical. For true mask-guided generation, a compatible inpainting workflow is still needed.")
         }
         OutlinedTextField(value = prompt, onValueChange = { prompt = it }, label = { Text("Describe your AI edit") }, placeholder = { Text("Make the bikini top smaller; keep the face, pose and background unchanged.") }, modifier = Modifier.fillMaxWidth())
+       OutlinedButton(onClick = { listenForPrompt() }, enabled = !busy) { Text("🎤 Speak prompt") }
         Text("No-paint color edit: try 'red bikini' or 'make the bikini top blue'. For detectable vivid fabric, the app recolors original pixels without regenerating the person. Other garments and shape edits still depend on your AI model.")
         Text(if (originalGeneratedHere) "Image source: generated in FreedomAI (this session)" else "Image source: imported or unverified")
         Button(onClick = { showRemoveClothingConfirm = true }, enabled = !busy && originalGeneratedHere, modifier = Modifier.fillMaxWidth()) { Text("Nude") }
