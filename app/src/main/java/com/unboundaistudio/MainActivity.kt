@@ -327,7 +327,7 @@ class MainActivity : ComponentActivity() {
       }
       if (busy) {
         LinearProgressIndicator(progress = { generationPercent / 100f }, modifier = Modifier.fillMaxWidth())
-        Text(if (nativeProgress) "Qwen editing: $generationPercent% (model progress)" else "Creating image: $generationPercent% (estimated until image arrives)")
+        Text(if (nativeProgress) "Qwen editing: $generationPercent% (model progress)" else "AI is processing your image… ${generationPercent}% is an estimate; final rendering may take longer.")
        }
       if (status.isNotEmpty() && !status.startsWith("Nightmare v")) Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceVariant) { Text(status, modifier = Modifier.fillMaxWidth().padding(16.dp)) }
       fun requestImage(input: Bitmap?, promptOverride: String? = null) {
@@ -375,7 +375,7 @@ class MainActivity : ComponentActivity() {
         val progressJob = if (useNativeEdit) null else scope.launch {
          while (isActive && busy) {
           delay(1500)
-          if (busy) generationPercent = (generationPercent + 2).coerceAtMost(95)
+          if (busy) generationPercent = (generationPercent + 1).coerceAtMost(80)
          }
         }
        scope.launch {
