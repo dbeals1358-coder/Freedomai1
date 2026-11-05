@@ -617,7 +617,7 @@ class MainActivity : ComponentActivity() {
         Slider(value = brightness, onValueChange = { brightness = it }, valueRange = -0.5f..0.5f)
         Text("Saturation")
         Slider(value = saturation, onValueChange = { saturation = it }, valueRange = 0f..2f)
-        Button(onClick = { if (tab == 2) savePrivate(bitmap) else save(bitmap) }, modifier = Modifier.fillMaxWidth()) { Text(if (tab == 2) "Save Privately" else "Save Photo") }
+        Button(onClick = { if (tab == 2) this@MainActivity.savePrivate(bitmap) else this@MainActivity.save(bitmap) }, modifier = Modifier.fillMaxWidth()) { Text(if (tab == 2) "Save Privately" else "Save Photo") }
         OutlinedButton(onClick = { brightness = 0f; saturation = 1f }) { Text("Reset") }
        } ?: Text("Pick a photo to edit its brightness and color saturation.")
       }
@@ -650,7 +650,7 @@ class MainActivity : ComponentActivity() {
         Slider(value = comparePosition, onValueChange = { comparePosition = it }, valueRange = 0f..1f)
        }
        if (!videoMode) OutlinedButton(onClick = { original = image; originalGeneratedHere = resultGeneratedHere; result = null; videoMode = false; tab = 1; maskMode = false; strokes.clear(); status = "Image loaded for editing. Choose an edit below."; }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Edit Image") }
-       if (!videoMode) Button(onClick = { if (tab == 2) savePrivate(image) else save(image) }) { Text(if (tab == 2) "Save Privately" else "Save Image") }
+       if (!videoMode) Button(onClick = { if (tab == 2) this@MainActivity.savePrivate(image) else this@MainActivity.save(image) }) { Text(if (tab == 2) "Save Privately" else "Save Image") }
        Text("Create Video", style = MaterialTheme.typography.titleLarge)
        if (status.isNotBlank()) Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
         Text(status, modifier = Modifier.fillMaxWidth().padding(12.dp))
