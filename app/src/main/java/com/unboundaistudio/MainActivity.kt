@@ -80,6 +80,14 @@ class MainActivity : ComponentActivity() {
    var customSeconds by remember { mutableStateOf("") }
    var lastVideo by remember { mutableStateOf<Uri?>(null) }
    var busy by remember { mutableStateOf(false) }
+   // Native Qwen editor is fully on-device. Image generation still uses the selected backend.
+   var nativeQwen by remember { mutableStateOf(prefs.getBoolean("native_qwen", true)) }
+   var qwenTier by remember { mutableStateOf(prefs.getString("qwen_tier", "FAST") ?: "FAST") }
+   var qwenReady by remember { mutableStateOf(runCatching { NativeQwenEditor.ready(this@MainActivity) }.getOrDefault(false)) }
+   var qwenDownloading by remember { mutableStateOf(false) }
+   var qwenDownloadPercent by remember { mutableIntStateOf(0) }
+   var qwenDownloadText by remember { mutableStateOf("") }
+   var nativeProgress by remember { mutableStateOf(false) }
    var videoElapsedSeconds by remember { mutableIntStateOf(0) }
    var videoJob by remember { mutableStateOf<Job?>(null) }
    var status by remember { mutableStateOf("") }
@@ -279,15 +287,21 @@ class MainActivity : ComponentActivity() {
       }
       if (busy) {
         LinearProgressIndicator(progress = { generationPercent / 100f }, modifier = Modifier.fillMaxWidth())
-        Text("Creating image: $generationPercent% (estimated until image arrives)")
+        Text(if (nativeProgress) "Qwen editing: $generationPercent% (model progress)" else "Creating image: $generationPercent% (estimated until image arrives)")
        }
       if (status.isNotEmpty() && !status.startsWith("Nightmare v")) Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceVariant) { Text(status, modifier = Modifier.fillMaxWidth().padding(16.dp)) }
       fun requestImage(input: Bitmap?, promptOverride: String? = null) {
        if ((promptOverride ?: prompt).isBlank() && !(tab == 2 && fictionalAdultMode && (appearance.isNotBlank() || bodyDescription.isNotBlank()))) { status = "Describe the image first"; return }
        // Color-only bikini edits operate on the source pixels, without an external model or painted mask.
-       val autoColorRequest = if (input != null && !maskMode) AutomaticClothingEdit.parse(promptOverride ?: prompt) else null
+       val useNativeEdit = input != null && nativeQwen
+       // Native edits receive the actual input bitmap, even for simple color changes.
+       val autoColorRequest = if (input != null && !maskMode && !useNativeEdit) AutomaticClothingEdit.parse(promptOverride ?: prompt) else null
+       if (useNativeEdit && !qwenReady) {
+        status = "Download Qwen Turbo models in the Edit tab before using built-in AI Edit (~11 GB)."
+        return
+       }
        val address = server.trim().trimEnd('/')
-       if (autoColorRequest == null && !nightmareMode && !localMode && runCatching { URL(address).let { it.protocol == "https" && it.host.isNotBlank() && it.userInfo == null && it.query == null && it.ref == null } }.getOrDefault(false).not()) {
+       if (autoColorRequest == null && !useNativeEdit && !nightmareMode && !localMode && runCatching { URL(address).let { it.protocol == "https" && it.host.isNotBlank() && it.userInfo == null && it.query == null && it.ref == null } }.getOrDefault(false).not()) {
         status = "Enter a valid HTTPS server URL"; return
        }
        prefs.edit().putString("url", address).apply()
@@ -308,10 +322,11 @@ class MainActivity : ComponentActivity() {
        }
        val mask = if (input != null && maskMode && strokes.isNotEmpty()) makeMask(input.width, input.height, strokes.toList(), brush) else null
               result = null // Do not leave a previous variation visible as a failed new edit.
-              busy = true; generationPercent = 0; status = if (input != null) "Editing photo…" else "Creating image…"
+              busy = true; generationPercent = 0; nativeProgress = useNativeEdit
+              status = if (useNativeEdit) "Editing locally with Qwen Turbo…" else if (input != null) "Editing photo…" else "Creating image…"
         // Nightmare does not currently expose generation progress through this client.
         // Show an explicitly estimated percentage, capped below 100 until an image arrives.
-        val progressJob = scope.launch {
+        val progressJob = if (useNativeEdit) null else scope.launch {
          while (isActive && busy) {
           delay(1500)
           if (busy) generationPercent = (generationPercent + 2).coerceAtMost(95)
@@ -320,7 +335,17 @@ class MainActivity : ComponentActivity() {
        scope.launch {
         try {
          result = withContext(Dispatchers.IO) {
-          if (autoColorRequest != null && input != null) {
+          if (useNativeEdit && input != null) {
+           val generated = NativeQwenEditor.edit(
+            this@MainActivity, input, editPrompt,
+            com.scsonic.qwenimage21.QwenImage21.Size.Tier.valueOf(qwenTier)
+           ) { percentage -> runOnUiThread {
+            generationPercent = percentage
+            status = "Qwen Turbo: $percentage% completed"
+           } }
+           check(!isNearlyWhiteImage(generated)) { "Qwen returned a blank image." }
+           if (mask != null) compositeMaskedEdit(input, generated, mask) else generated
+          } else if (autoColorRequest != null && input != null) {
            AutomaticClothingEdit.recolor(input, autoColorRequest)
             ?: error("Unable to confidently identify colored bikini fabric in this photo. Original image was not changed. Automatic color editing currently supports vivid bikini fabric in a front-facing portrait.")
           } else if (useNightmare) {
@@ -348,16 +373,17 @@ class MainActivity : ComponentActivity() {
          } else {
           generationPercent = 100
            resultGeneratedHere = if (input == null) true else originalGeneratedHere
-           status = if (autoColorRequest != null) "Bikini recolored to ${autoColorRequest.color}. Original face, body, pose and background pixels preserved." else if (input != null) "AI returned an edit — compare it with your requested change below" else "Image ready"
+           status = if (useNativeEdit) "Qwen Turbo edit complete. Compare the face, pose and background with the original." else if (autoColorRequest != null) "Bikini recolored to ${autoColorRequest.color}. Original face, body, pose and background pixels preserved." else if (input != null) "AI returned an edit — compare it with your requested change below" else "Image ready"
          }
         } catch (e: kotlinx.coroutines.CancellationException) { throw e
         } catch (e: Exception) { status = when {
+          useNativeEdit -> "Native Qwen edit failed: ${e.message ?: "Unknown model error"}. Your original image is unchanged."
           autoColorRequest != null -> "Automatic color edit: ${e.message ?: "Unsupported outfit or photo"}. No changes made."
           useNightmare -> "Nightmare ${if (input != null) "edit" else "generation"} failed (flow: ${if (input != null) editFlowForRun else "saved:FreedomAI RealVis"}): ${e.message ?: "connection failed"}. Open the matching flow in Nightmare, check its model and image input."
           useLocal -> "Local Dream: ${e.message ?: "connection failed"}. Keep the model loaded; try split screen if disconnected."
           else -> "Could not create image: ${e.message ?: "connection failed"}"
          }
-        } finally { busy = false; progressJob.cancel() }
+        } finally { busy = false; progressJob?.cancel() }
        }
       }
       if (tab == 2 && adultConfirmed) {
@@ -390,6 +416,54 @@ class MainActivity : ComponentActivity() {
 
       } else if (!videoMode && (tab == 1 || (tab == 2 && adultConfirmed && !fictionalAdultMode))) {
        if (tab == 2) Text("Private editing: adjust brightness and saturation, then save to app-private storage. AI edits may send your photo to the selected model/server. Only use images you have permission to edit.")
+       Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+         Text("Built-in Qwen Image 2.1 Turbo", style = MaterialTheme.typography.titleMedium)
+         Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+          Text("Use Qwen for AI Edit (offline)", modifier = Modifier.weight(1f))
+          Switch(checked = nativeQwen, enabled = !busy, onCheckedChange = {
+           nativeQwen = it; prefs.edit().putBoolean("native_qwen", it).apply()
+          })
+         }
+         Text(if (qwenReady) "Qwen editing model installed ✓" else "Qwen editing model not installed on this app. One-time download ~11 GB. Nightmare model files cannot be reused across Android app sandboxes.")
+         Text("The built-in editor works without Nightmare after setup. Images stay on the phone during editing. Qwen model weights have a separate Qwen Research License.")
+         Text("Qwen editing quality (Fast preserves identity better in upstream testing):")
+         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+          listOf("TINY" to "320", "FAST" to "384", "STANDARD" to "512").forEach { (tier, label) ->
+           OutlinedButton(enabled = !busy, onClick = {
+            qwenTier = tier; prefs.edit().putString("qwen_tier", tier).apply()
+           }) { Text(if (qwenTier == tier) "✓ $label" else label) }
+          }
+         }
+         if (qwenDownloading) {
+          LinearProgressIndicator(progress = { qwenDownloadPercent / 100f }, modifier = Modifier.fillMaxWidth())
+          Text("Downloading: $qwenDownloadPercent% · $qwenDownloadText")
+          OutlinedButton(onClick = { NativeQwenEditor.cancelDownload() }) { Text("Cancel download") }
+         } else if (!qwenReady) {
+          Button(enabled = !busy, onClick = {
+           qwenDownloading = true
+           qwenDownloadText = "Starting secure model download"
+           qwenDownloadPercent = 0
+           scope.launch {
+            try {
+             withContext(Dispatchers.IO) {
+              NativeQwenEditor.download(this@MainActivity) { filename, percent ->
+               runOnUiThread {
+                qwenDownloadText = filename
+                qwenDownloadPercent = percent
+               }
+              }
+             }
+             qwenReady = NativeQwenEditor.ready(this@MainActivity)
+             status = if (qwenReady) "Qwen Turbo installed. AI Edit is ready." else "Qwen files incomplete; tap download to resume."
+            } catch (e: Exception) {
+             status = "Qwen download: ${e.message ?: "failed"}. Tap download to resume."
+            } finally { qwenDownloading = false }
+           }
+          }, modifier = Modifier.fillMaxWidth()) { Text("Download Qwen Turbo editing models") }
+         }
+        }
+       }
        Button(enabled = !busy, onClick = { picker.launch("image/*") }, modifier = Modifier.fillMaxWidth()) { Text("Choose Photo") }
        edited?.let { bitmap ->
         BoxWithConstraints(Modifier.fillMaxWidth()) {
