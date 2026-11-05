@@ -213,7 +213,7 @@ class MainActivity : ComponentActivity() {
     }
     Scaffold(bottomBar = {
      NavigationBar {
-      NavigationBarItem(selected = tab == -1, onClick = { tab = -1 }, icon = { Text("⌂") }, label = { Text("Home") })
+      NavigationBarItem(selected = tab == -1, onClick = { tab = -1; videoMode = false; prompt = ""; motionPrompt = ""; status = ""; result = null; original = null; lastVideo = null; generationPercent = 0; brightness = 0f; saturation = 1f; strokes.clear(); drawing = emptyList(); maskMode = false; expandedPhoto = null; pendingAssistantImage = null; originalGeneratedHere = false; resultGeneratedHere = false }, icon = { Text("⌂") }, label = { Text("Home") })
       NavigationBarItem(selected = tab == 0, onClick = { tab = 0 }, icon = { Text("✦") }, label = { Text("Create") })
       NavigationBarItem(selected = tab == 1, onClick = { tab = 1 }, icon = { Text("◈") }, label = { Text("Edit") })
       NavigationBarItem(selected = tab == 3, onClick = { tab = 3; videoMode = false }, icon = { Text("AI") }, label = { Text("Assistant") })
