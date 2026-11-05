@@ -20,6 +20,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color as UiColor
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
@@ -185,11 +187,24 @@ class MainActivity : ComponentActivity() {
       onDismissRequest = { expandedPhoto = null },
       properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
      ) {
+      var zoom by remember(enlarged) { mutableFloatStateOf(1f) }
+      var pan by remember(enlarged) { mutableStateOf(Offset.Zero) }
       Box(Modifier.fillMaxSize().background(UiColor.Black)) {
-       Image(enlarged.asImageBitmap(), contentDescription = "Expanded photo",
-        contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize().clickable { expandedPhoto = null })
-       TextButton(onClick = { expandedPhoto = null }, modifier = Modifier.align(androidx.compose.ui.Alignment.TopEnd)) {
-        Text("Close")
+       Image(enlarged.asImageBitmap(), contentDescription = "Expanded photo; pinch to zoom and drag to pan",
+        contentScale = ContentScale.Fit,
+        modifier = Modifier.fillMaxSize()
+         .pointerInput(enlarged) {
+          detectTransformGestures { _, drag, scale, _ ->
+           zoom = (zoom * scale).coerceIn(1f, 8f)
+           pan = if (zoom <= 1f) Offset.Zero else Offset(
+            (pan.x + drag.x).coerceIn(-size.width * (zoom - 1f) / 2f, size.width * (zoom - 1f) / 2f),
+            (pan.y + drag.y).coerceIn(-size.height * (zoom - 1f) / 2f, size.height * (zoom - 1f) / 2f))
+          }
+         }
+         .graphicsLayer { scaleX = zoom; scaleY = zoom; translationX = pan.x; translationY = pan.y })
+       Row(modifier = Modifier.align(androidx.compose.ui.Alignment.TopEnd)) {
+        TextButton(onClick = { zoom = 1f; pan = Offset.Zero }) { Text("Reset zoom") }
+        TextButton(onClick = { expandedPhoto = null }) { Text("Close") }
        }
       }
      }
