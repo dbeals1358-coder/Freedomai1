@@ -131,10 +131,13 @@ class MainActivity : ComponentActivity() {
     var generationPercent by remember { mutableStateOf(0) }
    fun cancelGeneration() {
     generationJob?.cancel()
+    videoJob?.cancel()
     generationJob = null
+    videoJob = null
     busy = false
+    nativeProgress = false
     generationPercent = 0
-    status = "Generation cancelled. A Nightmare request already running may continue on its server."
+    status = "Cancelled. Remote Nightmare processing may continue on its server."
    }
 
    var maskMode by remember { mutableStateOf(false) }
@@ -336,7 +339,7 @@ class MainActivity : ComponentActivity() {
        }
       }
       if (busy) {
-        OutlinedButton(onClick = { cancelGeneration() }, modifier = Modifier.fillMaxWidth()) { Text("Cancel generation") }
+        Button(onClick = { cancelGeneration() }, colors = ButtonDefaults.buttonColors(containerColor = UiColor(0xFFB3261E), contentColor = UiColor.White), modifier = Modifier.fillMaxWidth()) { Text("Cancel") }
         LinearProgressIndicator(progress = { generationPercent / 100f }, modifier = Modifier.fillMaxWidth())
         Text(if (nativeProgress) "Qwen editing: $generationPercent% (model progress)" else "AI is processing your image… ${generationPercent}% is an estimate; final rendering may take longer.")
        }
@@ -401,8 +404,10 @@ class MainActivity : ComponentActivity() {
             this@MainActivity, input, editPrompt,
             com.scsonic.qwenimage21.QwenImage21.Size.Tier.valueOf(qwenTier)
            ) { percentage -> runOnUiThread {
-            generationPercent = percentage
-            status = "Qwen Turbo: $percentage% completed"
+            if (generationJob?.isActive == true) {
+             generationPercent = percentage
+             status = "Qwen Turbo: $percentage% completed"
+            }
            } }
            check(!isNearlyWhiteImage(generated)) { "Qwen returned a blank image." }
            if (mask != null) compositeMaskedEdit(input, generated, mask) else generated
@@ -433,7 +438,7 @@ class MainActivity : ComponentActivity() {
            }
            if (mask != null) error("Painted-area edits require an HTTPS AUTOMATIC1111 server")
            val frame = LocalDreamClient.generate(editPrompt, encoded, requestedStrength) { step, total ->
-            runOnUiThread { status = "Creating image: step $step of $total" }
+            runOnUiThread { if (generationJob?.isActive == true) status = "Creating image: step $step of $total" }
            }
            Bitmap.createBitmap(frame.pixels, frame.width, frame.height, Bitmap.Config.ARGB_8888)
           } else {
