@@ -82,6 +82,10 @@ class MainActivity : ComponentActivity() {
    var busy by remember { mutableStateOf(false) }
    // Native Qwen editor is fully on-device. Image generation still uses the selected backend.
    var nativeQwen by remember { mutableStateOf(prefs.getBoolean("native_qwen", true)) }
+   var onlineQwen by remember { mutableStateOf(prefs.getBoolean("online_qwen", false)) }
+   var onlineQwenUrl by remember { mutableStateOf(prefs.getString("online_qwen_url", "") ?: "") }
+   var onlineQwenModel by remember { mutableStateOf(prefs.getString("online_qwen_model", "") ?: "") }
+   var onlineQwenKey by remember { mutableStateOf(prefs.getString("online_qwen_key", "") ?: "") }
    var qwenTier by remember { mutableStateOf(prefs.getString("qwen_tier", "FAST") ?: "FAST") }
    var qwenReady by remember { mutableStateOf(runCatching { NativeQwenEditor.ready(this@MainActivity) }.getOrDefault(false)) }
    var qwenDownloading by remember { mutableStateOf(false) }
@@ -293,15 +297,20 @@ class MainActivity : ComponentActivity() {
       fun requestImage(input: Bitmap?, promptOverride: String? = null) {
        if ((promptOverride ?: prompt).isBlank() && !(tab == 2 && fictionalAdultMode && (appearance.isNotBlank() || bodyDescription.isNotBlank()))) { status = "Describe the image first"; return }
        // Color-only bikini edits operate on the source pixels, without an external model or painted mask.
-       val useNativeEdit = input != null && nativeQwen
+       val useOnlineEdit = input != null && onlineQwen
+        val useNativeEdit = input != null && nativeQwen && !useOnlineEdit
        // Native edits receive the actual input bitmap, even for simple color changes.
        val autoColorRequest = if (input != null && !maskMode && !useNativeEdit) AutomaticClothingEdit.parse(promptOverride ?: prompt) else null
-       if (useNativeEdit && !qwenReady) {
+       if (useOnlineEdit && (onlineQwenUrl.isBlank() || onlineQwenModel.isBlank())) {
+         status = "Online Qwen needs an image-edit API endpoint and model name. Enter them in the Edit tab."
+         return
+        }
+        if (useNativeEdit && !qwenReady) {
         status = "Download Qwen Turbo models in the Edit tab before using built-in AI Edit (~11 GB)."
         return
        }
        val address = server.trim().trimEnd('/')
-       if (autoColorRequest == null && !useNativeEdit && !nightmareMode && !localMode && runCatching { URL(address).let { it.protocol == "https" && it.host.isNotBlank() && it.userInfo == null && it.query == null && it.ref == null } }.getOrDefault(false).not()) {
+       if (autoColorRequest == null && !useNativeEdit && !useOnlineEdit && !nightmareMode && !localMode && runCatching { URL(address).let { it.protocol == "https" && it.host.isNotBlank() && it.userInfo == null && it.query == null && it.ref == null } }.getOrDefault(false).not()) {
         status = "Enter a valid HTTPS server URL"; return
        }
        prefs.edit().putString("url", address).apply()
@@ -323,7 +332,7 @@ class MainActivity : ComponentActivity() {
        val mask = if (input != null && maskMode && strokes.isNotEmpty()) makeMask(input.width, input.height, strokes.toList(), brush) else null
               result = null // Do not leave a previous variation visible as a failed new edit.
               busy = true; generationPercent = 0; nativeProgress = useNativeEdit
-              status = if (useNativeEdit) "Editing locally with Qwen Turbo…" else if (input != null) "Editing photo…" else "Creating image…"
+              status = if (useOnlineEdit) "Editing with online Qwen…" else if (useNativeEdit) "Editing locally with Qwen Turbo…" else if (input != null) "Editing photo…" else "Creating image…"
         // Nightmare does not currently expose generation progress through this client.
         // Show an explicitly estimated percentage, capped below 100 until an image arrives.
         val progressJob = if (useNativeEdit) null else scope.launch {
@@ -335,7 +344,11 @@ class MainActivity : ComponentActivity() {
        scope.launch {
         try {
          result = withContext(Dispatchers.IO) {
-          if (useNativeEdit && input != null) {
+          if (useOnlineEdit && input != null) {
+            val generated = OnlineQwenEditor.edit(input, editPrompt, onlineQwenUrl, onlineQwenModel, onlineQwenKey)
+            check(!isNearlyWhiteImage(generated)) { "Online editor returned a blank image." }
+            if (mask != null) compositeMaskedEdit(input, generated, mask) else generated
+           } else if (useNativeEdit && input != null) {
            val generated = NativeQwenEditor.edit(
             this@MainActivity, input, editPrompt,
             com.scsonic.qwenimage21.QwenImage21.Size.Tier.valueOf(qwenTier)
@@ -373,11 +386,12 @@ class MainActivity : ComponentActivity() {
          } else {
           generationPercent = 100
            resultGeneratedHere = if (input == null) true else originalGeneratedHere
-           status = if (useNativeEdit) "Qwen Turbo edit complete. Compare the face, pose and background with the original." else if (autoColorRequest != null) "Bikini recolored to ${autoColorRequest.color}. Original face, body, pose and background pixels preserved." else if (input != null) "AI returned an edit — compare it with your requested change below" else "Image ready"
+           status = if (useOnlineEdit) "Online Qwen edit complete. Check the result against the original." else if (useNativeEdit) "Qwen Turbo edit complete. Compare the face, pose and background with the original." else if (autoColorRequest != null) "Bikini recolored to ${autoColorRequest.color}. Original face, body, pose and background pixels preserved." else if (input != null) "AI returned an edit — compare it with your requested change below" else "Image ready"
          }
         } catch (e: kotlinx.coroutines.CancellationException) { throw e
         } catch (e: Exception) { status = when {
-          useNativeEdit -> "Native Qwen edit failed: ${e.message ?: "Unknown model error"}. Your original image is unchanged."
+          useOnlineEdit -> "Online Qwen edit failed: ${e.message ?: "Check your endpoint, model and token"}. Original image unchanged." 
+           useNativeEdit -> "Native Qwen edit failed: ${e.message ?: "Unknown model error"}. Your original image is unchanged."
           autoColorRequest != null -> "Automatic color edit: ${e.message ?: "Unsupported outfit or photo"}. No changes made."
           useNightmare -> "Nightmare ${if (input != null) "edit" else "generation"} failed (flow: ${if (input != null) editFlowForRun else "saved:FreedomAI RealVis"}): ${e.message ?: "connection failed"}. Open the matching flow in Nightmare, check its model and image input."
           useLocal -> "Local Dream: ${e.message ?: "connection failed"}. Keep the model loaded; try split screen if disconnected."
@@ -418,7 +432,27 @@ class MainActivity : ComponentActivity() {
        if (tab == 2) Text("Private editing: adjust brightness and saturation, then save to app-private storage. AI edits may send your photo to the selected model/server. Only use images you have permission to edit.")
        Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-         Text("Built-in Qwen Image 2.1 Turbo", style = MaterialTheme.typography.titleMedium)
+         Text("Qwen image editing", style = MaterialTheme.typography.titleMedium)
+          Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+           Text("Use online Qwen for AI Edit", modifier = Modifier.weight(1f))
+           Switch(checked = onlineQwen, enabled = !busy, onCheckedChange = {
+            onlineQwen = it; prefs.edit().putBoolean("online_qwen", it).apply()
+           })
+          }
+          if (onlineQwen) {
+           Text("Online editing sends your selected photo to the configured service. Requires a compatible OpenAI-style image edits API; service charges or limits may apply.")
+           OutlinedTextField(value = onlineQwenUrl, onValueChange = {
+            onlineQwenUrl = it; prefs.edit().putString("online_qwen_url", it.trim()).apply()
+           }, label = { Text("Image edits API URL (HTTPS)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+           OutlinedTextField(value = onlineQwenModel, onValueChange = {
+            onlineQwenModel = it; prefs.edit().putString("online_qwen_model", it.trim()).apply()
+           }, label = { Text("Online Qwen image-edit model name") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+           OutlinedTextField(value = onlineQwenKey, onValueChange = {
+            onlineQwenKey = it; prefs.edit().putString("online_qwen_key", it).apply()
+           }, label = { Text("Provider API key (if required)") }, modifier = Modifier.fillMaxWidth(), singleLine = true,
+            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation())
+          }
+          Text("Offline Qwen (keeps downloaded 11 GB model)")
          Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
           Text("Use Qwen for AI Edit (offline)", modifier = Modifier.weight(1f))
           Switch(checked = nativeQwen, enabled = !busy, onCheckedChange = {
