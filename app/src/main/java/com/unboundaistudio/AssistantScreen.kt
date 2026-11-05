@@ -69,8 +69,8 @@ fun AssistantScreen(onCreateImage: (String) -> Unit = {}, onEditImage: (String) 
  }
  Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
   Text("AI Assistant", style = MaterialTheme.typography.headlineMedium)
-  Text("Chat by typing or speaking. Online AI is the default; no assistant model download required.")
-  Text("Online assistant: Hugging Face Inference Providers. Uses internet and an access token with Inference Providers permission; free monthly credits may be limited.")
+  Text("Chat by typing or speaking. Online AI uses provider credits; offline AI requires a compatible .task language model.")
+  Text("Online assistant: Hugging Face Inference Providers. HTTP 402 means provider credits or billing are required. When a compatible offline model is installed, online failures can fall back to offline automatically.")
   if (BuildConfig.HF_ACCESS_TOKEN.isNotBlank()) {
    Text("Hugging Face access configured for this build.")
   }
@@ -78,7 +78,7 @@ fun AssistantScreen(onCreateImage: (String) -> Unit = {}, onEditImage: (String) 
    Text("A Hugging Face Inference Providers token is required for online chat.")
   }
   Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-   Text("Use offline assistant instead", modifier = Modifier.weight(1f))
+   Text("Prefer offline assistant", modifier = Modifier.weight(1f))
    Switch(checked = useOfflineAssistant, onCheckedChange = {
     useOfflineAssistant = it
     prefs.edit().putBoolean("use_offline_assistant", it).apply()
@@ -89,7 +89,7 @@ fun AssistantScreen(onCreateImage: (String) -> Unit = {}, onEditImage: (String) 
     Text(if (offlineSettingsVisible) "Hide offline model setup" else "Offline model setup (optional)")
    }
    if (offlineSettingsVisible) {
-     Text("Offline AI setup: Gemma 3 1B (one-time download, then works without internet). Accept access on the litert-community/Gemma3-1B-IT model page before downloading.")
+     Text("Offline AI setup: Gemma 3 1B (.task format). The Qwen Image model in Nightmare cannot be used for chat. Install a compatible language model once to enable offline replies and automatic fallback.")
      if (embeddedHfToken.isNotBlank()) {
       Text("Hugging Face access configured automatically.")
      } else {
@@ -171,7 +171,20 @@ fun AssistantScreen(onCreateImage: (String) -> Unit = {}, onEditImage: (String) 
         val onlineToken = apiKey.ifBlank { BuildConfig.HF_ACCESS_TOKEN }
         if (onlineToken.isBlank() && endpoint == defaultOnlineEndpoint)
          throw IllegalStateException("Hugging Face online chat needs an Inference Providers token. Add one under API token.")
-        assistantReply(endpoint, model, onlineToken, history.toList())
+        try {
+         assistantReply(endpoint, model, onlineToken, history.toList())
+        } catch (onlineError: Exception) {
+         val offlineFile = File(localModelPath)
+         if (localModelPath.isNotBlank() && offlineFile.isFile && offlineFile.length() > 100_000_000L) {
+          try {
+           offlineAssistantReply(context, localModelPath, history.toList())
+          } catch (offlineError: Exception) {
+           throw IllegalStateException("Online assistant failed: ${onlineError.message}. Offline fallback failed: ${offlineError.message}")
+          }
+         } else {
+          throw IllegalStateException("${onlineError.message}. Install a compatible offline .task language model under Offline model setup to enable free local fallback.")
+         }
+        }
        }
       }
       history.add("assistant" to answer.replace(Regex("^(Assistant:\\s*)+", RegexOption.IGNORE_CASE), "").trim())
@@ -204,7 +217,7 @@ private fun assistantReply(endpoint: String, model: String, apiKey: String, hist
   if (apiKey.isNotBlank()) connection.setRequestProperty("Authorization", "Bearer $apiKey")
   connection.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
   val status = connection.responseCode
-  if (status !in 200..299) throw IllegalStateException("Chat service returned HTTP $status")
+  if (status !in 200..299) throw IllegalStateException(if (status == 402) "Online chat HTTP 402: provider credits exhausted or billing required" else "Chat service returned HTTP $status")
   val body = connection.inputStream.bufferedReader().use { it.readText().take(1000000) }
   return JSONObject(body).getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content")
  } finally { connection.disconnect() }
