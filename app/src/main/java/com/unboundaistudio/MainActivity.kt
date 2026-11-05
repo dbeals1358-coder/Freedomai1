@@ -209,7 +209,7 @@ class MainActivity : ComponentActivity() {
    var expandedPhoto by remember { mutableStateOf<Bitmap?>(null) }
    val edited = remember(original, brightness, saturation) { original?.let { adjust(it, brightness, saturation) } }
    MaterialTheme(colorScheme = darkColorScheme(
-    primary = UiColor(0xFFB8A0FF), onPrimary = UiColor(0xFF21133F),
+    primary = UiColor(0xFF98F5D0), onPrimary = UiColor(0xFF10372A),
     secondary = UiColor(0xFF8AC7FF), background = UiColor(0xFF101116),
     surface = UiColor(0xFF191B24), surfaceVariant = UiColor(0xFF252836)
    )) {
@@ -259,7 +259,7 @@ class MainActivity : ComponentActivity() {
         )
       }
       if (tab == -1) {
-       Column(Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(UiColor(0xFF332451), UiColor(0xFF192F49))), RoundedCornerShape(28.dp)).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+       Column(Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(UiColor(0xFF164A3C), UiColor(0xFF192F49))), RoundedCornerShape(28.dp)).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text("✦", style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.primary)
         Text("Build it, Dream it, Crank it!", style = MaterialTheme.typography.headlineLarge)
         Text("Your AI Studio — create or edit photos and videos.", color = UiColor(0xFFD3D0E3))
