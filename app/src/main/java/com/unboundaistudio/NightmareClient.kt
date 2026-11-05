@@ -53,30 +53,73 @@ internal object NightmareClient {
             connection.disconnect()
         }
     }
-    fun generate(prompt: String, token: String, input: android.graphics.Bitmap?, strength: Float, highQuality: Boolean, resolution: Int = 1024, editFlow: String = "current"): android.graphics.Bitmap {
+    fun generate(prompt: String, token: String, input: android.graphics.Bitmap?, strength: Float, highQuality: Boolean, resolution: Int = 1024, editFlow: String = "auto"): android.graphics.Bitmap {
         require(token.isNotBlank()) { "Enter your Nightmare API token in Connection settings" }
         require(!token.contains('\n') && !token.contains('\r')) { "Invalid Nightmare API token" }
-        // Check authentication before starting a potentially long image generation request.
         authenticatedGet("/info", token)
-        require(editFlow == "current" || editFlow == "img2img" || editFlow.startsWith("saved:")) { "Invalid edit workflow" }
-        val payload = JSONObject()
-            .put("flow", if (input == null) "saved:FreedomAI RealVis" else editFlow)
-            .put("prompt", prompt)
-            .put("steps", if (input != null) 35 else if (highQuality) 35 else 22)
-            .put("cfg", 6.0)
-            .put("width", if (input != null) input.width else resolution)
-            .put("height", if (input != null) input.height else resolution)
-        if (input != null) {
+        require(editFlow == "auto" || editFlow == "current" || editFlow == "img2img" ||
+                editFlow == "inpaint" || editFlow == "flux_edit" || editFlow.startsWith("saved:")) {
+            "Invalid Nightmare edit workflow: $editFlow"
+        }
+        val actualFlow = if (input == null) "saved:FreedomAI RealVis" else EditRequestRouting.chooseFlow(editFlow, prompt)
+        val payload = JSONObject().put("flow", actualFlow)
+            .put("prompt", if (input == null) prompt else EditRequestRouting.promptFor(actualFlow, prompt))
+
+        if (input == null) {
+            payload.put("steps", if (highQuality) 35 else 22)
+                .put("cfg", 6.0).put("width", resolution).put("height", resolution)
+        } else {
             val stream = java.io.ByteArrayOutputStream()
-            input.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, stream)
-            payload.put("images", JSONObject().put("image", android.util.Base64.encodeToString(stream.toByteArray(), android.util.Base64.NO_WRAP)))
-            payload.put("denoise", strength.toDouble())
+            check(input.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, stream)) {
+                "Failed to encode original image for editing"
+            }
+            payload.put("images", JSONObject().put("image",
+                android.util.Base64.encodeToString(stream.toByteArray(), android.util.Base64.NO_WRAP)))
+
+            when (actualFlow) {
+                "inpaint" -> {
+                    // Auto-mask clothing using Nightmare's 29 MB Clothes parser. No hand-painting.
+                    // Its inpaint node composites the masked change onto the original photo.
+                    // If the parser isn't installed, Nightmare refuses instead of silently
+                    // running a full-frame img2img variation.
+                    payload.put("denoise", strength.coerceAtLeast(0.60f).toDouble())
+                        .put("steps", 35).put("cfg", 6.0)
+                        .put("width", input.width).put("height", input.height)
+                        .put("params", JSONObject().put("inpaint", JSONObject()
+                            .put("pick_select", "true")
+                            .put("auto_crop", "true")
+                            .put("only_masked", "true")
+                            .put("stitch", "true")))
+                }
+                "flux_edit" -> {
+                    // Instruction-following edit is a DIFFERENT Nightmare recipe from img2img.
+                    // Do not run an SDXL restyle and claim a requested object edit succeeded.
+                    val installed = JSONObject(authenticatedGet("/models", token)).optJSONArray("models")
+                        ?: error("Nightmare did not report its installed picture models.")
+                    val supported = setOf("FLUX2", "FLUX3", "QWEN21", "FIBO2")
+                    val model = (0 until installed.length()).mapNotNull { installed.optJSONObject(it) }
+                        .firstOrNull { it.optString("family") in supported }
+                        ?.optString("id").orEmpty()
+                    check(model.isNotBlank()) {
+                        "Nightmare has no instruction-edit model installed. Open Nightmare → Models → Edit and install a compatible FLUX Klein or Qwen Image model. Your RealVis/SDXL image-to-image flow only restyles the photo."
+                    }
+                    // On 12 GB phones, a 512px reference edit is more memory-safe.
+                    payload.put("model", model).put("cfg", 1.0).put("denoise", 1.0)
+                        .put("width", 512).put("height", 512)
+                }
+                else -> {
+                    // Explicit saved/current/img2img flows remain available for custom workflows.
+                    payload.put("steps", 35).put("cfg", 6.0)
+                        .put("width", input.width).put("height", input.height)
+                        .put("denoise", strength.toDouble())
+                }
+            }
         }
         val connection = URL("$BASE_URL/run").openConnection() as HttpURLConnection
         val reply = try {
             connection.requestMethod = "POST"
             connection.connectTimeout = 10000
-            connection.readTimeout = 120000
+            connection.readTimeout = 600000
             connection.doOutput = true
             connection.instanceFollowRedirects = false
             connection.setRequestProperty("Authorization", "Bearer $token")
@@ -88,7 +131,12 @@ internal object NightmareClient {
             if (code == 500 && body.contains("backend did not start", ignoreCase = true)) {
                 error("Nightmare could not start the processing backend for flow '${payload.optString("flow")}'. This is a Nightmare model/runtime startup failure, not a button or image-upload failure. Open that exact flow in Nightmare and run a simple image-to-image edit; check model loading, available RAM and Nightmare logs. Run ID: ${runCatching { JSONObject(body).optString("run") }.getOrDefault("unknown")}")
             }
-            check(code in 200..299) { "Nightmare HTTP $code: ${body.take(350)}" }
+            if (code !in 200..299 && actualFlow == "inpaint" &&
+                (body.contains("parser", true) || body.contains("picked by name", true) ||
+                 body.contains("auto mask", true))) {
+                error("Automatic clothing selection requires Nightmare's Clothes Auto Mask tool (29 MB). Install it under Nightmare → Models → Tools, then retry. Original photo was not changed.")
+            }
+            check(code in 200..299) { "Nightmare HTTP $code (flow: $actualFlow): ${body.take(350)}" }
             check(body.isNotBlank()) { "Nightmare returned an empty response" }
             JSONObject(body)
         } finally {
