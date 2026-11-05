@@ -63,7 +63,15 @@ class MainActivity : ComponentActivity() {
    var localMode by remember { mutableStateOf(prefs.getBoolean("local", true)) }
    var nightmareMode by remember { mutableStateOf(prefs.getBoolean("nightmare", true)) }
    var nightmareToken by remember { mutableStateOf(prefs.getString("nightmare_token", "") ?: "") }
-   var nightmareEditFlow by remember { mutableStateOf(prefs.getString("nightmare_edit_flow", "img2img") ?: "img2img") }
+   var nightmareEditFlow by remember {
+    // Migrate the old img2img default. That flow restyles instead of making precise changes.
+    if (!prefs.getBoolean("edit_flow_migrated_v3", false)) {
+     val old = prefs.getString("nightmare_edit_flow", "img2img") ?: "img2img"
+     prefs.edit().putString("nightmare_edit_flow", if (old == "img2img") "auto" else old)
+      .putBoolean("edit_flow_migrated_v3", true).apply()
+    }
+    mutableStateOf(prefs.getString("nightmare_edit_flow", "auto") ?: "auto")
+   }
    var videoUrl by remember { mutableStateOf(prefs.getString("video_url", "") ?: "") }
    var motionPrompt by remember { mutableStateOf("") }
    var nightmareVideoFlow by remember { mutableStateOf(prefs.getString("nightmare_video_flow", "current") ?: "current") }
@@ -218,8 +226,8 @@ class MainActivity : ComponentActivity() {
        nightmareToken = it.trim()
        prefs.edit().putString("nightmare_token", nightmareToken).apply()
       }, label = { Text("Nightmare API token (kept on this phone)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-      Text("Creation uses your saved RealVis flow. Editing uses the selected Nightmare workflow.")
-      OutlinedTextField(value = nightmareEditFlow, onValueChange = { nightmareEditFlow = it.trim(); prefs.edit().putString("nightmare_edit_flow", nightmareEditFlow).apply() }, label = { Text("Nightmare edit workflow ID") }, supportingText = { Text("Use current for the workflow open in Nightmare, img2img for its standard image-to-image recipe, or saved:Your Flow Name.") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+      Text("Creation uses RealVis. Auto Edit uses Nightmare's Clothes auto-mask for garment changes, or an installed FLUX/Qwen edit model for other instructions. Img2img only restyles photos.")
+      OutlinedTextField(value = nightmareEditFlow, onValueChange = { nightmareEditFlow = it.trim(); prefs.edit().putString("nightmare_edit_flow", nightmareEditFlow).apply() }, label = { Text("Nightmare edit workflow") }, supportingText = { Text("Recommended: auto. Others: inpaint, flux_edit, img2img (restyle only), current, or saved:Your Flow Name.") }, singleLine = true, modifier = Modifier.fillMaxWidth())
       OutlinedButton(enabled = !busy, onClick = {
        busy = true
        scope.launch {
@@ -294,11 +302,12 @@ class MainActivity : ComponentActivity() {
        } else (promptOverride ?: prompt)
        val requestedStrength = if (input != null) editStrength.coerceIn(0.10f, 0.80f) else editStrength
        val requestedHighQuality = highQuality
-       val editPrompt = if (input != null) "Edit the supplied source image. Apply only the requested modification. Preserve all unrelated facial features, body proportions, pose, camera framing, lighting, colors, and background. Do not regenerate a different person or scene. Requested change: $requestedPrompt" else requestedPrompt
+       val editPrompt = if (input != null) "$requestedPrompt. Keep the same person, face, pose, camera and background." else requestedPrompt
        if (input != null && precisionEdit && (!maskMode || strokes.isEmpty())) {
         precisionEdit = false // Fall back to full-frame edit instead of silently blocking.
        }
        val mask = if (input != null && maskMode && strokes.isNotEmpty()) makeMask(input.width, input.height, strokes.toList(), brush) else null
+              result = null // Do not leave a previous variation visible as a failed new edit.
               busy = true; generationPercent = 0; status = if (input != null) "Editing photo…" else "Creating image…"
         // Nightmare does not currently expose generation progress through this client.
         // Show an explicitly estimated percentage, capped below 100 until an image arrives.
@@ -339,7 +348,7 @@ class MainActivity : ComponentActivity() {
          } else {
           generationPercent = 100
            resultGeneratedHere = if (input == null) true else originalGeneratedHere
-           status = if (autoColorRequest != null) "Bikini recolored to ${autoColorRequest.color}. Original face, body, pose and background pixels preserved." else if (input != null) "AI edit complete — review the result below" else "Image ready"
+           status = if (autoColorRequest != null) "Bikini recolored to ${autoColorRequest.color}. Original face, body, pose and background pixels preserved." else if (input != null) "AI returned an edit — compare it with your requested change below" else "Image ready"
          }
         } catch (e: kotlinx.coroutines.CancellationException) { throw e
         } catch (e: Exception) { status = when {
