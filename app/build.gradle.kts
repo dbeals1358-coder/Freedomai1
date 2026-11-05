@@ -16,10 +16,13 @@ android {
     }
     // The build injects this into the APK; it can be extracted from the APK.
     val hfToken = System.getenv("HF_ACCESS_TOKEN").orEmpty()
+    val nightmareBuildToken = System.getenv("NIGHTMARE_API_TOKEN").orEmpty()
+    require(!nightmareBuildToken.contains('\\n') && !nightmareBuildToken.contains('\\r') && !nightmareBuildToken.contains('"') && !nightmareBuildToken.contains('\\')) { "Invalid Nightmare token characters" }
     require(hfToken.isEmpty() || Regex("hf_[A-Za-z0-9]+").matches(hfToken)) { "Invalid HF token format" }
     buildFeatures { compose = true; buildConfig = true }
     defaultConfig {
         buildConfigField("String", "HF_ACCESS_TOKEN", "\"$hfToken\"")
+        buildConfigField("String", "NIGHTMARE_API_TOKEN", "\\\"$nightmareBuildToken\\\"")
     }
     packaging { jniLibs { pickFirsts += "lib/arm64-v8a/libc++_shared.so" } }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
