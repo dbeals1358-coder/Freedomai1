@@ -107,10 +107,11 @@ internal object NightmareClient {
                     check(model.isNotBlank()) {
                         "Nightmare has no instruction-edit model installed. Open Nightmare → Models → Edit and install a compatible FLUX Klein or Qwen Image model. Your RealVis/SDXL image-to-image flow only restyles the photo."
                     }
-                    // Use Nightmare's existing model and runtime, not the separate
-                    // Qwen engine inside FreedomAI. Keep the first edit small on 12 GB phones.
+                    // Respect the requested edit resolution instead of forcing 512 px.
+                    // Higher sizes require more memory in Nightmare; report backend errors rather than silently downgrading.
+                    val editSize = resolution.coerceIn(512, 1024) / 64 * 64
                     payload.put("model", model).put("cfg", 1.0).put("denoise", 1.0)
-                        .put("width", 512).put("height", 512)
+                        .put("width", editSize).put("height", editSize)
                 }
                 else -> {
                     // Explicit saved/current/img2img flows remain available for custom workflows.
