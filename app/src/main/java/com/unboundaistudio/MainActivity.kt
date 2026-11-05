@@ -555,7 +555,7 @@ class MainActivity : ComponentActivity() {
             contentResolver.update(uri, ContentValues().apply { put(MediaStore.Video.Media.IS_PENDING, 0) }, null, null)
             lastVideo = uri
             generationPercent = 100
-            status = if (video.reducedForMemory) "AI video saved to Movies/FreedomAI (reduced to ${video.width}×${video.height}, ${video.seconds}s to fit NPU memory)." else "AI video saved to Movies/FreedomAI (${video.width}×${video.height}, ${video.seconds}s)."
+            status = if (video.reducedForMemory) "AI video saved to Movies/FreedomAI (reduced to ${video.width}×${video.height}, ${video.durationLabel}s to fit NPU memory)." else "AI video saved to Movies/FreedomAI (${video.width}×${video.height}, ${video.durationLabel}s)."
            } catch (e: Exception) { contentResolver.delete(uri, null, null); throw e }
           } catch (e: Exception) { status = "AI video failed: ${e.message}" }
           finally { busy = false }
