@@ -27,6 +27,7 @@ internal object MobileI2VModelUpdater {
    runCatching { release to JSONObject(String(downloadSmall(release + "validation_report.json"), Charsets.UTF_8)) }.getOrNull()
   } ?: error("No verified MobileI2V model release is available.")
   val (release, manifest) = selected
+  val chunks = runCatching { JSONObject(String(downloadSmall(release + "chunks.json"), Charsets.UTF_8)) }.getOrNull()
   val entries = required.map { name ->
    val record = if (manifest.has(name)) manifest.getJSONObject(name) else if (name == "vae_encoder.onnx") {
     // The existing v2 manifest may omit the source encoder; use the known
@@ -73,7 +74,16 @@ internal object MobileI2VModelUpdater {
     val temporary = File(modelsDir, e.name + ".downloading")
     temporary.delete()
     val digest = MessageDigest.getInstance("SHA-256")
-    val connection = URL(release + e.name).openConnection() as HttpURLConnection
+    val parts = if (chunks != null && chunks.has(e.name)) {
+     val arr = chunks.getJSONArray(e.name)
+     (0 until arr.length()).map { arr.getString(it) }
+    } else listOf(e.name)
+    require(parts.isNotEmpty() && parts.all { it.matches(Regex(Regex.escape(e.name) + "\\.part[0-9]{3}")) || it == e.name }) {
+     "Invalid MobileI2V model parts manifest for " + e.name
+    }
+    var copied = 0L
+    for (part in parts) {
+    val connection = URL(release + part).openConnection() as HttpURLConnection
     try {
      connection.connectTimeout = 30000
      connection.readTimeout = 30000
@@ -82,7 +92,6 @@ internal object MobileI2VModelUpdater {
      require(connection.responseCode == 200) {
       "Download failed for " + e.name + ": HTTP " + connection.responseCode + ". The model must be published as a verified asset in mobilei2v-models-v2."
      }
-     var copied = 0L
      connection.inputStream.use { source ->
       temporary.outputStream().buffered().use { target ->
        val block = ByteArray(1024 * 1024)
@@ -99,6 +108,7 @@ internal object MobileI2VModelUpdater {
        }
       }
      }
+    }
      require(copied == e.size) { "Incomplete MobileI2V download: " + e.name }
      require(digest.digest().joinToString("") { "%02x".format(it) } == e.hash) {
       "MobileI2V SHA-256 mismatch: " + e.name
