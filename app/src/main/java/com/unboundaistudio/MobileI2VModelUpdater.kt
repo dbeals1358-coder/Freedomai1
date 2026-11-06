@@ -93,7 +93,7 @@ internal object MobileI2VModelUpdater {
       "Download failed for " + e.name + ": HTTP " + connection.responseCode + ". The model must be published as a verified asset in mobilei2v-models-v2."
      }
      connection.inputStream.use { source ->
-      temporary.outputStream().buffered().use { target ->
+      java.io.FileOutputStream(temporary, copied > 0).buffered().use { target ->
        val block = ByteArray(1024 * 1024)
        while (true) {
         if (Thread.currentThread().isInterrupted) throw InterruptedException("Download cancelled")
@@ -108,12 +108,12 @@ internal object MobileI2VModelUpdater {
        }
       }
      }
+    } finally { connection.disconnect() }
     }
      require(copied == e.size) { "Incomplete MobileI2V download: " + e.name }
      require(digest.digest().joinToString("") { "%02x".format(it) } == e.hash) {
       "MobileI2V SHA-256 mismatch: " + e.name
      }
-    } finally { connection.disconnect() }
    }
    for (e in changed) {
     val target = File(modelsDir, e.name)
