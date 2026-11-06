@@ -306,7 +306,13 @@ internal object MobileI2VVideoEngine {
  private fun open(env: OrtEnvironment, file: File): OrtSession {
   val options = OrtSession.SessionOptions()
   try {
-   options.setIntraOpNumThreads(2)
+   // Bound ONNX Runtime parallel work on memory-constrained Android devices.
+   // Graph optimization can reduce intermediate allocations; sequential execution
+   // avoids simultaneous operator scratch buffers during video inference.
+   options.setIntraOpNumThreads(1)
+   options.setInterOpNumThreads(1)
+   options.setExecutionMode(OrtSession.SessionOptions.ExecutionMode.SEQUENTIAL)
+   options.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
    return env.createSession(file.absolutePath, options)
   } finally { options.close() }
  }
