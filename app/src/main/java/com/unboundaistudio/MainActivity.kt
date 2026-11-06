@@ -724,7 +724,9 @@ class MainActivity : ComponentActivity() {
          generationJob = scope.launch {
           try {
            val upscaled = withContext(Dispatchers.IO) {
-            AiSuperResolution.upscale(this@MainActivity, source)
+            AiSuperResolution.upscale(this@MainActivity, source) { percent ->
+             scope.launch(Dispatchers.Main) { status = "Upscaling image to 4K… $percent%" }
+            }
            }
            kotlinx.coroutines.currentCoroutineContext().ensureActive()
            result = upscaled
