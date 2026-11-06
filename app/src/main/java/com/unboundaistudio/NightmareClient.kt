@@ -82,12 +82,15 @@ internal object NightmareClient {
             val scale = minOf(1.0, 2048.0 / input.width, 2048.0 / input.height)
             val scaledWidth = (input.width * scale).toInt().coerceAtLeast(1)
             val scaledHeight = (input.height * scale).toInt().coerceAtLeast(1)
-            val resized = if (scaledWidth == input.width && scaledHeight == input.height) input
-                else android.graphics.Bitmap.createScaledBitmap(input, scaledWidth, scaledHeight, true)
-            val editBitmap = if (resized.width == editWidth && resized.height == editHeight) resized
+            // Scale directly into the final edit bitmap to avoid an intermediate allocation.
+            val editBitmap = if (scaledWidth == input.width && scaledHeight == input.height &&
+                editWidth == input.width && editHeight == input.height) input
                 else android.graphics.Bitmap.createBitmap(editWidth, editHeight, android.graphics.Bitmap.Config.ARGB_8888).also {
-                    android.graphics.Canvas(it).drawBitmap(resized,
-                        (editWidth - resized.width) / 2f, (editHeight - resized.height) / 2f, null)
+                    val left = (editWidth - scaledWidth) / 2
+                    val top = (editHeight - scaledHeight) / 2
+                    val destination = android.graphics.Rect(left, top, left + scaledWidth, top + scaledHeight)
+                    android.graphics.Canvas(it).drawBitmap(input, null, destination,
+                        android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG))
                 }
             val stream = java.io.ByteArrayOutputStream()
             check(editBitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, stream)) {
@@ -182,7 +185,7 @@ internal object NightmareClient {
             download.readTimeout = 60000
             download.setRequestProperty("Authorization", "Bearer $token")
             check(download.responseCode == 200) { "Image download failed: HTTP ${download.responseCode}" }
-            return download.inputStream.use { android.graphics.BitmapFactory.decodeStream(it) }
+            return download.inputStream.buffered(64 * 1024).use { android.graphics.BitmapFactory.decodeStream(it) }
                 ?: error("Nightmare returned an unreadable image")
         } finally {
             download.disconnect()
