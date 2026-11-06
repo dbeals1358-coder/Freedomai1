@@ -81,7 +81,7 @@ internal object MobileI2VVideoEngine {
   val spatial = height * width
   val total = CHANNELS * FRAMES * spatial
   val videoLatent = FloatArray(total)
-  val rng = java.util.Random(47312L)
+  val rng = java.util.Random()
   for (ch in 0 until CHANNELS) for (t in 0 until FRAMES) for (px in 0 until spatial) {
    val offset = (ch * FRAMES + t) * spatial + px
    videoLatent[offset] = if (t == 0) encoded[ch * spatial + px] else rng.nextGaussian().toFloat()
@@ -125,7 +125,7 @@ internal object MobileI2VVideoEngine {
    }
    for (step in 0 until STEPS) {
     if (Thread.currentThread().isInterrupted) throw InterruptedException("MobileI2V cancelled")
-    // FlowMatch Euler schedule with shift=3, matching the reference sampler.
+    // FlowMatch Euler schedule with shift=1.0 from official MobileI2V configuration.
     val sigma = flowSigma(step, STEPS)
     val nextSigma = if (step + 1 == STEPS) 0f else flowSigma(step + 1, STEPS)
     val time = (1000f * sigma).toLong().coerceAtLeast(1)
@@ -225,9 +225,8 @@ internal object MobileI2VVideoEngine {
  }
 
  private fun flowSigma(step: Int, steps: Int): Float {
-  val raw = 1f - step.toFloat() / steps
-  val shift = 3f
-  return shift * raw / (1f + (shift - 1f) * raw)
+  // Official MobileI2V_300M_img512.yaml uses flow_shift: 1.0.
+  return (1f - step.toFloat() / steps).coerceIn(0f, 1f)
  }
 
  private fun rgbByte(value: Float): Int {
