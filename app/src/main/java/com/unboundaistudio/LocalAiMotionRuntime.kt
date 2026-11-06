@@ -30,17 +30,23 @@ class LocalAiMotionRuntime(private val modelsDir: File) : AutoCloseable {
   for (name in required) {
    val file = File(modelsDir, name)
    val (originalSize, originalHash) = expected.getValue(name)
-   val correctedManifest = File(modelsDir, name.removeSuffix(".onnx") + "_manifest.json")
-   val corrected = if (name in listOf("mobilei2v_unet.onnx", "turbo_vaed.onnx") && correctedManifest.isFile) {
+   // Every installed release has its own verified digest. Do not compare a
+   // newer v2/INT8 graph against the hard-coded original conversion hash.
+   val installedManifest = File(modelsDir, name.removeSuffix(".onnx") + "_manifest.json")
+   val installed = if (installedManifest.isFile) {
     runCatching {
-     val manifest = JSONObject(correctedManifest.readText())
-     val names = manifest.getJSONArray("inputs").toString()
-     require(names.contains("latent"))
-     if (name == "mobilei2v_unet.onnx") require(names.contains("timestep") && !names.contains("text_emb"))
-     Pair(manifest.getLong("bytes"), manifest.getString("sha256"))
-    }.getOrNull()
+     val record = JSONObject(installedManifest.readText())
+     val inputs = record.getJSONArray("inputs")
+     val names = (0 until inputs.length()).map { inputs.getString(it) }.toSet()
+     require(if (name == "vae_encoder.onnx") "pixel_values" in names else "latent" in names)
+     if (name == "mobilei2v_unet.onnx") require("timestep" in names && "text_emb" !in names)
+     val bytes = record.getLong("bytes")
+     val hash = record.getString("sha256").lowercase()
+     require(bytes in 100_000_000L..2_000_000_000L && hash.matches(Regex("[0-9a-f]{64}")))
+     Pair(bytes, hash)
+    }.getOrElse { return Readiness(false, "Invalid installed manifest for $name: " + it.message) }
    } else null
-   val (size, hash) = corrected ?: Pair(originalSize, originalHash)
+   val (size, hash) = installed ?: Pair(originalSize, originalHash)
    if (file.length() != size) return Readiness(false, "$name size mismatch")
    if (!sha256(name).equals(hash, ignoreCase = true)) return Readiness(false, "$name SHA-256 mismatch. Reimport model.")
   }
