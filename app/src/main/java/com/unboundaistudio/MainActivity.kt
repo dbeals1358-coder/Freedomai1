@@ -771,6 +771,12 @@ class MainActivity : ComponentActivity() {
          }
         }
        }
+       if (busy) {
+        Text("Video processing: ${generationPercent}% — ${status}")
+        LinearProgressIndicator(progress = { generationPercent.coerceIn(0, 100) / 100f }, modifier = Modifier.fillMaxWidth())
+        Text("MobileI2V model inference may take several minutes; progress advances after each completed model step.")
+        OutlinedButton(onClick = { cancelGeneration() }, modifier = Modifier.fillMaxWidth()) { Text("Cancel video generation") }
+       }
        Button(enabled = !busy, onClick = {
         if (!useMobileI2V && motionPrompt.isBlank()) status = "Describe the desired movement"
         else {
@@ -805,7 +811,7 @@ class MainActivity : ComponentActivity() {
              }
              MobileI2VVideoEngine.generate(this@MainActivity, java.io.File(filesDir, "models/video-v1"), cacheDir, image, motionPrompt, duration) { p ->
               if (generationJob?.isActive == false) throw kotlinx.coroutines.CancellationException("MobileI2V cancelled")
-              runOnUiThread { generationPercent = p }
+              runOnUiThread { generationPercent = p; status = "MobileI2V processing… $p%" }
              }
             } else {
              NightmareVideoClient.generate(nightmareToken, if (nightmareVideoFlow == "current") "auto" else nightmareVideoFlow, image, motionPrompt, duration)
