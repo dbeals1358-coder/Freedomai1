@@ -126,6 +126,20 @@ internal object MobileI2VVideoEngine {
    progress(19)
   }
 
+  // The denoiser is the peak-memory stage (the reported 22% crash).
+  // Stop before opening the native ONNX session if Android cannot safely host it.
+  manager.getMemoryInfo(memory)
+  val denoiserBytes = File(modelsDir, "mobilei2v_unet.onnx").length()
+  val reserveBytes = 1024L * 1024 * 1024
+  val estimatedNeed = denoiserBytes * 3 + reserveBytes
+  Log.i("MobileI2V", "Preflight denoiser: available=" + memory.availMem +
+   " requiredEstimate=" + estimatedNeed + " threshold=" + memory.threshold)
+  if (memory.lowMemory || memory.availMem < estimatedNeed + memory.threshold) {
+   throw IllegalStateException("MobileI2V stopped before denoising to protect Android memory. " +
+    "Available " + (memory.availMem / 1048576) + " MB; estimated requirement " +
+    ((estimatedNeed + memory.threshold) / 1048576) + " MB. Use a smaller optimized model or remote inference.")
+  }
+
   open(env, File(modelsDir, "mobilei2v_unet.onnx")).use { session ->
    val latentShape = (session.inputInfo["latent"]?.info as? ai.onnxruntime.TensorInfo)?.shape
    require(latentShape != null && latentShape.size == 5 &&
