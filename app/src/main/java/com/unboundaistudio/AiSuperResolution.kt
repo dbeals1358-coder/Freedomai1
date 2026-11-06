@@ -19,7 +19,8 @@ import java.nio.FloatBuffer
 object AiSuperResolution {
  private const val MODEL_URL = "https://huggingface.co/Heliosoph/realesrgan-onnx/resolve/main/realesr-general-x4v3.onnx"
  private const val TILE = 64
- private const val PAD = 8
+ // Wider context reduces visible seams at 64px tile boundaries (especially water and skin).
+ private const val PAD = 24
 
  private fun modelFile(context: Context): File {
   val target = File(context.filesDir, "realesr-general-x4v3.onnx")
