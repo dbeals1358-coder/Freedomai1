@@ -113,7 +113,7 @@ internal object NightmareVideoClient {
    val entries = catalog.optJSONArray(key)
    if (entries != null) for (i in 0 until entries.length()) {
     val item = entries.opt(i)
-    val name = if (item is JSONObject) listOf("id", "name", "key").map { item.optString(it) }.firstOrNull { it.isNotBlank() }.orEmpty() else item?.toString().orEmpty()
+    val name = if (item is JSONObject) listOf("id", "name", "key", "flow", "slug").map { item.optString(it) }.firstOrNull { it.isNotBlank() }.orEmpty() else item?.toString().orEmpty()
     if (name.isNotBlank()) {
      candidates.add(name)
      if (name != "current" && !name.startsWith("saved:")) candidates.add("saved:$name")
@@ -130,8 +130,15 @@ internal object NightmareVideoClient {
    }
   }
   candidates.add("current")
+  // Video workflows first; image-only RealVis must not be used as a video fallback.
+  val ordered = candidates.distinct().filterNot {
+   it.contains("FreedomAI RealVis", ignoreCase = true)
+  }.sortedWith(compareByDescending<String> {
+   it.contains("image to video", true) || it.contains("image-to-video", true) ||
+    it.contains("i2v", true) || it.contains("wan", true) || it.contains("video", true)
+  })
   val diagnostics = mutableListOf<String>()
-  for (candidate in candidates.distinct()) {
+  for (candidate in ordered) {
    try {
     val encoded = URLEncoder.encode(candidate, "UTF-8")
     val schema = JSONObject(NightmareClient.authenticatedGet("/flows/$encoded", token))
@@ -139,7 +146,7 @@ internal object NightmareVideoClient {
     return candidate
    } catch (e: Exception) { diagnostics.add("$candidate: ${e.message.orEmpty().take(120)}") }
   }
-  error("No compatible image-to-video workflow found. Checked ${candidates.distinct().size} flows. ${diagnostics.take(3).joinToString(" | ")}. Verify a saved image-to-video workflow is installed in Nightmare.")
+  error("No compatible image-to-video workflow found. Checked ${ordered.size} candidate flows. ${diagnostics.take(3).joinToString(" | ")}. No compatible installed Nightmare video workflow was detected. Select/install an image-to-video workflow in Nightmare; RealVis is image-only. MobileI2V is not available until its inference pipeline is implemented.")
  }
 
  private fun run(
