@@ -1,0 +1,45 @@
+name: Publish repaired MobileI2V model for FreedomAI
+on:
+  workflow_run:
+    workflows: ["Convert MobileI2V Models to ONNX"]
+    types: [completed]
+permissions:
+  actions: read
+  contents: write
+jobs:
+  publish:
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - name: Download validated converter output
+        uses: actions/download-artifact@v4
+        with:
+          name: MobileI2V-ONNX-Models
+          path: mobilei2v-models
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify conditioned UNet and its SHA-256 manifest
+        run: |
+          python - <<'PY'
+          import hashlib, json, pathlib
+          root = pathlib.Path("mobilei2v-models")
+          manifest = json.loads((root / "validation_report.json").read_text())
+          name = "mobilei2v_unet.onnx"
+          record = manifest[name]
+          assert "text_emb" in record["inputs"], "Export has no prompt conditioning"
+          model = root / name
+          assert model.stat().st_size == record["bytes"], "Incorrect model size"
+          h = hashlib.file_digest(model.open("rb"), "sha256").hexdigest()
+          assert h.lower() == record["sha256"].lower(), "Model SHA-256 mismatch"
+          assert model.stat().st_size > 200_000_000, "Model is truncated"
+          print("Validated conditioned MobileI2V UNet:", model.stat().st_size, "bytes")
+          PY
+      - name: Publish one-file replacement for Android
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG=mobilei2v-models-v2
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --target main --title "MobileI2V conditioned UNet v2" --notes "Corrected text cross-attention model. Keep your three other MobileI2V models from v1. The model is experimental until tested on Android."
+          gh release upload "$TAG" mobilei2v-models/mobilei2v_unet.onnx mobilei2v-models/validation_report.json --clobber
