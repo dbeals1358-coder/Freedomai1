@@ -327,7 +327,7 @@ internal object MobileI2VVideoEngine {
    options.setCPUArenaAllocator(false)
    options.setMemoryPatternOptimization(false)
    // Avoid retaining extra packed copies of constant model weights.
-   options.addSessionConfigEntry("session.disable_prepacking", "1")
+   // Avoid unsupported session configuration API on the bundled ONNX Runtime version.
    options.setIntraOpNumThreads(1)
    options.setInterOpNumThreads(1)
    options.setExecutionMode(OrtSession.SessionOptions.ExecutionMode.SEQUENTIAL)
