@@ -40,7 +40,7 @@ jobs:
           repository: himadriHK/MobileI2VConsole
           path: mobilei2v-converter
           persist-credentials: false
-      - name: Restore real text-conditioning and first-frame masking
+      - name: Preserve trained architecture and fix image conditioning
         run: |
           python scripts/patch_mobilei2v_converter.py mobilei2v-converter/scripts/convert
       - name: Setup Python
@@ -81,16 +81,12 @@ jobs:
               outputs = [o.name for o in session.get_outputs()]
               if not inputs or not outputs:
                   raise RuntimeError(f"Invalid ONNX inputs/outputs: {name}")
-              # Reject an export that pruned actual text cross-attention.
-              # The MobileI2V patch restores trained attention before ONNX export.
+              # Official checkpoint contains no trained text cross-attention.
               if name == "mobilei2v_unet.onnx":
-                  conditioning = {"text_emb", "encoder_hidden_states", "prompt_embeds"}
-                  if not conditioning.intersection(inputs):
-                      raise RuntimeError(
-                          "MobileI2V UNet export is unconditioned: "
-                          f"inputs={inputs}. Text cross-attention still missing "
-                          "after applying the MobileI2V converter repair."
-                      )
+                  if not {"latent", "timestep"}.issubset(inputs):
+                      raise RuntimeError(f"Invalid UNet inputs: {inputs}")
+                  if "text_emb" in inputs:
+                      raise RuntimeError("Official checkpoint cannot support text conditioning")
               digest = hashlib.sha256()
               with path.open("rb") as stream:
                   for chunk in iter(lambda: stream.read(1024*1024), b""):

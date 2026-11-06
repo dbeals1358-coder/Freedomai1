@@ -19,7 +19,7 @@ jobs:
           path: mobilei2v-models
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Verify conditioned UNet and its SHA-256 manifest
+      - name: Verify official checkpoint-compatible UNet and its SHA-256 manifest
         run: |
           python - <<'PY'
           import hashlib, json, pathlib
@@ -27,13 +27,14 @@ jobs:
           manifest = json.loads((root / "validation_report.json").read_text())
           name = "mobilei2v_unet.onnx"
           record = manifest[name]
-          assert "text_emb" in record["inputs"], "Export has no prompt conditioning"
+          assert {"latent", "timestep"}.issubset(record["inputs"]), "Missing UNet inputs"
+          assert "text_emb" not in record["inputs"], "Official checkpoint has no text conditioning"
           model = root / name
           assert model.stat().st_size == record["bytes"], "Incorrect model size"
           h = hashlib.file_digest(model.open("rb"), "sha256").hexdigest()
           assert h.lower() == record["sha256"].lower(), "Model SHA-256 mismatch"
           assert model.stat().st_size > 200_000_000, "Model is truncated"
-          print("Validated conditioned MobileI2V UNet:", model.stat().st_size, "bytes")
+          print("Validated checkpoint-compatible MobileI2V UNet:", model.stat().st_size, "bytes")
           PY
       - name: Publish one-file replacement for Android
         env:
@@ -41,5 +42,5 @@ jobs:
         run: |
           set -euo pipefail
           TAG=mobilei2v-models-v2
-          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --target main --title "MobileI2V conditioned UNet v2" --notes "Corrected text cross-attention model. Keep your three other MobileI2V models from v1. The model is experimental until tested on Android."
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --target main --title "MobileI2V checkpoint-compatible UNet v2" --notes "Official trained architecture and image guide mask. Keep the three other models from v1. The checkpoint lacks text-motion conditioning; on-device output still requires testing."
           gh release upload "$TAG" mobilei2v-models/mobilei2v_unet.onnx mobilei2v-models/validation_report.json --clobber

@@ -7,7 +7,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
 
-/** One-tap, SHA-256 verified replacement for the defective MobileI2V v1 UNet. */
+/** SHA-256 verified replacement compatible with official MobileI2V checkpoint. */
 internal object MobileI2VModelUpdater {
  private const val RELEASE = "https://github.com/dbeals1358-coder/Freedomai1/releases/download/mobilei2v-models-v2/"
  private const val MODEL = "mobilei2v_unet.onnx"
@@ -18,13 +18,14 @@ internal object MobileI2VModelUpdater {
    val bytes = downloadSmall(RELEASE + "validation_report.json")
    JSONObject(String(bytes, Charsets.UTF_8)).getJSONObject(MODEL)
   } catch (e: Exception) {
-   error("Corrected MobileI2V model has not been published yet, or the network is unavailable: " + e.message)
+   error("Compatible MobileI2V model has not been published yet, or the network is unavailable: " + e.message)
   }
   val expectedBytes = manifest.getLong("bytes")
   val expectedHash = manifest.getString("sha256").lowercase()
   val inputs = manifest.getJSONArray("inputs")
-  require((0 until inputs.length()).any { inputs.getString(it) == "text_emb" }) {
-   "Published model is missing text conditioning. Refusing to install."
+  val names = (0 until inputs.length()).map { inputs.getString(it) }.toSet()
+  require("latent" in names && "timestep" in names && "text_emb" !in names) {
+   "Published model does not match official trained MobileI2V checkpoint."
   }
   require(expectedBytes in 200_000_000L..2_000_000_000L &&
           expectedHash.matches(Regex("[0-9a-f]{64}"))) {
@@ -34,12 +35,12 @@ internal object MobileI2VModelUpdater {
   if (target.isFile && target.length() == expectedBytes &&
       sha256(target) == expectedHash) {
    File(modelsDir, "mobilei2v_unet_manifest.json").writeText(manifest.toString())
-   return "Corrected MobileI2V model is already installed."
+   return "Compatible MobileI2V model is already installed."
   }
 
   val free = StatFs(modelsDir.absolutePath).availableBytes
   require(free > expectedBytes + 128L * 1024 * 1024) {
-   "Not enough free storage for corrected MobileI2V model. Need about " +
+   "Not enough free storage for MobileI2V model. Need about " +
     ((expectedBytes + 128L * 1024 * 1024) / 1048576) + " MB."
   }
   val temp = File(modelsDir, MODEL + ".downloading")
@@ -86,7 +87,7 @@ internal object MobileI2VModelUpdater {
    backup.delete()
    File(modelsDir, "mobilei2v_unet_manifest.json").writeText(manifest.toString())
    progress(100)
-   return "Corrected MobileI2V text-conditioned model installed. Your other three models were preserved."
+   return "Compatible MobileI2V model installed. The official checkpoint does not follow motion prompts. Your other three models were preserved."
   } finally { temp.delete() }
  }
 

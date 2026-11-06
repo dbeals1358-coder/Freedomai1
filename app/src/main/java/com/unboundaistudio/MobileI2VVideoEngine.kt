@@ -19,13 +19,13 @@ import kotlin.random.Random
  * it actually feeds a source photo through the imported VAE, MobileI2V denoiser,
  * and video decoder, and encodes the decoded frames as an MP4.
  *
- * IMPORTANT: the original released UNet export drops text_emb and guide_image
- * from its inputs. The imported four-model package therefore cannot reliably
- * obey text prompts, and video quality is not guaranteed. Never pretend it can.
+ * IMPORTANT: official hybrid_371.pth contains no trained text cross-attention.
+ * Video is conditioned on the source photo, not on motion-prompt instructions.
+ * Output quality must be verified on an actual Android device.
  * Models are loaded sequentially to reduce peak Android memory usage.
  */
 internal object MobileI2VVideoEngine {
- private const val SIDE = 64             // 8x8 video latents, safe for Turbo-VAED
+ private const val SIDE = 512            // 16x16 video latents instead of unusable 2x2
  private const val FRAMES = 17
  private const val CHANNELS = 128
  private const val STEPS = 12
@@ -41,7 +41,7 @@ internal object MobileI2VVideoEngine {
   }
   // The old UNet has no text input. An unsupported motion prompt is never
   // silently sent to Nightmare or confused with a working text-to-video model.
-  require(prompt.isNotBlank()) { "Describe your intended motion" }
+  // A motion prompt is optional for the official checkpoint.
 
   val env = OrtEnvironment.getEnvironment()
   lateinit var encoded: FloatArray
@@ -93,6 +93,7 @@ internal object MobileI2VVideoEngine {
   var textData: FloatArray? = null
   var textLength = 0
   if (hasText) {
+   require(prompt.isNotBlank()) { "This text-conditioned model requires a prompt" }
    val qwenFile = File(modelsDir, "qwen2_encoder.onnx")
    require(qwenFile.isFile) { "Import qwen2_encoder.onnx to enable prompt-conditioned MobileI2V" }
    val (ids, mask) = Qwen2MotionTokenizer.fromAssets(context).encode(prompt)

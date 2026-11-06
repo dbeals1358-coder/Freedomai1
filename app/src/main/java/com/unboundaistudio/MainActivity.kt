@@ -755,13 +755,13 @@ class MainActivity : ComponentActivity() {
         })
        }
        Text(if (useMobileI2V)
-        "On-device MobileI2V uses your imported ONNX models without Nightmare. The original v1 UNet ignores prompts; install the corrected UNet once published. Video generation is experimental until Android output has been verified."
+        "On-device MobileI2V uses imported ONNX models without Nightmare. Official weights contain no text cross-attention, so motion prompts cannot control the result. Real-device video quality is still experimental."
        else "AI video is rendered by Nightmare's installed image-to-video model. Turn on the offline MobileI2V switch to test on-device inference.")
        if (useMobileI2V) {
         OutlinedButton(enabled = !busy, onClick = {
          busy = true
          generationPercent = 0
-         status = "Checking for corrected MobileI2V model…"
+         status = "Checking for compatible MobileI2V model…"
          generationJob = scope.launch {
           try {
            status = withContext(Dispatchers.IO) {
@@ -779,7 +779,7 @@ class MainActivity : ComponentActivity() {
            generationJob = null
           }
          }
-        }, modifier = Modifier.fillMaxWidth()) { Text("Install corrected MobileI2V model (large download)") }
+        }, modifier = Modifier.fillMaxWidth()) { Text("Install compatible MobileI2V model (large download)") }
         if (busy) Text("MobileI2V progress: " + generationPercent + "%")
        }
         OutlinedButton(onClick = {
@@ -804,7 +804,7 @@ class MainActivity : ComponentActivity() {
         }
        }
        Button(enabled = !busy, onClick = {
-        if (motionPrompt.isBlank()) status = "Describe the desired movement"
+        if (!useMobileI2V && motionPrompt.isBlank()) status = "Describe the desired movement"
         else {
          busy = true
          generationPercent = 0
@@ -834,7 +834,7 @@ class MainActivity : ComponentActivity() {
             contentResolver.update(uri, ContentValues().apply { put(MediaStore.Video.Media.IS_PENDING, 0) }, null, null)
             lastVideo = uri
             generationPercent = 100
-            status = if (useMobileI2V) "Experimental MobileI2V video saved (${video.width}×${video.height}, ${video.durationLabel}s). Review frame quality and prompt adherence." else if (video.reducedForMemory) "AI video saved to Movies/FreedomAI (reduced to ${video.width}×${video.height}, ${video.durationLabel}s to fit NPU memory)." else "AI video saved to Movies/FreedomAI (${video.width}×${video.height}, ${video.durationLabel}s)."
+            status = if (useMobileI2V) "Experimental MobileI2V video saved (${video.width}×${video.height}, ${video.durationLabel}s). Motion prompts are unsupported in the official checkpoint; check frame quality." else if (video.reducedForMemory) "AI video saved to Movies/FreedomAI (reduced to ${video.width}×${video.height}, ${video.durationLabel}s to fit NPU memory)." else "AI video saved to Movies/FreedomAI (${video.width}×${video.height}, ${video.durationLabel}s)."
            } catch (e: Exception) { contentResolver.delete(uri, null, null); throw e }
           } catch (e: kotlinx.coroutines.CancellationException) { throw e }
           catch (e: Exception) { status = "AI video failed: ${e.message}" }

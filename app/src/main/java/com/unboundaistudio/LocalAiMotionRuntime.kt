@@ -34,7 +34,8 @@ class LocalAiMotionRuntime(private val modelsDir: File) : AutoCloseable {
    val corrected = if (name == "mobilei2v_unet.onnx" && correctedManifest.isFile) {
     runCatching {
      val manifest = JSONObject(correctedManifest.readText())
-     require(manifest.getJSONArray("inputs").toString().contains("text_emb"))
+     val names = manifest.getJSONArray("inputs").toString()
+     require(names.contains("latent") && names.contains("timestep") && !names.contains("text_emb"))
      Pair(manifest.getLong("bytes"), manifest.getString("sha256"))
     }.getOrNull()
    } else null
@@ -63,7 +64,7 @@ class LocalAiMotionRuntime(private val modelsDir: File) : AutoCloseable {
      session.close()
     }
    }
-   Readiness(false, "All four ONNX graphs loaded successfully. Inference pipeline is not implemented yet. " + diagnostics.joinToString("; "))
+   Readiness(true, "All four ONNX graphs loaded. Video still needs real-device testing. " + diagnostics.joinToString("; "))
   } catch (e: Exception) {
    Readiness(false, "ONNX model compatibility check failed: " + (e.message ?: e.javaClass.simpleName))
   }
