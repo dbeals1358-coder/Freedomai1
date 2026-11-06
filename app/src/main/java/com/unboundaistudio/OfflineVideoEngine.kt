@@ -16,7 +16,11 @@ import kotlin.math.cos
 
 /** On-device photo animation (pan/zoom), not generative AI or articulated human motion. */
 object OfflineVideoEngine {
- fun render(photo: Bitmap, seconds: Int, motion: String, output: File, progress: (Int) -> Unit) {
+ fun renderFrames(frames: List<Bitmap>, seconds: Int, output: File, progress: (Int) -> Unit) {
+  require(frames.isNotEmpty()) { "No decoded MobileI2V frames" }
+  render(frames.first(), seconds, "", output, progress, frames)
+ }
+ fun render(photo: Bitmap, seconds: Int, motion: String, output: File, progress: (Int) -> Unit, decodedFrames: List<Bitmap>? = null) {
   require(seconds in 1..120)
   val w = 480
   val h = 480
@@ -54,12 +58,16 @@ object OfflineVideoEngine {
       val horizontal = if ("left" in lower) -0.06 * submitted / total else if ("right" in lower) 0.06 * submitted / total else 0.025 * sin(cycle)
       val vertical = if ("up" in lower) -0.05 * submitted / total else if ("down" in lower) 0.05 * submitted / total else 0.012 * cos(cycle)
       canvas.drawColor(Color.BLACK)
-      val scale = maxOf(w.toFloat() / photo.width, h.toFloat() / photo.height) * zoom.toFloat()
-      val sw = photo.width * scale
-      val sh = photo.height * scale
-      val dx = (w - sw) / 2f + horizontal.toFloat() * w
-      val dy = (h - sh) / 2f + vertical.toFloat() * h
-      canvas.drawBitmap(photo, null, RectF(dx, dy, dx + sw, dy + sh), paint)
+      val selected = decodedFrames?.let { frames ->
+       frames[(submitted.toLong() * frames.size / total).toInt().coerceIn(0, frames.lastIndex)]
+      } ?: photo
+      val effectiveZoom = if (decodedFrames == null) zoom.toFloat() else 1f
+      val scale = maxOf(w.toFloat() / selected.width, h.toFloat() / selected.height) * effectiveZoom
+      val sw = selected.width * scale
+      val sh = selected.height * scale
+      val dx = (w - sw) / 2f + (if (decodedFrames == null) horizontal.toFloat() * w else 0f)
+      val dy = (h - sh) / 2f + (if (decodedFrames == null) vertical.toFloat() * h else 0f)
+      canvas.drawBitmap(selected, null, RectF(dx, dy, dx + sw, dy + sh), paint)
       frame.getPixels(pixels, 0, w, 0, 0, w, h)
       val yuv = codec.getInputImage(inputIndex) ?: error("Encoder does not expose YUV input")
       try {
