@@ -61,7 +61,9 @@ internal object MobileI2VVideoEngine {
   // Opening the UNet just to inspect inputs can itself trigger Android's low-memory killer.
   val denoiserBytes = File(modelsDir, "mobilei2v_unet.onnx").length()
   val reserveBytes = 1024L * 1024 * 1024
-  val estimatedNeed = denoiserBytes * 3 + reserveBytes
+  // ONNX can temporarily hold weights, optimized graph copies, and operator scratch.
+  // Use a conservative limit until device profiling establishes a safe bound.
+  val estimatedNeed = denoiserBytes * 5 + reserveBytes
   val requiredBytes = estimatedNeed + memory.threshold
   Log.i("MobileI2V", "Preflight before native ONNX: available=" + memory.availMem +
    " requiredEstimate=" + requiredBytes)
@@ -179,7 +181,7 @@ internal object MobileI2VVideoEngine {
     manager.getMemoryInfo(memory)
     Log.i("MobileI2V", "Denoise step " + (step + 1) + "/" + STEPS +
      "; available RAM MB=" + (memory.availMem / (1024 * 1024)))
-    if (memory.lowMemory || memory.availMem < 512L * 1024 * 1024) {
+    if (memory.lowMemory || memory.availMem < 1536L * 1024 * 1024) {
      throw IllegalStateException("Video stopped: Android is running low on memory")
     }
     progress(18 + (step + 1) * 50 / STEPS)
@@ -296,6 +298,8 @@ internal object MobileI2VVideoEngine {
    // Bound ONNX Runtime parallel work on memory-constrained Android devices.
    // Graph optimization can reduce intermediate allocations; sequential execution
    // avoids simultaneous operator scratch buffers during video inference.
+   options.setCPUArenaAllocator(false)
+   options.setMemoryPatternOptimization(false)
    options.setIntraOpNumThreads(1)
    options.setInterOpNumThreads(1)
    options.setExecutionMode(OrtSession.SessionOptions.ExecutionMode.SEQUENTIAL)
