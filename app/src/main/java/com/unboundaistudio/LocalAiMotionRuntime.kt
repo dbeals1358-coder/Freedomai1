@@ -15,6 +15,26 @@ class LocalAiMotionRuntime(private val modelsDir: File) : AutoCloseable {
  private val required = listOf("vae_encoder.onnx", "qwen2_encoder.onnx", "mobilei2v_unet.onnx", "turbo_vaed.onnx")
  data class Readiness(val ready: Boolean, val reason: String)
 
+
+ private val expected = mapOf(
+  "vae_encoder.onnx" to Pair(721865762L, "2fad3a342d7562da942133be3dab1b863e50a59d458cfcb7446ba9a5c856e21e"),
+  "qwen2_encoder.onnx" to Pair(1977089035L, "7b4509ea975627516ae29048c444e5b9cdec994ae23b11dd0ab107716e437ff4"),
+  "mobilei2v_unet.onnx" to Pair(1138902583L, "359e4cd9a8bb2e1186608b9604db64d835a7fb868bec95a3100145a019f010cc"),
+  "turbo_vaed.onnx" to Pair(167881867L, "660819e18086da2d7f366e78c4cbafc6a0826c3e7beef7434328103adc0d3e19")
+ )
+ /** Validate imported model bytes against the provided manifest. Call on Dispatchers.IO. */
+ fun verifyImportedFiles(): Readiness {
+  val missing = required.filter { !File(modelsDir, it).isFile }
+  if (missing.isNotEmpty()) return Readiness(false, "Missing models: " + missing.joinToString())
+  for (name in required) {
+   val file = File(modelsDir, name)
+   val (size, hash) = expected.getValue(name)
+   if (file.length() != size) return Readiness(false, "$name size mismatch")
+   if (!sha256(name).equals(hash, ignoreCase = true)) return Readiness(false, "$name SHA-256 mismatch. Reimport original model.")
+  }
+  return Readiness(false, "All four models match the supplied hashes. Inference is not verified; image/text conditioning is not established.")
+ }
+
  fun readiness(): Readiness {
   val missing = required.filter { !File(modelsDir, it).isFile }
   if (missing.isNotEmpty()) return Readiness(false, "Missing ONNX files: " + missing.joinToString())
