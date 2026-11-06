@@ -782,6 +782,10 @@ class MainActivity : ComponentActivity() {
         }, modifier = Modifier.fillMaxWidth()) { Text("Install compatible MobileI2V model (large download)") }
         if (busy) Text("MobileI2V progress: " + generationPercent + "%")
        }
+        OutlinedButton(onClick = { motionModelPicker.launch(arrayOf("*/*")) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
+         Text("Import Missing Models (choose vae_encoder.onnx)")
+        }
+        if (motionModelMessage.isNotBlank()) Text(motionModelMessage)
         OutlinedButton(onClick = {
          scope.launch {
           status = "Checking MobileI2V model integrity…"
