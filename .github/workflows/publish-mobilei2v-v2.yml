@@ -43,9 +43,11 @@ jobs:
           import hashlib, json, pathlib
           root = pathlib.Path("mobilei2v-models")
           manifest = json.loads((root / "validation_report.json").read_text())
-          for name in ("mobilei2v_unet.onnx", "turbo_vaed.onnx"):
+          for name in ("vae_encoder.onnx", "mobilei2v_unet.onnx", "turbo_vaed.onnx"):
               record = manifest[name]
-              if name == "mobilei2v_unet.onnx":
+              if name == "vae_encoder.onnx":
+                  assert "pixel_values" in record["inputs"], "Missing VAE pixel input"
+              elif name == "mobilei2v_unet.onnx":
                   assert {"latent", "timestep"}.issubset(record["inputs"]), "Missing UNet inputs"
                   assert "text_emb" not in record["inputs"], "Official checkpoint has no text conditioning"
               else:
@@ -65,5 +67,5 @@ jobs:
         run: |
           set -euo pipefail
           TAG=mobilei2v-models-v2
-          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --target main --title "MobileI2V checkpoint-compatible UNet v2" --notes "Official trained architecture and image guide mask. Keep the three other models from v1. The checkpoint lacks text-motion conditioning; on-device output still requires testing."
-          gh release upload "$TAG" mobilei2v-models/mobilei2v_unet.onnx mobilei2v-models/turbo_vaed.onnx mobilei2v-models/validation_report.json --clobber
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --target main --title "MobileI2V checkpoint-compatible UNet v2" --notes "Official trained architecture and image guide mask. Includes the matching source VAE, denoiser, and decoder. The checkpoint lacks text-motion conditioning; on-device output still requires testing."
+          gh release upload "$TAG" mobilei2v-models/vae_encoder.onnx mobilei2v-models/mobilei2v_unet.onnx mobilei2v-models/turbo_vaed.onnx mobilei2v-models/validation_report.json --clobber
