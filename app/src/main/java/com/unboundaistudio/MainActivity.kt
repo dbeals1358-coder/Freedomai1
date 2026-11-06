@@ -754,10 +754,16 @@ class MainActivity : ComponentActivity() {
          prefs.edit().putBoolean("video_mobilei2v_experimental", it).apply()
         })
        }
-       Text(if (useMobileI2V)
-        "On-device MobileI2V uses imported ONNX models without Nightmare. Official weights contain no text cross-attention, so motion prompts cannot control the result. Real-device video quality is still experimental."
-       else "AI video is rendered by Nightmare's installed image-to-video model. Turn on the offline MobileI2V switch to test on-device inference.")
-       if (useMobileI2V) Text("MobileI2V model setup is automatic when you generate a video. Large downloads require internet and free storage.")
+       Text(if (useMobileI2V) "Offline video • Experimental" else "Video powered by Nightmare")
+       if (useMobileI2V) {
+        var showMobileI2VInfo by remember { mutableStateOf(false) }
+        TextButton(onClick = { showMobileI2VInfo = !showMobileI2VInfo }) {
+         Text(if (showMobileI2VInfo) "Hide video details ↑" else "Video details & requirements ↓")
+        }
+        if (showMobileI2VInfo) {
+         Text("MobileI2V runs on your phone using ONNX models. Models download automatically when needed (internet and free storage required). Motion prompts cannot control the official model, and video quality is experimental.")
+        }
+       }
        OutlinedTextField(value = nightmareVideoFlow, onValueChange = {
         nightmareVideoFlow = it.trim()
         prefs.edit().putString("nightmare_video_flow", nightmareVideoFlow).apply()
