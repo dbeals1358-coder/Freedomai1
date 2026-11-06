@@ -748,8 +748,13 @@ class MainActivity : ComponentActivity() {
 
        Text("AI video is rendered by Nightmare's installed model. FreedomAI now sends video resolution and duration directly to the Nightmare video node; if the NPU runs out of memory, it retries at a smaller resolution while keeping the requested duration. Standalone MobileI2V is not integrated yet.")
         OutlinedButton(onClick = {
-         status = LocalAiMotionRuntime(java.io.File(filesDir, "models/video-v1")).use { it.readiness().reason }
-        }, modifier = Modifier.fillMaxWidth()) { Text("Check offline AI model") }
+         scope.launch {
+          status = "Checking MobileI2V model integrity…"
+          status = withContext(Dispatchers.IO) {
+           LocalAiMotionRuntime(java.io.File(filesDir, "models/video-v1")).use { it.verifyImportedFiles().reason }
+          }
+         }
+        }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Verify MobileI2V model files") }
        OutlinedTextField(value = nightmareVideoFlow, onValueChange = {
         nightmareVideoFlow = it.trim()
         prefs.edit().putString("nightmare_video_flow", nightmareVideoFlow).apply()
