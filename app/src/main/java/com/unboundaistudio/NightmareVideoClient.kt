@@ -104,31 +104,46 @@ internal object NightmareVideoClient {
 
  private fun findVideoFlow(token: String, preferred: String): String {
   val raw = NightmareClient.authenticatedGet("/flows", token)
-  val catalog = JSONObject(raw)
   val candidates = mutableListOf<String>()
   if (preferred == "current") candidates.add("current")
-  // Nightmare versions expose flow catalogs as arrays or keyed objects.
-  // Probe the exact identifiers returned by the server before trying saved: aliases.
-  for (key in listOf("flows", "saved", "workflows")) {
-   val entries = catalog.optJSONArray(key)
-   if (entries != null) for (i in 0 until entries.length()) {
-    val item = entries.opt(i)
-    val name = if (item is JSONObject) listOf("id", "name", "key", "flow", "slug").map { item.optString(it) }.firstOrNull { it.isNotBlank() }.orEmpty() else item?.toString().orEmpty()
-    if (name.isNotBlank()) {
-     candidates.add(name)
-     if (name != "current" && !name.startsWith("saved:")) candidates.add("saved:$name")
+  // Nightmare releases vary in their catalog shape: root arrays, nested lists,
+  // or objects keyed by workflow ID. Collect server-provided identifiers only.
+  fun addCandidate(value: String) {
+   val name = value.trim()
+   if (name.isBlank() || name == "null") return
+   candidates.add(name)
+   if (name != "current" && !name.startsWith("saved:")) candidates.add("saved:$name")
+  }
+  fun visit(value: Any?, depth: Int = 0) {
+   if (depth > 6) return
+   when (value) {
+    is org.json.JSONArray -> for (i in 0 until value.length()) visit(value.opt(i), depth + 1)
+    is JSONObject -> {
+     for (field in listOf("id", "key", "slug", "flow_id", "flowId", "name")) {
+      val candidate = value.optString(field)
+      if (candidate.isNotBlank()) { addCandidate(candidate); break }
+     }
+     for (field in listOf("flows", "saved", "workflows", "recommended", "items", "data", "results")) {
+      val child = value.opt(field)
+      if (child is JSONObject || child is org.json.JSONArray) visit(child, depth + 1)
+     }
+     // A keyed catalog maps workflow IDs to schemas or metadata.
+     if (value.has("nodes") || value.has("widgets")) return
+     val keys = value.keys()
+     while (keys.hasNext()) {
+      val key = keys.next()
+      if (key in listOf("flows", "saved", "workflows", "recommended", "items", "data", "results")) continue
+      val child = value.opt(key)
+      if (child is JSONObject && (child.has("nodes") || child.has("widgets") || child.has("name") || child.has("id"))) {
+       addCandidate(key)
+      }
+     }
     }
-   }
-   val entriesObject = catalog.optJSONObject(key)
-   if (entriesObject != null) {
-    val keys = entriesObject.keys()
-    while (keys.hasNext()) {
-     val name = keys.next()
-     candidates.add(name)
-     if (name != "current" && !name.startsWith("saved:")) candidates.add("saved:$name")
-    }
+    is String -> addCandidate(value)
    }
   }
+  val catalog = org.json.JSONTokener(raw).nextValue()
+  visit(catalog)
   candidates.add("current")
   // Video workflows first; image-only RealVis must not be used as a video fallback.
   val ordered = candidates.distinct().filterNot {
