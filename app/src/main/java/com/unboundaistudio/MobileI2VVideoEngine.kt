@@ -57,6 +57,19 @@ internal object MobileI2VVideoEngine {
    throw IllegalStateException("Insufficient free RAM for MobileI2V: " +
     (memory.availMem / (1024 * 1024)) + " MB available; need at least 2048 MB")
   }
+  // Check the peak-memory denoiser BEFORE opening any native ONNX sessions.
+  // Opening the UNet just to inspect inputs can itself trigger Android's low-memory killer.
+  val denoiserBytes = File(modelsDir, "mobilei2v_unet.onnx").length()
+  val reserveBytes = 1024L * 1024 * 1024
+  val estimatedNeed = denoiserBytes * 3 + reserveBytes
+  val requiredBytes = estimatedNeed + memory.threshold
+  Log.i("MobileI2V", "Preflight before native ONNX: available=" + memory.availMem +
+   " requiredEstimate=" + requiredBytes)
+  if (memory.lowMemory || memory.availMem < requiredBytes) {
+   throw IllegalStateException("MobileI2V needs more free memory than this phone currently has. " +
+    "Available " + (memory.availMem / 1048576) + " MB; estimated requirement " +
+    (requiredBytes / 1048576) + " MB. Use a smaller optimized model or remote inference.")
+  }
   Log.i("MobileI2V", "Starting inference; available RAM MB=" + (memory.availMem / (1024 * 1024)))
   val env = OrtEnvironment.getEnvironment()
   lateinit var encoded: FloatArray
@@ -133,16 +146,12 @@ internal object MobileI2VVideoEngine {
   // The denoiser is the peak-memory stage (the reported 22% crash).
   // Stop before opening the native ONNX session if Android cannot safely host it.
   manager.getMemoryInfo(memory)
-  val denoiserBytes = File(modelsDir, "mobilei2v_unet.onnx").length()
-  val reserveBytes = 1024L * 1024 * 1024
-  // Conservative estimate, not a measured peak. Keep the guard in place.
-  val estimatedNeed = denoiserBytes * 3 + reserveBytes
-  Log.i("MobileI2V", "Preflight denoiser: available=" + memory.availMem +
-   " requiredEstimate=" + estimatedNeed + " threshold=" + memory.threshold)
-  if (memory.lowMemory || memory.availMem < estimatedNeed + memory.threshold) {
+  Log.i("MobileI2V", "Pre-denoiser available=" + memory.availMem +
+   " requiredEstimate=" + requiredBytes)
+  if (memory.lowMemory || memory.availMem < requiredBytes) {
    throw IllegalStateException("MobileI2V stopped before denoising to protect Android memory. " +
     "Available " + (memory.availMem / 1048576) + " MB; estimated requirement " +
-    ((estimatedNeed + memory.threshold) / 1048576) + " MB. Use a smaller optimized model or remote inference.")
+    (requiredBytes / 1048576) + " MB. Use a smaller optimized model or remote inference.")
   }
 
   open(env, File(modelsDir, "mobilei2v_unet.onnx")).use { session ->
