@@ -56,6 +56,30 @@ def patch(model_path: Path, converter_path: Path) -> None:
         raise RuntimeError("Upstream model constructor changed; review official training configuration")
     converter = converter.replace(wrong, correct)
 
+    # TorchScript tracing freezes RoPE temporal/spatial grids: the original
+    # 17x32x32 ONNX graph cannot run with 17x16x16 phone latents even when
+    # dynamic_axes claims it can. Export at precisely 17x16x16 for 512px
+    # source photos through the 32x-spatial LTX video VAE.
+    source_shape = "latent = torch.randn(1, 128, 17, 32, 32, device=device, dtype=torch_dtype)"
+    target_shape = "latent = torch.randn(1, 128, 17, 16, 16, device=device, dtype=torch_dtype)"
+    if converter.count(source_shape) != 1:
+        raise RuntimeError("Upstream export input resolution changed")
+    converter = converter.replace(source_shape, target_shape)
+
+    verify_shape = "latent_verify = torch.randn(1, 128, 1, 8, 8, device='cpu', dtype=torch.float32)"
+    new_verify_shape = "latent_verify = torch.randn(1, 128, 17, 16, 16, device='cpu', dtype=torch.float32)"
+    if converter.count(verify_shape) != 1:
+        raise RuntimeError("Upstream model verification shape changed")
+    converter = converter.replace(verify_shape, new_verify_shape)
+    # Do not claim arbitrary dynamic spatial support when RoPE coordinates
+    # were actually traced with constant 16x16 token positions.
+    converter = converter.replace(
+        "'latent': {0: 'batch', 3: 'height', 4: 'width'},",
+        "'latent': {0: 'batch'},")
+    converter = converter.replace(
+        "'denoised_latent': {0: 'batch', 3: 'height', 4: 'width'},",
+        "'denoised_latent': {0: 'batch'},")
+
     old = '    if missing:\n        logger.warning("Missing keys (not in checkpoint): %s", missing)'
     new = (
         '    if missing:\n'
@@ -73,4 +97,4 @@ if __name__ == "__main__":
         raise SystemExit("Usage: python scripts/patch_mobilei2v_converter.py mobilei2v-converter/scripts/convert")
     root = Path(sys.argv[1])
     patch(root / "models" / "mobiledit.py", root / "convert_mobilei2v_unet.py")
-    print("Preserved trained checkpoint architecture and fixed image guide-frame mask")
+    print("Preserved checkpoint weights and traced 17x16x16 RoPE grids for 512px Android input")
