@@ -63,11 +63,27 @@ def patch(model_path: Path, converter_path: Path) -> None:
     model_path.write_text(source, encoding="utf-8")
 
     converter = converter_path.read_text(encoding="utf-8")
+    # Match the official MobileI2V_300M_img512.yaml training architecture.
+    # The third-party converter incorrectly defaulted to 'flash', omitting
+    # the trained linear-attention + GLUMBConv parameters from the checkpoint.
+    wrong = "model = mobiledit_300m_P1_D16(attn_type='flash')"
+    correct = (
+        "model = mobiledit_300m_P1_D16("
+        "attn_type='linear', linear_head_dim=32, ffn_type='glumbconv', "
+        "mlp_ratio=2.5, mlp_acts=('silu', 'silu', None), "
+        "qk_norm=True, y_norm=True, y_norm_scale_factor=0.01, use_pe=False)"
+    )
+    if converter.count(wrong) != 1:
+        raise RuntimeError("Upstream model constructor changed; review official training configuration")
+    converter = converter.replace(wrong, correct)
+
     old = '    if missing:\n        logger.warning("Missing keys (not in checkpoint): %s", missing)'
     new = (
         '    if missing:\n'
         '        cross_missing = [key for key in missing if ".cross_attn." in key]\n'
         '        if cross_missing:\n'
+        '            print("Checkpoint keys containing cross:", [k for k in ckpt_state if "cross" in k.lower()][:30])\n'
+        '            print("First unmatched checkpoint keys:", [k for k in ckpt_state if k not in model_state][:30])\n'
         '            raise RuntimeError("Checkpoint lacks trained cross-attention weights: " + repr(cross_missing[:8]))\n'
         '        logger.warning("Missing keys (not in checkpoint): %s", missing)'
     )
