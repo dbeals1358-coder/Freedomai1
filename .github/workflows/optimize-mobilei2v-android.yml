@@ -1,0 +1,80 @@
+name: Optimize MobileI2V for Android memory
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  optimize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install ONNX tooling
+        run: python -m pip install 'onnx==1.17.0' 'onnxruntime==1.20.1' 'numpy<2.0'
+      - name: Download verified v2 models
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p models optimized
+          gh release download mobilei2v-models-v2 --repo "$GITHUB_REPOSITORY" --dir models --pattern '*.onnx' --pattern 'validation_report.json'
+      - name: Quantize UNet weights and verify model
+        run: |
+          python - <<'PY'
+          import json, pathlib, hashlib, onnx
+          from onnxruntime.quantization import quantize_dynamic, QuantType
+          root=pathlib.Path("models")
+          manifest=json.loads((root/"validation_report.json").read_text())
+          for name in ("vae_encoder.onnx","mobilei2v_unet.onnx","turbo_vaed.onnx"):
+              p=root/name
+              assert p.is_file(),f"Missing {name}"
+              assert p.stat().st_size==manifest[name]["bytes"]
+              assert hashlib.sha256(p.read_bytes()).hexdigest()==manifest[name]["sha256"]
+          src=root/"mobilei2v_unet.onnx"
+          dst=pathlib.Path("optimized/mobilei2v_unet.onnx")
+          quantize_dynamic(str(src),str(dst),weight_type=QuantType.QUInt8,op_types_to_quantize=["MatMul"])
+          onnx.checker.check_model(str(dst))
+          original=onnx.load(str(src),load_external_data=False)
+          reduced=onnx.load(str(dst),load_external_data=False)
+          assert [x.name for x in original.graph.input]==[x.name for x in reduced.graph.input]
+          assert [x.name for x in original.graph.output]==[x.name for x in reduced.graph.output]
+          assert dst.stat().st_size<src.stat().st_size, "Quantization did not reduce disk size"
+          for name in ("vae_encoder.onnx","turbo_vaed.onnx"):
+              (pathlib.Path("optimized")/name).hardlink_to(root/name)
+          report={}
+          for p in pathlib.Path("optimized").glob("*.onnx"):
+              report[p.name]={"bytes":p.stat().st_size,"sha256":hashlib.sha256(p.read_bytes()).hexdigest(),
+                "inputs":[x.name for x in onnx.load(str(p),load_external_data=False).graph.input]}
+          pathlib.Path("optimized/validation_report.json").write_text(json.dumps(report,indent=2))
+          print("UNet original",src.stat().st_size,"quantized",dst.stat().st_size)
+          PY
+      - name: Run one real ONNX denoiser inference
+        run: |
+          python - <<'PY'
+          import numpy as np, onnxruntime as ort
+          path="optimized/mobilei2v_unet.onnx"
+          opts=ort.SessionOptions()
+          opts.intra_op_num_threads=1
+          session=ort.InferenceSession(path,sess_options=opts,providers=["CPUExecutionProvider"])
+          inputs={x.name for x in session.get_inputs()}
+          assert inputs=={"latent","timestep"},inputs
+          latent=np.zeros((1,128,17,16,16),dtype=np.float32)
+          result=session.run(None,{"latent":latent,"timestep":np.array([1000],dtype=np.int64)})[0]
+          assert result.shape==latent.shape and np.isfinite(result).all()
+          print("Quantized denoiser inference PASSED")
+          PY
+      - name: Publish verified optimized model
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag=mobilei2v-android-int8-v1
+          gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --target main --title "MobileI2V Android INT8 experimental" --notes "Quantized model passed CPU ONNX inference. Android memory and video quality still require device validation."
+          gh release upload "$tag" optimized/*.onnx optimized/validation_report.json --clobber
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: MobileI2V-Android-INT8-optimization
+          path: optimized/validation_report.json
+          if-no-files-found: ignore
