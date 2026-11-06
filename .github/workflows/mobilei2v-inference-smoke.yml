@@ -54,7 +54,7 @@ jobs:
               opts.intra_op_num_threads=2
               return ort.InferenceSession(str(root/name),opts,providers=["CPUExecutionProvider"])
 
-          size=256
+          size=512
           yy,xx=np.mgrid[:size,:size].astype(np.float32)
           image=np.stack([xx/(size-1),yy/(size-1),0.5+0.35*np.sin(xx/24)],axis=0)
           image=((image*2-1)[None]).astype(np.float32)
@@ -62,7 +62,7 @@ jobs:
           first=enc.run(None,{"pixel_values":image})[0]
           del enc
           gc.collect()
-          assert first.shape[:2]==(1,128),first.shape
+          assert first.shape==(1,128,16,16),f"Expect 512px/32 latents: {first.shape}"
           h,w=first.shape[-2:]
           lat=np.random.default_rng(2026).standard_normal((1,128,17,h,w)).astype(np.float32)
           lat[:,:,0]=first[0]
