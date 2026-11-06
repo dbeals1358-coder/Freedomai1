@@ -219,7 +219,7 @@ internal object MobileI2VVideoEngine {
      "MobileI2V did not create a valid MP4"
     }
     progress(100)
-    return NightmareVideoClient.RenderedVideo(mp4, seconds, seconds.toString(), 480, 480, false)
+    return NightmareVideoClient.RenderedVideo(mp4, seconds, seconds.toString(), 512, 512, false)
    } finally { out.delete() }
   } finally { frames.forEach { if (!it.isRecycled) it.recycle() } }
  }
