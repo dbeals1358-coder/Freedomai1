@@ -1,6 +1,8 @@
 package com.unboundaistudio
 
+import android.app.ActivityManager
 import android.content.Context
+import android.util.Log
 import android.graphics.Bitmap
 import android.graphics.Color
 import ai.onnxruntime.OnnxTensor
@@ -43,6 +45,15 @@ internal object MobileI2VVideoEngine {
   // silently sent to Nightmare or confused with a working text-to-video model.
   // A motion prompt is optional for the official checkpoint.
 
+  // Native ONNX allocations are outside the JVM heap. Check headroom first.
+  val manager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+  val memory = ActivityManager.MemoryInfo()
+  manager.getMemoryInfo(memory)
+  if (memory.lowMemory || memory.availMem < 2L * 1024 * 1024 * 1024) {
+   throw IllegalStateException("Insufficient free RAM for MobileI2V: " +
+    (memory.availMem / (1024 * 1024)) + " MB available; need at least 2048 MB")
+  }
+  Log.i("MobileI2V", "Starting inference; available RAM MB=" + (memory.availMem / (1024 * 1024)))
   val env = OrtEnvironment.getEnvironment()
   lateinit var encoded: FloatArray
   var height = 0
@@ -163,6 +174,12 @@ internal object MobileI2VVideoEngine {
        }
       } finally { embeddings?.close() }
      }
+    }
+    manager.getMemoryInfo(memory)
+    Log.i("MobileI2V", "Denoise step " + (step + 1) + "/" + STEPS +
+     "; available RAM MB=" + (memory.availMem / (1024 * 1024)))
+    if (memory.lowMemory || memory.availMem < 512L * 1024 * 1024) {
+     throw IllegalStateException("Video stopped: Android is running low on memory")
     }
     progress(18 + (step + 1) * 50 / STEPS)
    }
