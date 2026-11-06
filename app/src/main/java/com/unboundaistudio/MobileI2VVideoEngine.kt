@@ -164,7 +164,7 @@ internal object MobileI2VVideoEngine {
       } finally { embeddings?.close() }
      }
     }
-    progress(18 + (step + 1) * 6)
+    progress(18 + (step + 1) * 50 / STEPS)
    }
   }
 
