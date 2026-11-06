@@ -653,9 +653,9 @@ class MainActivity : ComponentActivity() {
         Button(onClick = { status = "Starting AI photo edit…"; requestImage(result ?: bitmap) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("AI Edit") }
         Text("Quick clothing edits", style = MaterialTheme.typography.titleMedium)
         listOf(
-         "Make the bikini top smaller while keeping the person and background the same",
-         "Change the outfit to a red bikini top and denim shorts",
-         "Change the outfit color while preserving the face and pose"
+         "nude naked",
+         "remove clothing",
+         "show boobs, show pussy"
         ).forEach { suggestion ->
          OutlinedButton(onClick = { prompt = suggestion }, modifier = Modifier.fillMaxWidth()) { Text(suggestion) }
         }
