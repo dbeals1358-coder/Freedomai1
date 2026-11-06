@@ -8,15 +8,15 @@ import java.net.URL
 import java.security.MessageDigest
 
 /**
- * Install both checkpoint-compatible MobileI2V graphs from the same release.
+ * Install all three checkpoint-compatible MobileI2V graphs from the same release.
  * The v1 decoder was traced for the wrong spatial grid and cannot decode
  * 512px frames; keeping it while replacing only the denoiser fails inference.
- * Do not touch the user's source VAE, Qwen encoder, or other model folders.
+ * Preserve existing verified model files, Qwen encoder, and other model folders.
  */
 internal object MobileI2VModelUpdater {
  private const val RELEASE =
   "https://github.com/dbeals1358-coder/Freedomai1/releases/download/mobilei2v-models-v2/"
- private val required = listOf("mobilei2v_unet.onnx", "turbo_vaed.onnx")
+ private val required = listOf("vae_encoder.onnx", "mobilei2v_unet.onnx", "turbo_vaed.onnx")
  private data class Entry(val name: String, val size: Long, val hash: String)
 
  fun install(modelsDir: File, progress: (Int) -> Unit): String {
@@ -27,12 +27,16 @@ internal object MobileI2VModelUpdater {
    error("Compatible MobileI2V model release is unavailable: " + e.message)
   }
   val entries = required.map { name ->
-   val record = manifest.getJSONObject(name)
+   val record = if (manifest.has(name)) manifest.getJSONObject(name) else if (name == "vae_encoder.onnx") {
+    // The existing v2 manifest may omit the source encoder; use the known
+    // checkpoint digest and size, but never accept an unverified download.
+    JSONObject().put("bytes", 721865762L).put("sha256", "2fad3a342d7562da942133be3dab1b863e50a59d458cfcb7446ba9a5c856e21e").put("inputs", org.json.JSONArray().put("pixel_values"))
+   } else error("Missing model manifest entry: " + name)
    val size = record.getLong("bytes")
    val hash = record.getString("sha256").lowercase()
    val array = record.getJSONArray("inputs")
    val names = (0 until array.length()).map { array.getString(it) }.toSet()
-   require("latent" in names && (name != "mobilei2v_unet.onnx" ||
+   require((if (name == "vae_encoder.onnx") "pixel_values" in names else "latent" in names) && (name != "mobilei2v_unet.onnx" ||
      ("timestep" in names && "text_emb" !in names))) {
     "Incorrect MobileI2V release contract: " + name
    }
@@ -50,9 +54,9 @@ internal object MobileI2VModelUpdater {
    !(file.isFile && file.length() == e.size && sha256(file) == e.hash)
   }
   if (changed.isEmpty()) {
-   entries.forEach { e -> manifestFile(e).writeText(manifest.getJSONObject(e.name).toString()) }
+   entries.forEach { e -> manifestFile(e).writeText(if (manifest.has(e.name)) manifest.getJSONObject(e.name).toString() else JSONObject().put("bytes", e.size).put("sha256", e.hash).toString()) }
    progress(100)
-   return "Both compatible MobileI2V models are already installed."
+   return "All three compatible MobileI2V models are already installed."
   }
 
   val totalDownload = changed.sumOf { it.size }
@@ -75,7 +79,7 @@ internal object MobileI2VModelUpdater {
      connection.instanceFollowRedirects = true
      connection.setRequestProperty("User-Agent", "FreedomAI-MobileI2V/2.5")
      require(connection.responseCode == 200) {
-      "Download failed for " + e.name + ": HTTP " + connection.responseCode
+      "Download failed for " + e.name + ": HTTP " + connection.responseCode + ". The model must be published as a verified asset in mobilei2v-models-v2."
      }
      var copied = 0L
      connection.inputStream.use { source ->
@@ -117,7 +121,7 @@ internal object MobileI2VModelUpdater {
    entries.forEach { e -> manifestFile(e).writeText(manifest.getJSONObject(e.name).toString()) }
    installed.forEach { e -> File(modelsDir, e.name + ".backup").delete() }
    progress(100)
-   return "MobileI2V denoiser and decoder installed and verified. Source VAE and Qwen unchanged."
+   return "MobileI2V source VAE, denoiser and decoder installed and verified."
   } catch (e: Exception) {
    installed.asReversed().forEach { entry ->
     File(modelsDir, entry.name).delete()
