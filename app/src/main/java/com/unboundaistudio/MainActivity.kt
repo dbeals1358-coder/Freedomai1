@@ -761,7 +761,7 @@ class MainActivity : ComponentActivity() {
          Text(if (showMobileI2VInfo) "Hide video details ↑" else "Video details & requirements ↓")
         }
         if (showMobileI2VInfo) {
-         Text("MobileI2V requires three ONNX models. The denoiser and decoder download automatically; the source VAE (vae_encoder.onnx) must already be installed. Motion prompts are not supported by the official model.")
+         Text("MobileI2V checks all three ONNX models and downloads missing ones from the verified release. The source VAE must be published in that release for automatic installation. Motion prompts are not supported by the official model.")
         }
        }
        OutlinedTextField(value = nightmareVideoFlow, onValueChange = {
@@ -807,7 +807,8 @@ class MainActivity : ComponentActivity() {
             runOnUiThread { status = "Preparing video models…" }
             if (useMobileI2V) {
              val models = java.io.File(filesDir, "models/video-v1")
-             if (!java.io.File(models, "mobilei2v_unet.onnx").isFile ||
+             if (!java.io.File(models, "vae_encoder.onnx").isFile ||
+                 !java.io.File(models, "mobilei2v_unet.onnx").isFile ||
                  !java.io.File(models, "turbo_vaed.onnx").isFile) {
               runOnUiThread { status = "Preparing MobileI2V models automatically (large download)…" }
               MobileI2VModelUpdater.install(models) { p ->
@@ -819,7 +820,7 @@ class MainActivity : ComponentActivity() {
              // Do not claim automatic setup is complete when the source VAE is absent.
              val sourceVae = java.io.File(models, "vae_encoder.onnx")
              check(sourceVae.isFile && sourceVae.length() > 1_000_000L) {
-              "Missing source VAE (vae_encoder.onnx). Automatic video setup cannot finish: this model is not in the current download release. Install the compatible VAE before retrying."
+              "Source VAE unavailable after model setup. Verify that vae_encoder.onnx is published in the MobileI2V v2 release."
              }
              MobileI2VVideoEngine.generate(this@MainActivity, java.io.File(filesDir, "models/video-v1"), cacheDir, image, motionPrompt, duration) { p ->
               if (generationJob?.isActive == false) throw kotlinx.coroutines.CancellationException("MobileI2V cancelled")
