@@ -14,18 +14,19 @@ import java.security.MessageDigest
  * Preserve existing verified model files, Qwen encoder, and other model folders.
  */
 internal object MobileI2VModelUpdater {
- private const val RELEASE =
+ private val RELEASES = listOf(
+  "https://github.com/dbeals1358-coder/Freedomai1/releases/download/mobilei2v-android-int8-v1/",
   "https://github.com/dbeals1358-coder/Freedomai1/releases/download/mobilei2v-models-v2/"
+ )
  private val required = listOf("vae_encoder.onnx", "mobilei2v_unet.onnx", "turbo_vaed.onnx")
  private data class Entry(val name: String, val size: Long, val hash: String)
 
  fun install(modelsDir: File, progress: (Int) -> Unit): String {
   modelsDir.mkdirs()
-  val manifest = try {
-   JSONObject(String(downloadSmall(RELEASE + "validation_report.json"), Charsets.UTF_8))
-  } catch (e: Exception) {
-   error("Compatible MobileI2V model release is unavailable: " + e.message)
-  }
+  val selected = RELEASES.firstNotNullOfOrNull { release ->
+   runCatching { release to JSONObject(String(downloadSmall(release + "validation_report.json"), Charsets.UTF_8)) }.getOrNull()
+  } ?: error("No verified MobileI2V model release is available.")
+  val (release, manifest) = selected
   val entries = required.map { name ->
    val record = if (manifest.has(name)) manifest.getJSONObject(name) else if (name == "vae_encoder.onnx") {
     // The existing v2 manifest may omit the source encoder; use the known
@@ -72,7 +73,7 @@ internal object MobileI2VModelUpdater {
     val temporary = File(modelsDir, e.name + ".downloading")
     temporary.delete()
     val digest = MessageDigest.getInstance("SHA-256")
-    val connection = URL(RELEASE + e.name).openConnection() as HttpURLConnection
+    val connection = URL(release + e.name).openConnection() as HttpURLConnection
     try {
      connection.connectTimeout = 30000
      connection.readTimeout = 30000
