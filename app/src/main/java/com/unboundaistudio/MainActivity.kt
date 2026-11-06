@@ -643,8 +643,12 @@ class MainActivity : ComponentActivity() {
         }
         OutlinedTextField(value = prompt, onValueChange = { prompt = it }, label = { Text("Describe your AI edit") }, placeholder = { Text("Make the bikini top smaller; keep the face, pose and background unchanged.") }, modifier = Modifier.fillMaxWidth())
        OutlinedButton(onClick = { listenForPrompt() }, enabled = !busy) { Text("🎤 Speak prompt") }
-        Text("No-paint color edit: try 'red bikini' or 'make the bikini top blue'. For detectable vivid fabric, the app recolors original pixels without regenerating the person. Other garments and shape edits still depend on your AI model.")
-        Text(if (originalGeneratedHere) "Image source: generated in FreedomAI (this session)" else "Image source: imported or unverified")
+        var showEditHelp by remember { mutableStateOf(false) }
+        TextButton(onClick = { showEditHelp = !showEditHelp }) { Text(if (showEditHelp) "ⓘ Hide editing help" else "ⓘ Help") }
+        if (showEditHelp) {
+         Text("No-paint color edit: try 'red bikini' or 'make the bikini top blue'. For detectable vivid fabric, the app recolors original pixels without regenerating the person. Other garments and shape edits still depend on your AI model.")
+         Text(if (originalGeneratedHere) "Image source: generated in FreedomAI (this session)" else "Image source: imported or unverified")
+        }
         Button(onClick = { prompt = "nude, naked"; status = "Prompt entered. Tap AI Edit when ready." }, enabled = !busy && originalGeneratedHere, modifier = Modifier.fillMaxWidth()) { Text("Nude") }
         Button(onClick = { status = "Starting AI photo edit…"; requestImage(result ?: bitmap) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("AI Edit") }
         Text("Quick clothing edits", style = MaterialTheme.typography.titleMedium)
