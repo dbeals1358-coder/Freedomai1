@@ -73,6 +73,19 @@ jobs:
               outputs = [o.name for o in session.get_outputs()]
               if not inputs or not outputs:
                   raise RuntimeError(f"Invalid ONNX inputs/outputs: {name}")
+              # The upstream converter currently accepts text_emb in Python but
+              # does not use it in the forward graph; ONNX export prunes it.
+              # Refuse a misleading 'validated' package that cannot condition
+              # video on the user's prompt.
+              if name == "mobilei2v_unet.onnx":
+                  conditioning = {"text_emb", "encoder_hidden_states", "prompt_embeds"}
+                  if not conditioning.intersection(inputs):
+                      raise RuntimeError(
+                          "MobileI2V UNet export is unconditioned: "
+                          f"inputs={inputs}. Upstream forward ignores text_emb, "
+                          "so ONNX pruned it. Fix the model forward graph and "
+                          "re-export before shipping an AI-video APK."
+                      )
               digest = hashlib.sha256()
               with path.open("rb") as stream:
                   for chunk in iter(lambda: stream.read(1024*1024), b""):
