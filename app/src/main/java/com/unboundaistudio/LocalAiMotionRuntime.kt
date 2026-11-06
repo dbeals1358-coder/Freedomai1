@@ -13,7 +13,7 @@ import org.json.JSONObject
 class LocalAiMotionRuntime(private val modelsDir: File) : AutoCloseable {
  private val environment by lazy { OrtEnvironment.getEnvironment() }
  private val sessions = mutableListOf<OrtSession>()
- private val required = listOf("vae_encoder.onnx", "qwen2_encoder.onnx", "mobilei2v_unet.onnx", "turbo_vaed.onnx")
+ private val required = listOf("vae_encoder.onnx", "mobilei2v_unet.onnx", "turbo_vaed.onnx")
  data class Readiness(val ready: Boolean, val reason: String)
 
 
@@ -44,7 +44,7 @@ class LocalAiMotionRuntime(private val modelsDir: File) : AutoCloseable {
    if (file.length() != size) return Readiness(false, "$name size mismatch")
    if (!sha256(name).equals(hash, ignoreCase = true)) return Readiness(false, "$name SHA-256 mismatch. Reimport model.")
   }
-  return Readiness(true, "All four MobileI2V model files passed SHA-256 verification. Video inference and motion quality still require device testing.")
+  return Readiness(true, "All required MobileI2V model files passed SHA-256 verification. Video inference and motion quality still require device testing.")
  }
 
  fun readiness(): Readiness {
@@ -65,7 +65,7 @@ class LocalAiMotionRuntime(private val modelsDir: File) : AutoCloseable {
      session.close()
     }
    }
-   Readiness(true, "All four ONNX graphs loaded. Video still needs real-device testing. " + diagnostics.joinToString("; "))
+   Readiness(true, "All required ONNX graphs loaded. Video still needs real-device testing. " + diagnostics.joinToString("; "))
   } catch (e: Exception) {
    Readiness(false, "ONNX model compatibility check failed: " + (e.message ?: e.javaClass.simpleName))
   }
