@@ -41,7 +41,8 @@ object AiSuperResolution {
   return target
  }
 
- suspend fun upscale(context: Context, source: Bitmap): Bitmap {
+ suspend fun upscale(context: Context, source: Bitmap, onProgress: (Int) -> Unit = {}): Bitmap {
+  onProgress(0)
   val longest = maxOf(source.width, source.height)
   require(longest in 1..4096) { "Image dimensions unsupported" }
   val targetWidth = (source.width.toLong() * 4096L / longest).toInt().coerceAtLeast(1)
@@ -51,6 +52,10 @@ object AiSuperResolution {
    (source.width * 1024f / longest).toInt().coerceAtLeast(1),
    (source.height * 1024f / longest).toInt().coerceAtLeast(1), true) else source
   val output = Bitmap.createBitmap(working.width * 4, working.height * 4, Bitmap.Config.ARGB_8888)
+  val tileColumns = (working.width + TILE - 1) / TILE
+  val tileRows = (working.height + TILE - 1) / TILE
+  val totalTiles = tileColumns * tileRows
+  var completedTiles = 0
   val env = OrtEnvironment.getEnvironment()
   val opts = OrtSession.SessionOptions().apply { setIntraOpNumThreads(2) }
   try {
@@ -98,6 +103,8 @@ object AiSuperResolution {
         canvas.drawBitmap(tile, Rect(sx,sy,sx+cw*4,sy+ch*4),
          RectF(left*4f,top*4f,(left+cw)*4f,(top+ch)*4f), null)
         tile.recycle()
+        completedTiles++
+        onProgress(5 + completedTiles * 90 / totalTiles)
        }
       }
      }
@@ -105,9 +112,13 @@ object AiSuperResolution {
    }
   } finally { opts.close() }
   if (working !== source) working.recycle()
-  if (output.width == targetWidth && output.height == targetHeight) return output
+  if (output.width == targetWidth && output.height == targetHeight) {
+   onProgress(100)
+   return output
+  }
   val resized = Bitmap.createScaledBitmap(output, targetWidth, targetHeight, true)
   output.recycle()
+  onProgress(100)
   return resized
  }
 }
