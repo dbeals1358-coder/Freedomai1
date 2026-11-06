@@ -757,43 +757,7 @@ class MainActivity : ComponentActivity() {
        Text(if (useMobileI2V)
         "On-device MobileI2V uses imported ONNX models without Nightmare. Official weights contain no text cross-attention, so motion prompts cannot control the result. Real-device video quality is still experimental."
        else "AI video is rendered by Nightmare's installed image-to-video model. Turn on the offline MobileI2V switch to test on-device inference.")
-       if (useMobileI2V) {
-        OutlinedButton(enabled = !busy, onClick = {
-         busy = true
-         generationPercent = 0
-         status = "Checking for compatible MobileI2V model…"
-         generationJob = scope.launch {
-          try {
-           status = withContext(Dispatchers.IO) {
-            MobileI2VModelUpdater.install(java.io.File(filesDir, "models/video-v1")) { p ->
-             if (generationJob?.isActive == false) throw kotlinx.coroutines.CancellationException("Model download cancelled")
-             runOnUiThread { generationPercent = p }
-            }
-           }
-          } catch (e: kotlinx.coroutines.CancellationException) {
-           status = "MobileI2V model download cancelled."
-          } catch (e: Exception) {
-           status = "MobileI2V update: " + (e.message ?: "Could not download model")
-          } finally {
-           busy = false
-           generationJob = null
-          }
-         }
-        }, modifier = Modifier.fillMaxWidth()) { Text("Install compatible MobileI2V model (large download)") }
-        if (busy) Text("MobileI2V progress: " + generationPercent + "%")
-       }
-        OutlinedButton(onClick = { motionModelPicker.launch(arrayOf("*/*")) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
-         Text("Import Missing Models (choose vae_encoder.onnx)")
-        }
-        if (motionModelMessage.isNotBlank()) Text(motionModelMessage)
-        OutlinedButton(onClick = {
-         scope.launch {
-          status = "Checking MobileI2V model integrity…"
-          status = withContext(Dispatchers.IO) {
-           LocalAiMotionRuntime(java.io.File(filesDir, "models/video-v1")).use { it.verifyImportedFiles().reason }
-          }
-         }
-        }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Verify MobileI2V model files") }
+       if (useMobileI2V) Text("MobileI2V model setup is automatic when you generate a video. Large downloads require internet and free storage.")
        OutlinedTextField(value = nightmareVideoFlow, onValueChange = {
         nightmareVideoFlow = it.trim()
         prefs.edit().putString("nightmare_video_flow", nightmareVideoFlow).apply()
@@ -817,6 +781,15 @@ class MainActivity : ComponentActivity() {
           try {
            val video = withContext(Dispatchers.IO) {
             if (useMobileI2V) {
+             val models = java.io.File(filesDir, "models/video-v1")
+             if (!java.io.File(models, "mobilei2v_unet.onnx").isFile ||
+                 !java.io.File(models, "turbo_vaed.onnx").isFile) {
+              runOnUiThread { status = "Preparing MobileI2V models automatically (large download)…" }
+              MobileI2VModelUpdater.install(models) { p ->
+               runOnUiThread { generationPercent = p; status = "Preparing MobileI2V models… $p%" }
+              }
+              runOnUiThread { generationPercent = 0; status = "Generating MobileI2V video…" }
+             }
              MobileI2VVideoEngine.generate(this@MainActivity, java.io.File(filesDir, "models/video-v1"), cacheDir, image, motionPrompt, duration) { p ->
               if (generationJob?.isActive == false) throw kotlinx.coroutines.CancellationException("MobileI2V cancelled")
               runOnUiThread { generationPercent = p }
