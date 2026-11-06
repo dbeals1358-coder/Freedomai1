@@ -31,6 +31,18 @@ internal object MobileI2VVideoEngine {
  private const val FRAMES = 17
  private const val CHANNELS = 128
  private const val STEPS = 12
+ private const val PROCESS_BUDGET_KB = 4L * 1024 * 1024
+ private const val PROCESS_GUARD_KB = 384L * 1024
+
+ private fun checkProcessBudget(stage: String) {
+  val usage = android.os.Debug.MemoryInfo()
+  android.os.Debug.getMemoryInfo(usage)
+  val pssKb = usage.totalPss.toLong()
+  Log.i("MobileI2V", "$stage process PSS=${pssKb / 1024} MB")
+  if (pssKb >= PROCESS_BUDGET_KB - PROCESS_GUARD_KB) {
+   throw IllegalStateException("MobileI2V stopped at $stage before exceeding the 4 GB process memory budget (PSS ${pssKb / 1024} MB). A smaller denoiser is required.")
+  }
+ }
 
  fun generate(context: Context, modelsDir: File, cacheDir: File, photo: Bitmap, prompt: String,
               seconds: Int, progress: (Int) -> Unit): NightmareVideoClient.RenderedVideo {
@@ -78,6 +90,7 @@ internal object MobileI2VVideoEngine {
   lateinit var encoded: FloatArray
   var height = 0
   var width = 0
+  checkProcessBudget("before encoder")
   progress(3)
   open(env, File(modelsDir, "vae_encoder.onnx")).use { session ->
    require("pixel_values" in session.inputNames) { "Incompatible VAE encoder" }
@@ -108,6 +121,7 @@ internal object MobileI2VVideoEngine {
    } finally { if (source !== photo) source.recycle() }
   }
 
+  checkProcessBudget("after encoder")
   progress(17)
   val spatial = height * width
   val total = CHANNELS * FRAMES * spatial
@@ -135,7 +149,9 @@ internal object MobileI2VVideoEngine {
     (requiredBytes / 1048576) + " MB. Use a smaller optimized model or remote inference.")
   }
 
+  checkProcessBudget("before denoiser")
   open(env, File(modelsDir, "mobilei2v_unet.onnx")).use { session ->
+   checkProcessBudget("denoiser loaded")
    val latentShape = (session.inputInfo["latent"]?.info as? ai.onnxruntime.TensorInfo)?.shape
    require(latentShape != null && latentShape.size == 5 &&
            latentShape[1] == CHANNELS.toLong() && latentShape[2] == FRAMES.toLong() &&
@@ -179,6 +195,7 @@ internal object MobileI2VVideoEngine {
        }
      }
     }
+    checkProcessBudget("denoise step ${step + 1}")
     manager.getMemoryInfo(memory)
     Log.i("MobileI2V", "Denoise step " + (step + 1) + "/" + STEPS +
      "; available RAM MB=" + (memory.availMem / (1024 * 1024)))
@@ -189,6 +206,7 @@ internal object MobileI2VVideoEngine {
    }
   }
 
+  checkProcessBudget("before decoder")
   val frames = mutableListOf<Bitmap>()
   progress(69)
   try {
@@ -250,6 +268,7 @@ internal object MobileI2VVideoEngine {
        }
       }
      }
+     checkProcessBudget("decoded $decodedCount frames")
      decodedCount += window
      progress(70 + (decodedCount * 17 / FRAMES))
     }
