@@ -45,6 +45,10 @@ internal object MobileI2VVideoEngine {
   // silently sent to Nightmare or confused with a working text-to-video model.
   // A motion prompt is optional for the official checkpoint.
 
+  // Encourage collection of no-longer-referenced UI/image allocations before
+  // opening the largest native inference session. This cannot reclaim other apps' RAM.
+  System.gc()
+  System.runFinalization()
   // Native ONNX allocations are outside the JVM heap. Check headroom first.
   val manager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
   val memory = ActivityManager.MemoryInfo()
@@ -131,6 +135,7 @@ internal object MobileI2VVideoEngine {
   manager.getMemoryInfo(memory)
   val denoiserBytes = File(modelsDir, "mobilei2v_unet.onnx").length()
   val reserveBytes = 1024L * 1024 * 1024
+  // Conservative estimate, not a measured peak. Keep the guard in place.
   val estimatedNeed = denoiserBytes * 3 + reserveBytes
   Log.i("MobileI2V", "Preflight denoiser: available=" + memory.availMem +
    " requiredEstimate=" + estimatedNeed + " threshold=" + memory.threshold)
