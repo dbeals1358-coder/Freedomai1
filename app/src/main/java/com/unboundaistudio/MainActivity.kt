@@ -780,6 +780,19 @@ class MainActivity : ComponentActivity() {
          generationJob = scope.launch {
           try {
            val video = withContext(Dispatchers.IO) {
+            // Clean only stale FreedomAI render artifacts, never user media or models.
+            runOnUiThread { status = "Preparing video: clearing temporary memory…" }
+            val staleCutoff = System.currentTimeMillis() - 60L * 60L * 1000L
+            cacheDir.listFiles()?.forEach { file ->
+             if (file.isFile && file.lastModified() < staleCutoff &&
+                 (file.name.startsWith("mobilei2v_") || file.name.startsWith("freedomai_video_")) &&
+                 file.extension.lowercase() in setOf("mp4", "tmp")) {
+              runCatching { file.delete() }
+             }
+            }
+            System.gc()
+            System.runFinalization()
+            runOnUiThread { status = "Preparing video models…" }
             if (useMobileI2V) {
              val models = java.io.File(filesDir, "models/video-v1")
              if (!java.io.File(models, "mobilei2v_unet.onnx").isFile ||
