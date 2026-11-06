@@ -7,110 +7,149 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
 
-/** SHA-256 verified replacement compatible with official MobileI2V checkpoint. */
+/**
+ * Install both checkpoint-compatible MobileI2V graphs from the same release.
+ * The v1 decoder was traced for the wrong spatial grid and cannot decode
+ * 512px frames; keeping it while replacing only the denoiser fails inference.
+ * Do not touch the user's source VAE, Qwen encoder, or other model folders.
+ */
 internal object MobileI2VModelUpdater {
- private const val RELEASE = "https://github.com/dbeals1358-coder/Freedomai1/releases/download/mobilei2v-models-v2/"
- private const val MODEL = "mobilei2v_unet.onnx"
+ private const val RELEASE =
+  "https://github.com/dbeals1358-coder/Freedomai1/releases/download/mobilei2v-models-v2/"
+ private val required = listOf("mobilei2v_unet.onnx", "turbo_vaed.onnx")
+ private data class Entry(val name: String, val size: Long, val hash: String)
 
  fun install(modelsDir: File, progress: (Int) -> Unit): String {
   modelsDir.mkdirs()
   val manifest = try {
-   val bytes = downloadSmall(RELEASE + "validation_report.json")
-   JSONObject(String(bytes, Charsets.UTF_8)).getJSONObject(MODEL)
+   JSONObject(String(downloadSmall(RELEASE + "validation_report.json"), Charsets.UTF_8))
   } catch (e: Exception) {
-   error("Compatible MobileI2V model has not been published yet, or the network is unavailable: " + e.message)
+   error("Compatible MobileI2V model release is unavailable: " + e.message)
   }
-  val expectedBytes = manifest.getLong("bytes")
-  val expectedHash = manifest.getString("sha256").lowercase()
-  val inputs = manifest.getJSONArray("inputs")
-  val names = (0 until inputs.length()).map { inputs.getString(it) }.toSet()
-  require("latent" in names && "timestep" in names && "text_emb" !in names) {
-   "Published model does not match official trained MobileI2V checkpoint."
+  val entries = required.map { name ->
+   val record = manifest.getJSONObject(name)
+   val size = record.getLong("bytes")
+   val hash = record.getString("sha256").lowercase()
+   val array = record.getJSONArray("inputs")
+   val names = (0 until array.length()).map { array.getString(it) }.toSet()
+   require("latent" in names && (name != "mobilei2v_unet.onnx" ||
+     ("timestep" in names && "text_emb" !in names))) {
+    "Incorrect MobileI2V release contract: " + name
+   }
+   require(size in 100_000_000L..2_000_000_000L &&
+     hash.matches(Regex("[0-9a-f]{64}"))) {
+    "Invalid MobileI2V release record: " + name
+   }
+   Entry(name, size, hash)
   }
-  require(expectedBytes in 200_000_000L..2_000_000_000L &&
-          expectedHash.matches(Regex("[0-9a-f]{64}"))) {
-   "Invalid model release manifest"
+  fun manifestFile(entry: Entry) =
+   File(modelsDir, entry.name.removeSuffix(".onnx") + "_manifest.json")
+
+  val changed = entries.filter { e ->
+   val file = File(modelsDir, e.name)
+   !(file.isFile && file.length() == e.size && sha256(file) == e.hash)
   }
-  val target = File(modelsDir, MODEL)
-  if (target.isFile && target.length() == expectedBytes &&
-      sha256(target) == expectedHash) {
-   File(modelsDir, "mobilei2v_unet_manifest.json").writeText(manifest.toString())
-   return "Compatible MobileI2V model is already installed."
+  if (changed.isEmpty()) {
+   entries.forEach { e -> manifestFile(e).writeText(manifest.getJSONObject(e.name).toString()) }
+   progress(100)
+   return "Both compatible MobileI2V models are already installed."
   }
 
-  val free = StatFs(modelsDir.absolutePath).availableBytes
-  require(free > expectedBytes + 128L * 1024 * 1024) {
-   "Not enough free storage for MobileI2V model. Need about " +
-    ((expectedBytes + 128L * 1024 * 1024) / 1048576) + " MB."
+  val totalDownload = changed.sumOf { it.size }
+  require(StatFs(modelsDir.absolutePath).availableBytes > totalDownload + 128L * 1024 * 1024) {
+   "Insufficient free storage; need about " +
+    ((totalDownload + 128L * 1024 * 1024) / 1048576) + " MB."
   }
-  val temp = File(modelsDir, MODEL + ".downloading")
-  val backup = File(modelsDir, MODEL + ".backup")
-  temp.delete()
+  val installed = mutableListOf<Entry>()
+  var received = 0L
   try {
-   val digest = MessageDigest.getInstance("SHA-256")
-   val connection = (URL(RELEASE + MODEL).openConnection() as HttpURLConnection)
-   try {
-    connection.connectTimeout = 30000
-    connection.readTimeout = 30000
-    connection.instanceFollowRedirects = true
-    connection.setRequestProperty("User-Agent", "FreedomAI-MobileI2V/2.5")
-    require(connection.responseCode == 200) {
-     "Model download failed with HTTP " + connection.responseCode
-    }
-    var copied = 0L
-    connection.inputStream.use { input ->
-     temp.outputStream().buffered().use { output ->
-      val block = ByteArray(1024 * 1024)
-      while (true) {
-       if (Thread.currentThread().isInterrupted) throw InterruptedException("Download cancelled")
-       val amount = input.read(block)
-       if (amount < 0) break
-       copied += amount
-       require(copied <= expectedBytes) { "Unexpectedly large model download" }
-       output.write(block, 0, amount)
-       digest.update(block, 0, amount)
-       progress((copied * 100L / expectedBytes).toInt().coerceIn(0, 99))
+   // Download everything and verify hashes before replacing either original.
+   for (e in changed) {
+    val temporary = File(modelsDir, e.name + ".downloading")
+    temporary.delete()
+    val digest = MessageDigest.getInstance("SHA-256")
+    val connection = URL(RELEASE + e.name).openConnection() as HttpURLConnection
+    try {
+     connection.connectTimeout = 30000
+     connection.readTimeout = 30000
+     connection.instanceFollowRedirects = true
+     connection.setRequestProperty("User-Agent", "FreedomAI-MobileI2V/2.5")
+     require(connection.responseCode == 200) {
+      "Download failed for " + e.name + ": HTTP " + connection.responseCode
+     }
+     var copied = 0L
+     connection.inputStream.use { source ->
+      temporary.outputStream().buffered().use { target ->
+       val block = ByteArray(1024 * 1024)
+       while (true) {
+        if (Thread.currentThread().isInterrupted) throw InterruptedException("Download cancelled")
+        val count = source.read(block)
+        if (count < 0) break
+        copied += count
+        require(copied <= e.size) { "Model exceeds release manifest size: " + e.name }
+        target.write(block, 0, count)
+        digest.update(block, 0, count)
+        received += count
+        progress((received * 99 / totalDownload).toInt().coerceIn(0, 99))
+       }
       }
      }
-    }
-    require(copied == expectedBytes) { "Model download was incomplete" }
-    val actual = digest.digest().joinToString("") { "%02x".format(it) }
-    require(actual == expectedHash) { "Downloaded MobileI2V model failed SHA-256 verification" }
-   } finally { connection.disconnect() }
-
-   backup.delete()
-   if (target.exists()) require(target.renameTo(backup)) { "Could not back up previous model" }
-   if (!temp.renameTo(target)) {
-    if (backup.exists()) backup.renameTo(target)
-    error("Could not finish installing the corrected MobileI2V model")
+     require(copied == e.size) { "Incomplete MobileI2V download: " + e.name }
+     require(digest.digest().joinToString("") { "%02x".format(it) } == e.hash) {
+      "MobileI2V SHA-256 mismatch: " + e.name
+     }
+    } finally { connection.disconnect() }
    }
-   backup.delete()
-   File(modelsDir, "mobilei2v_unet_manifest.json").writeText(manifest.toString())
+   for (e in changed) {
+    val target = File(modelsDir, e.name)
+    val backup = File(modelsDir, e.name + ".backup")
+    val temporary = File(modelsDir, e.name + ".downloading")
+    backup.delete()
+    if (target.exists()) require(target.renameTo(backup)) {
+     "Unable to back up old model: " + e.name
+    }
+    if (!temporary.renameTo(target)) {
+     if (backup.exists()) backup.renameTo(target)
+     error("Unable to install model: " + e.name)
+    }
+    installed.add(e)
+   }
+   entries.forEach { e -> manifestFile(e).writeText(manifest.getJSONObject(e.name).toString()) }
+   installed.forEach { e -> File(modelsDir, e.name + ".backup").delete() }
    progress(100)
-   return "Compatible MobileI2V model installed. The official checkpoint does not follow motion prompts. Your other three models were preserved."
-  } finally { temp.delete() }
+   return "MobileI2V denoiser and decoder installed and verified. Source VAE and Qwen unchanged."
+  } catch (e: Exception) {
+   installed.asReversed().forEach { entry ->
+    File(modelsDir, entry.name).delete()
+    val backup = File(modelsDir, entry.name + ".backup")
+    if (backup.exists()) backup.renameTo(File(modelsDir, entry.name))
+   }
+   throw e
+  } finally {
+   changed.forEach { File(modelsDir, it.name + ".downloading").delete() }
+  }
  }
 
  private fun downloadSmall(path: String): ByteArray {
-  val connection = (URL(path).openConnection() as HttpURLConnection)
+  val conn = URL(path).openConnection() as HttpURLConnection
   try {
-   connection.connectTimeout = 20000
-   connection.readTimeout = 20000
-   connection.instanceFollowRedirects = true
-   connection.setRequestProperty("User-Agent", "FreedomAI-MobileI2V/2.5")
-   require(connection.responseCode == 200) { "HTTP " + connection.responseCode }
-   return connection.inputStream.use { input ->
-    input.readBytes().also { require(it.size < 1_000_000) { "Invalid model manifest" } }
+   conn.connectTimeout = 20000
+   conn.readTimeout = 20000
+   conn.instanceFollowRedirects = true
+   conn.setRequestProperty("User-Agent", "FreedomAI-MobileI2V/2.5")
+   require(conn.responseCode == 200) { "HTTP " + conn.responseCode }
+   return conn.inputStream.use { stream ->
+    stream.readBytes().also { require(it.size < 1_000_000) { "Invalid model manifest" } }
    }
-  } finally { connection.disconnect() }
+  } finally { conn.disconnect() }
  }
 
  private fun sha256(file: File): String {
   val digest = MessageDigest.getInstance("SHA-256")
-  file.inputStream().buffered().use { input ->
+  file.inputStream().buffered().use { stream ->
    val buffer = ByteArray(1024 * 1024)
    while (true) {
-    val n = input.read(buffer)
+    val n = stream.read(buffer)
     if (n < 0) break
     digest.update(buffer, 0, n)
    }
