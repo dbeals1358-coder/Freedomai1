@@ -35,6 +35,9 @@ jobs:
           repository: himadriHK/MobileI2VConsole
           path: mobilei2v-converter
           persist-credentials: false
+      - name: Restore real text-conditioning and first-frame masking
+        run: |
+          python scripts/patch_mobilei2v_converter.py mobilei2v-converter/scripts/convert
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
