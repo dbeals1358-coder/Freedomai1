@@ -22,7 +22,7 @@ def patch(model_path: Path, converter_path: Path) -> None:
     b = source[idx:]
     old = "        cond_mask = torch.ones(B, device=latent.device, dtype=latent.dtype)"
     new = (
-        "        spatial = (latent.shape[3] // 2) * (latent.shape[4] // 2)\n"
+        "        spatial = latent.shape[3] * latent.shape[4]\n"
         "        cond_mask = torch.zeros(B, latent.shape[2] * spatial, device=latent.device, dtype=latent.dtype)\n"
         "        cond_mask[:, :spatial] = 1.0"
     )
