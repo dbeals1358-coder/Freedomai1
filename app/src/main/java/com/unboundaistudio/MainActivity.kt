@@ -761,7 +761,7 @@ class MainActivity : ComponentActivity() {
          Text(if (showMobileI2VInfo) "Hide video details ↑" else "Video details & requirements ↓")
         }
         if (showMobileI2VInfo) {
-         Text("MobileI2V runs on your phone using ONNX models. Models download automatically when needed (internet and free storage required). Motion prompts cannot control the official model, and video quality is experimental.")
+         Text("MobileI2V requires three ONNX models. The denoiser and decoder download automatically; the source VAE (vae_encoder.onnx) must already be installed. Motion prompts are not supported by the official model.")
         }
        }
        OutlinedTextField(value = nightmareVideoFlow, onValueChange = {
@@ -814,6 +814,12 @@ class MainActivity : ComponentActivity() {
                runOnUiThread { generationPercent = p; status = "Preparing MobileI2V models… $p%" }
               }
               runOnUiThread { generationPercent = 0; status = "Generating MobileI2V video…" }
+             }
+             // The published updater contains only the denoiser and decoder.
+             // Do not claim automatic setup is complete when the source VAE is absent.
+             val sourceVae = java.io.File(models, "vae_encoder.onnx")
+             check(sourceVae.isFile && sourceVae.length() > 1_000_000L) {
+              "Missing source VAE (vae_encoder.onnx). Automatic video setup cannot finish: this model is not in the current download release. Install the compatible VAE before retrying."
              }
              MobileI2VVideoEngine.generate(this@MainActivity, java.io.File(filesDir, "models/video-v1"), cacheDir, image, motionPrompt, duration) { p ->
               if (generationJob?.isActive == false) throw kotlinx.coroutines.CancellationException("MobileI2V cancelled")
