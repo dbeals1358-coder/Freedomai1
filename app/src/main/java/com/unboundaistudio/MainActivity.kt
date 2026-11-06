@@ -807,21 +807,13 @@ class MainActivity : ComponentActivity() {
             runOnUiThread { status = "Preparing video models…" }
             if (useMobileI2V) {
              val models = java.io.File(filesDir, "models/video-v1")
-             if (!java.io.File(models, "vae_encoder.onnx").isFile ||
-                 !java.io.File(models, "mobilei2v_unet.onnx").isFile ||
-                 !java.io.File(models, "turbo_vaed.onnx").isFile) {
-              runOnUiThread { status = "Preparing MobileI2V models automatically (large download)…" }
-              MobileI2VModelUpdater.install(models) { p ->
-               runOnUiThread { generationPercent = p; status = "Preparing MobileI2V models… $p%" }
-              }
-              runOnUiThread { generationPercent = 0; status = "Generating MobileI2V video…" }
+             // Check verified release on every video attempt so previously installed
+             // full-precision models can be upgraded to the smaller validated graph.
+             runOnUiThread { status = "Checking compatible MobileI2V models…" }
+             MobileI2VModelUpdater.install(models) { p ->
+              runOnUiThread { generationPercent = p; status = "Checking MobileI2V models… $p%" }
              }
-             // The published updater contains only the denoiser and decoder.
-             // Do not claim automatic setup is complete when the source VAE is absent.
-             val sourceVae = java.io.File(models, "vae_encoder.onnx")
-             check(sourceVae.isFile && sourceVae.length() > 1_000_000L) {
-              "Source VAE unavailable after model setup. Verify that vae_encoder.onnx is published in the MobileI2V v2 release."
-             }
+             runOnUiThread { generationPercent = 0; status = "Generating MobileI2V video…" }
              MobileI2VVideoEngine.generate(this@MainActivity, java.io.File(filesDir, "models/video-v1"), cacheDir, image, motionPrompt, duration) { p ->
               if (generationJob?.isActive == false) throw kotlinx.coroutines.CancellationException("MobileI2V cancelled")
               runOnUiThread { generationPercent = p; status = "MobileI2V processing… $p%" }
