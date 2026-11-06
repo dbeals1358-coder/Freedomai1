@@ -28,7 +28,7 @@ internal object MobileI2VVideoEngine {
  private const val SIDE = 64             // 8x8 video latents, safe for Turbo-VAED
  private const val FRAMES = 17
  private const val CHANNELS = 128
- private const val STEPS = 8
+ private const val STEPS = 12
 
  fun generate(context: Context, modelsDir: File, cacheDir: File, photo: Bitmap, prompt: String,
               seconds: Int, progress: (Int) -> Unit): NightmareVideoClient.RenderedVideo {
@@ -81,10 +81,10 @@ internal object MobileI2VVideoEngine {
   val spatial = height * width
   val total = CHANNELS * FRAMES * spatial
   val videoLatent = FloatArray(total)
-  val rng = Random(47312)
+  val rng = java.util.Random(47312L)
   for (ch in 0 until CHANNELS) for (t in 0 until FRAMES) for (px in 0 until spatial) {
    val offset = (ch * FRAMES + t) * spatial + px
-   videoLatent[offset] = if (t == 0) encoded[ch * spatial + px] else (rng.nextFloat() - 0.5f) * 2f
+   videoLatent[offset] = if (t == 0) encoded[ch * spatial + px] else rng.nextGaussian().toFloat()
   }
 
   // Determine the actual ONNX contract before allocating the Qwen encoder.
@@ -124,7 +124,10 @@ internal object MobileI2VVideoEngine {
    }
    for (step in 0 until STEPS) {
     if (Thread.currentThread().isInterrupted) throw InterruptedException("MobileI2V cancelled")
-    val time = (1000L - step * (1000L / STEPS)).coerceAtLeast(1)
+    // FlowMatch Euler schedule with shift=3, matching the reference sampler.
+    val sigma = flowSigma(step, STEPS)
+    val nextSigma = if (step + 1 == STEPS) 0f else flowSigma(step + 1, STEPS)
+    val time = (1000f * sigma).toLong().coerceAtLeast(1)
     floatTensor(env, videoLatent, 1, CHANNELS, FRAMES, height, width).use { latent ->
      longTensor(env, longArrayOf(time), 1).use { timestep ->
       val embeddings = textData?.let { floatTensor(env, it, 1, textLength, 896) }
@@ -138,9 +141,9 @@ internal object MobileI2VVideoEngine {
         "MobileI2V output shape mismatch: " + shape.contentToString()
        }
        val prediction = readFloats(denoised)
-       val dt = 1f / STEPS
+       val dt = nextSigma - sigma
        for (idx in videoLatent.indices) {
-        val value = videoLatent[idx] - prediction[idx] * dt
+        val value = videoLatent[idx] + prediction[idx] * dt
         require(value.isFinite()) { "MobileI2V denoiser returned invalid values" }
         videoLatent[idx] = value.coerceIn(-20f, 20f)
        }
@@ -218,6 +221,12 @@ internal object MobileI2VVideoEngine {
     return NightmareVideoClient.RenderedVideo(mp4, seconds, seconds.toString(), 480, 480, false)
    } finally { out.delete() }
   } finally { frames.forEach { if (!it.isRecycled) it.recycle() } }
+ }
+
+ private fun flowSigma(step: Int, steps: Int): Float {
+  val raw = 1f - step.toFloat() / steps
+  val shift = 3f
+  return shift * raw / (1f + (shift - 1f) * raw)
  }
 
  private fun rgbByte(value: Float): Int {
