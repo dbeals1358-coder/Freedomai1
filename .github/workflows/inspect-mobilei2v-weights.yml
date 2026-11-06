@@ -1,0 +1,40 @@
+name: Inspect official MobileI2V checkpoint key compatibility
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/inspect-mobilei2v-weights.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect-weights:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install checkpoint readers
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install huggingface_hub
+      - name: Inspect checkpoint weight names
+        run: |
+          python - <<'PY'
+          from collections import Counter
+          from huggingface_hub import hf_hub_download
+          import torch
+          f = hf_hub_download(repo_id='hustvl/MobileI2V', filename='hybrid_371.pth')
+          data = torch.load(f, map_location='cpu', weights_only=False)
+          print('TOP LEVEL:', list(data)[:20] if isinstance(data, dict) else type(data))
+          state = data.get('state_dict', data)
+          keys = list(state)
+          print('TOTAL:', len(keys))
+          print('FIRST 100:', keys[:100])
+          print('PREFIX COUNTS:', Counter('.'.join(k.split('.')[:2]) for k in keys).most_common(50))
+          print('CROSS-ATTENTION KEYS:', [k for k in keys if 'cross' in k.lower()][:100])
+          print('ANY BLOCK KEYS:', [k for k in keys if 'blocks.' in k][:80])
+          PY
