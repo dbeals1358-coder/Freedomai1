@@ -43,9 +43,9 @@ internal object MobileI2VVideoEngine {
   require(prompt.isNotBlank()) { "Describe your intended motion" }
 
   val env = OrtEnvironment.getEnvironment()
-  val encoded: FloatArray
-  var height: Int
-  var width: Int
+  lateinit var encoded: FloatArray
+  var height = 0
+  var width = 0
   progress(3)
   open(env, File(modelsDir, "vae_encoder.onnx")).use { session ->
    require("pixel_values" in session.inputNames) { "Incompatible VAE encoder" }
