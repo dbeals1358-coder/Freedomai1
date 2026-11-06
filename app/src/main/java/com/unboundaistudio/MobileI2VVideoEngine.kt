@@ -116,6 +116,14 @@ internal object MobileI2VVideoEngine {
   }
 
   open(env, File(modelsDir, "mobilei2v_unet.onnx")).use { session ->
+   val latentShape = (session.inputInfo["latent"]?.info as? ai.onnxruntime.TensorInfo)?.shape
+   require(latentShape != null && latentShape.size == 5 &&
+           latentShape[1] == CHANNELS.toLong() && latentShape[2] == FRAMES.toLong() &&
+           (latentShape[3] <= 0 || latentShape[3] == height.toLong()) &&
+           (latentShape[4] <= 0 || latentShape[4] == width.toLong())) {
+    "MobileI2V UNet spatial grid does not match the photo latents. " +
+    "Install the latest compatible MobileI2V model from Video settings."
+   }
    val inputs = session.inputNames
    require("latent" in inputs && "timestep" in inputs) {
     "Unsupported MobileI2V denoiser inputs: " + inputs.joinToString()
