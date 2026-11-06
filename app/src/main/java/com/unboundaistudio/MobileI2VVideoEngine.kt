@@ -115,33 +115,11 @@ internal object MobileI2VVideoEngine {
    videoLatent[offset] = if (t == 0) encoded[ch * spatial + px] else rng.nextGaussian().toFloat()
   }
 
-  // Determine the actual ONNX contract before allocating the Qwen encoder.
-  // Corrected exports retain text_emb, older exports have no prompt input.
-  val hasText = open(env, File(modelsDir, "mobilei2v_unet.onnx")).use { "text_emb" in it.inputNames }
-  var textData: FloatArray? = null
-  var textLength = 0
-  if (hasText) {
-   require(prompt.isNotBlank()) { "This text-conditioned model requires a prompt" }
-   val qwenFile = File(modelsDir, "qwen2_encoder.onnx")
-   require(qwenFile.isFile) { "Import qwen2_encoder.onnx to enable prompt-conditioned MobileI2V" }
-   val (ids, mask) = Qwen2MotionTokenizer.fromAssets(context).encode(prompt)
-   textLength = ids.size
-   open(env, qwenFile).use { qwen ->
-    longTensor(env, ids, 1, ids.size).use { inputIds ->
-     longTensor(env, mask, 1, mask.size).use { attentionMask ->
-      qwen.run(mapOf("input_ids" to inputIds, "attention_mask" to attentionMask)).use { result ->
-       val hidden = result[0] as OnnxTensor
-       val shape = hidden.info.shape
-       require(shape.contentEquals(longArrayOf(1, textLength.toLong(), 896))) {
-        "Qwen2 encoder output incompatible with MobileI2V: " + shape.contentToString()
-       }
-       textData = readFloats(hidden)
-      }
-     }
-    }
-   }
-   progress(19)
-  }
+  // Official MobileI2V v2 is image-conditioned, not text-conditioned.
+  // Do not open the huge UNet merely to inspect its input names: doing so
+  // allocates native weights and can kill Android before the 22% checkpoint.
+  // The actual input contract is checked after the memory preflight below.
+  progress(19)
 
   // The denoiser is the peak-memory stage (the reported 22% crash).
   // Stop before opening the native ONNX session if Android cannot safely host it.
@@ -167,7 +145,7 @@ internal object MobileI2VVideoEngine {
    require("latent" in inputs && "timestep" in inputs) {
     "Unsupported MobileI2V denoiser inputs: " + inputs.joinToString()
    }
-   require(inputs.all { it == "latent" || it == "timestep" || it == "text_emb" }) {
+   require(inputs.all { it == "latent" || it == "timestep" }) {
     "Unsupported MobileI2V ONNX graph inputs: " + inputs.joinToString()
    }
    for (step in 0 until STEPS) {
@@ -200,7 +178,6 @@ internal object MobileI2VVideoEngine {
         videoLatent[ch * FRAMES * spatial + px] = encoded[ch * spatial + px]
        }
        }
-      } finally { embeddings?.close() }
      }
     }
     manager.getMemoryInfo(memory)
