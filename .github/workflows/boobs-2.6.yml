@@ -1,6 +1,12 @@
 name: Boobs 2.6
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'app/src/main/java/com/unboundaistudio/MobileI2VVideoEngine.kt'
+      - 'app/src/main/java/com/unboundaistudio/MobileI2VModelUpdater.kt'
+      - '.github/workflows/boobs-2.6.yml'
 permissions:
   contents: read
 jobs:
