@@ -441,8 +441,9 @@ class MainActivity : ComponentActivity() {
               com.scsonic.qwenimage21.QwenImage21.Size.Tier.valueOf(qwenTier)
              ) { percentage -> runOnUiThread { generationPercent = percentage } }
             } else if (maskUnavailable) {
-             runOnUiThread { status = "Automatic clothing masking is unavailable in Nightmare. Checking whether its installed instruction editor can handle this edit…" }
-             NightmareClient.generate(editPrompt, tokenForRun, input, requestedStrength, requestedHighQuality, resolution, "flux_edit")
+             // Do not launch a second expensive Nightmare run after a missing-mask failure.
+             // That fallback cannot guarantee a localized clothing edit and can appear frozen at 80%.
+             error("Nightmare cannot automatically mask the requested clothing. Original photo preserved. Install/enable Clothes Auto Mask in Nightmare, use Paint area to change, or install the Qwen editor in FreedomAI.")
             } else throw nightmareError
            }
            check(!isNearlyWhiteImage(generated)) { "The AI returned a blank white image. Try a different flow or restart the model." }
