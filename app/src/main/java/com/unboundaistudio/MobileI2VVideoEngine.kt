@@ -197,10 +197,13 @@ internal object MobileI2VVideoEngine {
        }
        val buffer = decoded.floatBuffer
        val area = outH * outW
-       // The decoder may temporally upscale each latent frame: take a
-       // uniformly spaced selection to retain 17 useful output frames.
-       for (t in 0 until window) {
-        val sourceFrame = ((t + 0.5f) * tCount / window).toInt().coerceIn(0, tCount - 1)
+       // Turbo-VAED produces up to 8 actual frames per latent frame.
+       // Keep all decoded frames (up to 136) instead of throwing away
+       // seven of every eight: 5-10s clips now retain smooth real motion.
+       require(frames.size + tCount <= 192) { "Too many decoded video frames" }
+       for (t in 0 until tCount) {
+        if (Thread.currentThread().isInterrupted) throw InterruptedException("Video rendering cancelled")
+        val sourceFrame = t
         val pixels = IntArray(area)
         for (p in 0 until area) {
          val r = rgbByte(buffer.get(sourceFrame * area + p))
@@ -218,7 +221,7 @@ internal object MobileI2VVideoEngine {
      progress(70 + (decodedCount * 17 / FRAMES))
     }
    }
-   require(frames.size == FRAMES) { "MobileI2V did not produce enough frames" }
+   require(frames.size >= FRAMES) { "MobileI2V did not produce enough frames" }
    val out = File.createTempFile("mobilei2v_", ".mp4", cacheDir)
    try {
     OfflineVideoEngine.renderFrames(frames, seconds, out) { p -> progress(88 + p * 12 / 100) }
