@@ -60,10 +60,11 @@ internal object MobileI2VVideoEngine {
   // Check the peak-memory denoiser BEFORE opening any native ONNX sessions.
   // Opening the UNet just to inspect inputs can itself trigger Android's low-memory killer.
   val denoiserBytes = File(modelsDir, "mobilei2v_unet.onnx").length()
-  val reserveBytes = 1024L * 1024 * 1024
-  // ONNX can temporarily hold weights, optimized graph copies, and operator scratch.
-  // Use a conservative limit until device profiling establishes a safe bound.
-  val estimatedNeed = denoiserBytes * 5 + reserveBytes
+  val reserveBytes = 768L * 1024 * 1024
+  // Sequential CPU execution with arena and memory-pattern reuse disabled avoids
+  // the large extra graph copies seen with full graph optimization. This is a
+  // conservative admission estimate, not a measured peak-memory guarantee.
+  val estimatedNeed = denoiserBytes * 3 + reserveBytes
   val requiredBytes = estimatedNeed + memory.threshold
   Log.i("MobileI2V", "Preflight before native ONNX: available=" + memory.availMem +
    " requiredEstimate=" + requiredBytes)
@@ -306,10 +307,14 @@ internal object MobileI2VVideoEngine {
    // avoids simultaneous operator scratch buffers during video inference.
    options.setCPUArenaAllocator(false)
    options.setMemoryPatternOptimization(false)
+   // Avoid retaining extra packed copies of constant model weights.
+   options.addSessionConfigEntry("session.disable_prepacking", "1")
    options.setIntraOpNumThreads(1)
    options.setInterOpNumThreads(1)
    options.setExecutionMode(OrtSession.SessionOptions.ExecutionMode.SEQUENTIAL)
-   options.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
+   // Extended/all graph optimization can duplicate large constant tensors during
+   // session initialization. Prefer basic fusions for mobile memory stability.
+   options.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.BASIC_OPT)
    return env.createSession(file.absolutePath, options)
   } finally { options.close() }
  }
