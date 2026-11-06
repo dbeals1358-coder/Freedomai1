@@ -78,6 +78,7 @@ class MainActivity : ComponentActivity() {
    var videoUrl by remember { mutableStateOf(prefs.getString("video_url", "") ?: "") }
    var motionPrompt by remember { mutableStateOf("") }
    var nightmareVideoFlow by remember { mutableStateOf(prefs.getString("nightmare_video_flow", "auto") ?: "auto") }
+   var useMobileI2V by remember { mutableStateOf(prefs.getBoolean("video_mobilei2v_experimental", false)) }
     var runwayKey by remember { mutableStateOf(prefs.getString("runway_key", "") ?: "") }
    var duration by remember { mutableIntStateOf(1) }
    var customSeconds by remember { mutableStateOf("") }
@@ -746,7 +747,16 @@ class MainActivity : ComponentActivity() {
        if (busy) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
        Text("Choose a photo and describe movement.")
 
-       Text("AI video is rendered by Nightmare's installed model. FreedomAI now sends video resolution and duration directly to the Nightmare video node; if the NPU runs out of memory, it retries at a smaller resolution while keeping the requested duration. Standalone MobileI2V is not integrated yet.")
+       Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text("Use offline MobileI2V (experimental)", modifier = Modifier.weight(1f))
+        Switch(checked = useMobileI2V, enabled = !busy, onCheckedChange = {
+         useMobileI2V = it
+         prefs.edit().putBoolean("video_mobilei2v_experimental", it).apply()
+        })
+       }
+       Text(if (useMobileI2V)
+        "On-device MobileI2V uses the imported ONNX encoder, denoiser and video decoder. WARNING: the existing model export does not use text prompts; motion and image quality are experimental and may fail. No Nightmare connection is used."
+       else "AI video is rendered by Nightmare's installed image-to-video model. Turn on the offline MobileI2V switch to test on-device inference.")
         OutlinedButton(onClick = {
          scope.launch {
           status = "Checking MobileI2V model integrity…"
@@ -773,11 +783,18 @@ class MainActivity : ComponentActivity() {
         else {
          busy = true
          generationPercent = 0
-         status = "Generating AI motion in Nightmare…"
+         status = if (useMobileI2V) "Running offline MobileI2V models…" else "Generating AI motion in Nightmare…"
          generationJob = scope.launch {
           try {
            val video = withContext(Dispatchers.IO) {
-            NightmareVideoClient.generate(nightmareToken, if (nightmareVideoFlow == "current") "auto" else nightmareVideoFlow, image, motionPrompt, duration)
+            if (useMobileI2V) {
+             MobileI2VVideoEngine.generate(java.io.File(filesDir, "models/video-v1"), cacheDir, image, motionPrompt, duration) { p ->
+              if (generationJob?.isActive == false) throw kotlinx.coroutines.CancellationException("MobileI2V cancelled")
+              runOnUiThread { generationPercent = p }
+             }
+            } else {
+             NightmareVideoClient.generate(nightmareToken, if (nightmareVideoFlow == "current") "auto" else nightmareVideoFlow, image, motionPrompt, duration)
+            }
            }
            kotlinx.coroutines.currentCoroutineContext().ensureActive()
            val values = ContentValues().apply {
@@ -792,7 +809,7 @@ class MainActivity : ComponentActivity() {
             contentResolver.update(uri, ContentValues().apply { put(MediaStore.Video.Media.IS_PENDING, 0) }, null, null)
             lastVideo = uri
             generationPercent = 100
-            status = if (video.reducedForMemory) "AI video saved to Movies/FreedomAI (reduced to ${video.width}×${video.height}, ${video.durationLabel}s to fit NPU memory)." else "AI video saved to Movies/FreedomAI (${video.width}×${video.height}, ${video.durationLabel}s)."
+            status = if (useMobileI2V) "Experimental MobileI2V video saved (${video.width}×${video.height}, ${video.durationLabel}s). Review frame quality and prompt adherence." else if (video.reducedForMemory) "AI video saved to Movies/FreedomAI (reduced to ${video.width}×${video.height}, ${video.durationLabel}s to fit NPU memory)." else "AI video saved to Movies/FreedomAI (${video.width}×${video.height}, ${video.durationLabel}s)."
            } catch (e: Exception) { contentResolver.delete(uri, null, null); throw e }
           } catch (e: kotlinx.coroutines.CancellationException) { throw e }
           catch (e: Exception) { status = "AI video failed: ${e.message}" }
