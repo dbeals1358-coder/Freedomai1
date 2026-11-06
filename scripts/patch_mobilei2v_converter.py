@@ -92,9 +92,25 @@ def patch(model_path: Path, converter_path: Path) -> None:
         raise RuntimeError("Unexpected checkpoint loader; review before updating")
     converter_path.write_text(converter.replace(old, new), encoding="utf-8")
 
+    # Turbo-VAED's export contains shape-traced Gather indices and cannot
+    # decode 16x16 latents with the vendor's dummy 23x40 input. Export the
+    # LTX decoder at a fixed 5-frame, 16x16 contract matching mobile video.
+    decoder_path = converter_path.parent / "convert_turbo_vaed.py"
+    decoder = decoder_path.read_text(encoding="utf-8")
+    for original, fixed in (
+        ('"dummy_h": 23,', '"dummy_h": 16,'),
+        ('"dummy_w": 40,', '"dummy_w": 16,'),
+        ('"latent": {0: "batch", 2: "num_frames", 3: "height", 4: "width"},', '"latent": {0: "batch"},'),
+        ('"frames": {0: "batch", 2: "num_frames", 3: "height", 4: "width"},', '"frames": {0: "batch"},'),
+    ):
+        if original not in decoder:
+            raise RuntimeError("Turbo-VAED exporter has changed: " + original)
+        decoder = decoder.replace(original, fixed, 1)
+    decoder_path.write_text(decoder, encoding="utf-8")
+
 if __name__ == "__main__":
     if len(sys.argv) != 2:
         raise SystemExit("Usage: python scripts/patch_mobilei2v_converter.py mobilei2v-converter/scripts/convert")
     root = Path(sys.argv[1])
     patch(root / "models" / "mobiledit.py", root / "convert_mobilei2v_unet.py")
-    print("Preserved checkpoint weights and traced 17x16x16 RoPE grids for 512px Android input")
+    print("Traced UNet 17x16x16 and Turbo-VAED 5x16x16 for 512px Android input")
