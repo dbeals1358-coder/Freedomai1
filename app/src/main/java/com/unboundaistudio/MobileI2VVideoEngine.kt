@@ -47,6 +47,7 @@ internal object MobileI2VVideoEngine {
  fun generate(context: Context, modelsDir: File, cacheDir: File, photo: Bitmap, prompt: String,
               seconds: Int, progress: (Int) -> Unit): NightmareVideoClient.RenderedVideo {
   require(seconds in 1..10) { "Choose 1–10 seconds" }
+  val targetSeconds = seconds.coerceAtLeast(3) // Never silently deliver a one-second MobileI2V clip.
   require(photo.width > 0 && photo.height > 0) { "Choose a photo first" }
   val names = listOf("vae_encoder.onnx", "mobilei2v_unet.onnx", "turbo_vaed.onnx")
   for (name in names) {
@@ -274,15 +275,37 @@ internal object MobileI2VVideoEngine {
     }
    }
    require(frames.size >= FRAMES) { "MobileI2V did not produce enough frames" }
+   // Reject static or near-static decoder output rather than labeling it AI motion.
+   val samples = listOf(0, frames.size / 4, frames.size / 2, frames.size * 3 / 4, frames.lastIndex)
+   val reference = frames[samples.first()]
+   val strideX = (reference.width / 16).coerceAtLeast(1)
+   val strideY = (reference.height / 16).coerceAtLeast(1)
+   var maxDifference = 0.0
+   for (index in samples.drop(1)) {
+    val other = frames[index]
+    var sum = 0L
+    var count = 0
+    for (y in 0 until min(reference.height, other.height) step strideY)
+     for (x in 0 until min(reference.width, other.width) step strideX) {
+      val a = reference.getPixel(x, y)
+      val b = other.getPixel(x, y)
+      sum += kotlin.math.abs(Color.red(a) - Color.red(b)) +
+       kotlin.math.abs(Color.green(a) - Color.green(b)) +
+       kotlin.math.abs(Color.blue(a) - Color.blue(b))
+      count++
+     }
+    maxDifference = maxOf(maxDifference, sum.toDouble() / (count * 3))
+   }
+   require(maxDifference >= 2.0) { "MobileI2V decoder produced almost no visible motion; refusing to save a static clip." }
    val out = File.createTempFile("mobilei2v_", ".mp4", cacheDir)
    try {
-    OfflineVideoEngine.renderFrames(frames, seconds, out) { p -> progress(88 + p * 12 / 100) }
+    OfflineVideoEngine.renderFrames(frames, targetSeconds, out) { p -> progress(88 + p * 12 / 100) }
     val mp4 = out.readBytes()
     require(mp4.size > 12 && String(mp4, 4, 4, Charsets.US_ASCII) == "ftyp") {
      "MobileI2V did not create a valid MP4"
     }
     progress(100)
-    return NightmareVideoClient.RenderedVideo(mp4, seconds, seconds.toString(), 512, 512, false)
+    return NightmareVideoClient.RenderedVideo(mp4, targetSeconds, targetSeconds.toString(), 512, 512, false)
    } finally { out.delete() }
   } finally { frames.forEach { if (!it.isRecycled) it.recycle() } }
  }
