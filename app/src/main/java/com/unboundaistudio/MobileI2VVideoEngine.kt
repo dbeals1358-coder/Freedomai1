@@ -156,11 +156,7 @@ internal object MobileI2VVideoEngine {
     val time = (1000f * sigma).toLong().coerceAtLeast(1)
     floatTensor(env, videoLatent, 1, CHANNELS, FRAMES, height, width).use { latent ->
      longTensor(env, longArrayOf(time), 1).use { timestep ->
-      val embeddings = textData?.let { floatTensor(env, it, 1, textLength, 896) }
-      try {
-       val feeds = linkedMapOf<String, OnnxTensor>("latent" to latent, "timestep" to timestep)
-       if (embeddings != null) feeds["text_emb"] = embeddings
-       session.run(feeds).use { result ->
+      session.run(mapOf("latent" to latent, "timestep" to timestep)).use { result ->
        val denoised = result[0] as OnnxTensor
        val shape = denoised.info.shape
        require(shape.contentEquals(longArrayOf(1, CHANNELS.toLong(), FRAMES.toLong(), height.toLong(), width.toLong()))) {
