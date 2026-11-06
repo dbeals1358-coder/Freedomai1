@@ -165,7 +165,17 @@ internal object NightmareClient {
             if (code !in 200..299 && actualFlow == "inpaint" &&
                 (body.contains("parser", true) || body.contains("picked by name", true) ||
                  body.contains("auto mask", true))) {
-                error("Nightmare automatic clothing mask is unavailable. Original photo preserved. Install or enable Clothes Auto Mask in Nightmare; full-frame AI regeneration is disabled for clothing edits to prevent changing the face and background.")
+                // A missing clothes parser should not strand users who already have a
+                // compatible instruction-following editor installed in Nightmare.
+                // Never silently fall back to SDXL img2img: it can replace the person.
+                if (editFlow == "auto") {
+                    val fallback = runCatching {
+                        generate(prompt, token, input, strength, highQuality, resolution, "flux_edit", speed)
+                    }
+                    fallback.getOrNull()?.let { return it }
+                    error("Nightmare clothing auto-mask is unavailable, and no working instruction-edit fallback completed. Original photo preserved. Install Clothes Auto Mask in Nightmare or a supported Qwen/FLUX image-edit model. Fallback: ${fallback.exceptionOrNull()?.message?.take(180)}")
+                }
+                error("Nightmare clothing auto-mask is unavailable. Original photo preserved. Install or enable Clothes Auto Mask in Nightmare.")
             }
             check(code in 200..299) { "Nightmare HTTP $code (flow: $actualFlow): ${body.take(350)}" }
             check(body.isNotBlank()) { "Nightmare returned an empty response" }
