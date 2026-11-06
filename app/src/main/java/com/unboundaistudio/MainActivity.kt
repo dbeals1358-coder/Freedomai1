@@ -788,7 +788,7 @@ class MainActivity : ComponentActivity() {
           try {
            val video = withContext(Dispatchers.IO) {
             if (useMobileI2V) {
-             MobileI2VVideoEngine.generate(java.io.File(filesDir, "models/video-v1"), cacheDir, image, motionPrompt, duration) { p ->
+             MobileI2VVideoEngine.generate(this@MainActivity, java.io.File(filesDir, "models/video-v1"), cacheDir, image, motionPrompt, duration) { p ->
               if (generationJob?.isActive == false) throw kotlinx.coroutines.CancellationException("MobileI2V cancelled")
               runOnUiThread { generationPercent = p }
              }
