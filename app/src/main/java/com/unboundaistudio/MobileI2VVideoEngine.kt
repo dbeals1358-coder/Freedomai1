@@ -230,15 +230,21 @@ internal object MobileI2VVideoEngine {
        for (t in 0 until validFrameCount) {
         if (Thread.currentThread().isInterrupted) throw InterruptedException("Video rendering cancelled")
         val sourceFrame = t
-        val pixels = IntArray(area)
-        for (p in 0 until area) {
-         val r = rgbByte(buffer.get(sourceFrame * area + p))
-         val g = rgbByte(buffer.get((tCount + sourceFrame) * area + p))
-         val b = rgbByte(buffer.get((2 * tCount + sourceFrame) * area + p))
+        // Keep decoded frames at half resolution to reduce retained bitmap RAM by 75%.
+        val previewW = (outW / 2).coerceAtLeast(1)
+        val previewH = (outH / 2).coerceAtLeast(1)
+        val pixels = IntArray(previewW * previewH)
+        for (p in pixels.indices) {
+         val x = p % previewW * 2
+         val y = p / previewW * 2
+         val src = y * outW + x
+         val r = rgbByte(buffer.get(sourceFrame * area + src))
+         val g = rgbByte(buffer.get((tCount + sourceFrame) * area + src))
+         val b = rgbByte(buffer.get((2 * tCount + sourceFrame) * area + src))
          pixels[p] = Color.rgb(r, g, b)
         }
-        val bitmap = Bitmap.createBitmap(outW, outH, Bitmap.Config.ARGB_8888)
-        bitmap.setPixels(pixels, 0, outW, 0, 0, outW, outH)
+        val bitmap = Bitmap.createBitmap(previewW, previewH, Bitmap.Config.RGB_565)
+        bitmap.setPixels(pixels, 0, previewW, 0, 0, previewW, previewH)
         frames.add(bitmap)
        }
       }
