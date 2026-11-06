@@ -177,12 +177,16 @@ internal object MobileI2VVideoEngine {
     var decodedCount = 0
     for (offset in 0 until FRAMES step 5) {
      val window = min(5, FRAMES - offset)
-     val chunk = FloatArray(CHANNELS * window * spatial)
-     for (ch in 0 until CHANNELS) for (t in 0 until window) for (px in 0 until spatial) {
-      chunk[(ch * window + t) * spatial + px] =
-       videoLatent[(ch * FRAMES + offset + t) * spatial + px]
+     // Turbo-VAED ONNX was traced with exactly five 16x16 latent frames.
+     // Repeat the last real latent in the final incomplete chunk.
+     val decoderFrames = 5
+     val chunk = FloatArray(CHANNELS * decoderFrames * spatial)
+     for (ch in 0 until CHANNELS) for (t in 0 until decoderFrames) for (px in 0 until spatial) {
+      val sourceTime = min(FRAMES - 1, offset + t)
+      chunk[(ch * decoderFrames + t) * spatial + px] =
+       videoLatent[(ch * FRAMES + sourceTime) * spatial + px]
      }
-     floatTensor(env, chunk, 1, CHANNELS, window, height, width).use { input ->
+     floatTensor(env, chunk, 1, CHANNELS, decoderFrames, height, width).use { input ->
       session.run(mapOf("latent" to input)).use { result ->
        val decoded = result[0] as OnnxTensor
        val shape = decoded.info.shape
@@ -200,8 +204,10 @@ internal object MobileI2VVideoEngine {
        // Turbo-VAED produces up to 8 actual frames per latent frame.
        // Keep all decoded frames (up to 136) instead of throwing away
        // seven of every eight: 5-10s clips now retain smooth real motion.
-       require(frames.size + tCount <= 192) { "Too many decoded video frames" }
-       for (t in 0 until tCount) {
+       val validFrameCount = if (window == decoderFrames) tCount else
+        (tCount * window + decoderFrames - 1) / decoderFrames
+       require(frames.size + validFrameCount <= 192) { "Too many decoded video frames" }
+       for (t in 0 until validFrameCount) {
         if (Thread.currentThread().isInterrupted) throw InterruptedException("Video rendering cancelled")
         val sourceFrame = t
         val pixels = IntArray(area)

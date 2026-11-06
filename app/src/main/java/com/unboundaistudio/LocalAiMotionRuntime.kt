@@ -30,12 +30,13 @@ class LocalAiMotionRuntime(private val modelsDir: File) : AutoCloseable {
   for (name in required) {
    val file = File(modelsDir, name)
    val (originalSize, originalHash) = expected.getValue(name)
-   val correctedManifest = File(modelsDir, "mobilei2v_unet_manifest.json")
-   val corrected = if (name == "mobilei2v_unet.onnx" && correctedManifest.isFile) {
+   val correctedManifest = File(modelsDir, name.removeSuffix(".onnx") + "_manifest.json")
+   val corrected = if (name in listOf("mobilei2v_unet.onnx", "turbo_vaed.onnx") && correctedManifest.isFile) {
     runCatching {
      val manifest = JSONObject(correctedManifest.readText())
      val names = manifest.getJSONArray("inputs").toString()
-     require(names.contains("latent") && names.contains("timestep") && !names.contains("text_emb"))
+     require(names.contains("latent"))
+     if (name == "mobilei2v_unet.onnx") require(names.contains("timestep") && !names.contains("text_emb"))
      Pair(manifest.getLong("bytes"), manifest.getString("sha256"))
     }.getOrNull()
    } else null
