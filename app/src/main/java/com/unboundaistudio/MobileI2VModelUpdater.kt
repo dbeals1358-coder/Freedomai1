@@ -55,7 +55,7 @@ internal object MobileI2VModelUpdater {
    !(file.isFile && file.length() == e.size && sha256(file) == e.hash)
   }
   if (changed.isEmpty()) {
-   entries.forEach { e -> manifestFile(e).writeText(if (manifest.has(e.name)) manifest.getJSONObject(e.name).toString() else JSONObject().put("bytes", e.size).put("sha256", e.hash).toString()) }
+   entries.forEach { e -> manifestFile(e).writeText(JSONObject().put("bytes", e.size).put("sha256", e.hash).put("inputs", if (e.name == "vae_encoder.onnx") org.json.JSONArray().put("pixel_values") else if (e.name == "mobilei2v_unet.onnx") org.json.JSONArray().put("latent").put("timestep") else org.json.JSONArray().put("latent")).toString()) }
    progress(100)
    return "All three compatible MobileI2V models are already installed."
   }
@@ -119,7 +119,7 @@ internal object MobileI2VModelUpdater {
     }
     installed.add(e)
    }
-   entries.forEach { e -> manifestFile(e).writeText(manifest.getJSONObject(e.name).toString()) }
+   entries.forEach { e -> manifestFile(e).writeText(JSONObject().put("bytes", e.size).put("sha256", e.hash).put("inputs", if (e.name == "vae_encoder.onnx") org.json.JSONArray().put("pixel_values") else if (e.name == "mobilei2v_unet.onnx") org.json.JSONArray().put("latent").put("timestep") else org.json.JSONArray().put("latent")).toString()) }
    installed.forEach { e -> File(modelsDir, e.name + ".backup").delete() }
    progress(100)
    return "MobileI2V source VAE, denoiser and decoder installed and verified."
