@@ -755,8 +755,33 @@ class MainActivity : ComponentActivity() {
         })
        }
        Text(if (useMobileI2V)
-        "On-device MobileI2V uses the imported ONNX encoder, denoiser and video decoder. WARNING: the existing model export does not use text prompts; motion and image quality are experimental and may fail. No Nightmare connection is used."
+        "On-device MobileI2V uses your imported ONNX models without Nightmare. The original v1 UNet ignores prompts; install the corrected UNet once published. Video generation is experimental until Android output has been verified."
        else "AI video is rendered by Nightmare's installed image-to-video model. Turn on the offline MobileI2V switch to test on-device inference.")
+       if (useMobileI2V) {
+        OutlinedButton(enabled = !busy, onClick = {
+         busy = true
+         generationPercent = 0
+         status = "Checking for corrected MobileI2V model…"
+         generationJob = scope.launch {
+          try {
+           status = withContext(Dispatchers.IO) {
+            MobileI2VModelUpdater.install(java.io.File(filesDir, "models/video-v1")) { p ->
+             if (generationJob?.isActive == false) throw kotlinx.coroutines.CancellationException("Model download cancelled")
+             runOnUiThread { generationPercent = p }
+            }
+           }
+          } catch (e: kotlinx.coroutines.CancellationException) {
+           status = "MobileI2V model download cancelled."
+          } catch (e: Exception) {
+           status = "MobileI2V update: " + (e.message ?: "Could not download model")
+          } finally {
+           busy = false
+           generationJob = null
+          }
+         }
+        }, modifier = Modifier.fillMaxWidth()) { Text("Install corrected MobileI2V model (large download)") }
+        if (busy) Text("MobileI2V progress: " + generationPercent + "%")
+       }
         OutlinedButton(onClick = {
          scope.launch {
           status = "Checking MobileI2V model integrity…"
