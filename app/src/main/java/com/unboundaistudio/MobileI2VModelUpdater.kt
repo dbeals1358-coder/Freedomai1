@@ -32,7 +32,10 @@ internal object MobileI2VModelUpdater {
   }
   val target = File(modelsDir, MODEL)
   if (target.isFile && target.length() == expectedBytes &&
-      sha256(target) == expectedHash) return "Corrected MobileI2V model is already installed."
+      sha256(target) == expectedHash) {
+   File(modelsDir, "mobilei2v_unet_manifest.json").writeText(manifest.toString())
+   return "Corrected MobileI2V model is already installed."
+  }
 
   val free = StatFs(modelsDir.absolutePath).availableBytes
   require(free > expectedBytes + 128L * 1024 * 1024) {
@@ -81,6 +84,7 @@ internal object MobileI2VModelUpdater {
     error("Could not finish installing the corrected MobileI2V model")
    }
    backup.delete()
+   File(modelsDir, "mobilei2v_unet_manifest.json").writeText(manifest.toString())
    progress(100)
    return "Corrected MobileI2V text-conditioned model installed. Your other three models were preserved."
   } finally { temp.delete() }
