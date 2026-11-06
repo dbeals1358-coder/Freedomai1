@@ -841,7 +841,14 @@ class MainActivity : ComponentActivity() {
             status = if (useMobileI2V) "Experimental MobileI2V video saved (${video.width}×${video.height}, ${video.durationLabel}s). Motion prompts are unsupported in the official checkpoint; check frame quality." else if (video.reducedForMemory) "AI video saved to Movies/FreedomAI (reduced to ${video.width}×${video.height}, ${video.durationLabel}s to fit NPU memory)." else "AI video saved to Movies/FreedomAI (${video.width}×${video.height}, ${video.durationLabel}s)."
            } catch (e: Exception) { contentResolver.delete(uri, null, null); throw e }
           } catch (e: kotlinx.coroutines.CancellationException) { throw e }
-          catch (e: Exception) { status = "AI video failed: ${e.message}" }
+          catch (e: OutOfMemoryError) {
+           status = "MobileI2V stopped: Android ran out of memory. Original photo is preserved. Use a smaller model or remote video rendering."
+           android.util.Log.e("MobileI2V", "Video memory exhaustion", e)
+          }
+          catch (e: Exception) {
+           android.util.Log.e("MobileI2V", "Video generation failed", e)
+           status = "AI video failed: ${e.message}"
+          }
           finally { if (generationJob == kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job]) { busy = false; generationJob = null } }
          }
         }
