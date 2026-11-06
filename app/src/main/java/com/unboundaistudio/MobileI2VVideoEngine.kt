@@ -1,5 +1,6 @@
 package com.unboundaistudio
 
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Color
 import ai.onnxruntime.OnnxTensor
@@ -29,7 +30,7 @@ internal object MobileI2VVideoEngine {
  private const val CHANNELS = 128
  private const val STEPS = 8
 
- fun generate(modelsDir: File, cacheDir: File, photo: Bitmap, prompt: String,
+ fun generate(context: Context, modelsDir: File, cacheDir: File, photo: Bitmap, prompt: String,
               seconds: Int, progress: (Int) -> Unit): NightmareVideoClient.RenderedVideo {
   require(seconds in 1..10) { "Choose 1–10 seconds" }
   require(photo.width > 0 && photo.height > 0) { "Choose a photo first" }
@@ -86,23 +87,51 @@ internal object MobileI2VVideoEngine {
    videoLatent[offset] = if (t == 0) encoded[ch * spatial + px] else (rng.nextFloat() - 0.5f) * 2f
   }
 
+  // Determine the actual ONNX contract before allocating the Qwen encoder.
+  // Corrected exports retain text_emb, older exports have no prompt input.
+  val hasText = open(env, File(modelsDir, "mobilei2v_unet.onnx")).use { "text_emb" in it.inputNames }
+  var textData: FloatArray? = null
+  var textLength = 0
+  if (hasText) {
+   val qwenFile = File(modelsDir, "qwen2_encoder.onnx")
+   require(qwenFile.isFile) { "Import qwen2_encoder.onnx to enable prompt-conditioned MobileI2V" }
+   val (ids, mask) = Qwen2MotionTokenizer.fromAssets(context).encode(prompt)
+   textLength = ids.size
+   open(env, qwenFile).use { qwen ->
+    longTensor(env, ids, 1, ids.size).use { inputIds ->
+     longTensor(env, mask, 1, mask.size).use { attentionMask ->
+      qwen.run(mapOf("input_ids" to inputIds, "attention_mask" to attentionMask)).use { result ->
+       val hidden = result[0] as OnnxTensor
+       val shape = hidden.info.shape
+       require(shape.contentEquals(longArrayOf(1, textLength.toLong(), 896))) {
+        "Qwen2 encoder output incompatible with MobileI2V: " + shape.contentToString()
+       }
+       textData = readFloats(hidden)
+      }
+     }
+    }
+   }
+   progress(19)
+  }
+
   open(env, File(modelsDir, "mobilei2v_unet.onnx")).use { session ->
    val inputs = session.inputNames
    require("latent" in inputs && "timestep" in inputs) {
     "Unsupported MobileI2V denoiser inputs: " + inputs.joinToString()
    }
-   // Older exported files have only latent and timestep. If a future model
-   // exposes text embeddings, tokenizer support must be added rather than
-   // pretending that a zero embedding represents the user's prompt.
-   require("text_emb" !in inputs && "encoder_hidden_states" !in inputs && "prompt_embeds" !in inputs) {
-    "This newer MobileI2V model needs Qwen2 tokenization before text-conditioned video can run."
+   require(inputs.all { it == "latent" || it == "timestep" || it == "text_emb" }) {
+    "Unsupported MobileI2V ONNX graph inputs: " + inputs.joinToString()
    }
    for (step in 0 until STEPS) {
     if (Thread.currentThread().isInterrupted) throw InterruptedException("MobileI2V cancelled")
     val time = (1000L - step * (1000L / STEPS)).coerceAtLeast(1)
     floatTensor(env, videoLatent, 1, CHANNELS, FRAMES, height, width).use { latent ->
      longTensor(env, longArrayOf(time), 1).use { timestep ->
-      session.run(mapOf("latent" to latent, "timestep" to timestep)).use { result ->
+      val embeddings = textData?.let { floatTensor(env, it, 1, textLength, 896) }
+      try {
+       val feeds = linkedMapOf<String, OnnxTensor>("latent" to latent, "timestep" to timestep)
+       if (embeddings != null) feeds["text_emb"] = embeddings
+       session.run(feeds).use { result ->
        val denoised = result[0] as OnnxTensor
        val shape = denoised.info.shape
        require(shape.contentEquals(longArrayOf(1, CHANNELS.toLong(), FRAMES.toLong(), height.toLong(), width.toLong()))) {
@@ -119,7 +148,8 @@ internal object MobileI2VVideoEngine {
        for (ch in 0 until CHANNELS) for (px in 0 until spatial) {
         videoLatent[ch * FRAMES * spatial + px] = encoded[ch * spatial + px]
        }
-      }
+       }
+      } finally { embeddings?.close() }
      }
     }
     progress(18 + (step + 1) * 6)
