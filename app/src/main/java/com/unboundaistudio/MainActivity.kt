@@ -83,6 +83,7 @@ class MainActivity : ComponentActivity() {
    var duration by remember { mutableIntStateOf(1) }
    var customSeconds by remember { mutableStateOf("") }
    var lastVideo by remember { mutableStateOf<Uri?>(null) }
+   var lastVideoGenerator by remember { mutableStateOf(prefs.getString("last_video_generator", "Not recorded") ?: "Not recorded") }
    var busy by remember { mutableStateOf(false) }
    var generationJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
    // Native Qwen editor is fully on-device. Image generation still uses the selected backend.
@@ -791,7 +792,8 @@ class MainActivity : ComponentActivity() {
         }
        }
        if (busy) {
-        Text("Video processing: ${generationPercent}% — ${status}")
+        Text("Video Generator: ${if (useMobileI2V) "MobileI2V (offline)" else "Nightmare"}")
+         Text("Video processing: ${generationPercent}% — ${status}")
         LinearProgressIndicator(progress = { generationPercent.coerceIn(0, 100) / 100f }, modifier = Modifier.fillMaxWidth())
         Text("MobileI2V model inference may take several minutes; progress advances after each completed model step.")
         OutlinedButton(onClick = { cancelGeneration() }, modifier = Modifier.fillMaxWidth()) { Text("Cancel video generation") }
@@ -847,6 +849,8 @@ class MainActivity : ComponentActivity() {
             withContext(Dispatchers.IO) { contentResolver.openOutputStream(uri)?.use { it.write(video.bytes) } ?: error("Cannot write MP4") }
             contentResolver.update(uri, ContentValues().apply { put(MediaStore.Video.Media.IS_PENDING, 0) }, null, null)
             lastVideo = uri
+            lastVideoGenerator = if (useMobileI2V) "MobileI2V (offline)" else "Nightmare"
+            prefs.edit().putString("last_video_generator", lastVideoGenerator).apply()
             generationPercent = 100
             status = if (useMobileI2V) "Experimental MobileI2V video saved (${video.width}×${video.height}, ${video.durationLabel}s). Motion prompts are unsupported in the official checkpoint; check frame quality." else if (video.reducedForMemory) "AI video saved to Movies/FreedomAI (reduced to ${video.width}×${video.height}, ${video.durationLabel}s to fit NPU memory)." else "AI video saved to Movies/FreedomAI (${video.width}×${video.height}, ${video.durationLabel}s)."
            } catch (e: Exception) { contentResolver.delete(uri, null, null); throw e }
