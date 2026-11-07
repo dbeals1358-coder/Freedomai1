@@ -24,11 +24,11 @@ object OfflineVideoEngine {
   require(seconds in 1..120)
   val w = 512
   val h = 512
-  val fps = 12
+  val fps = 24
   val total = seconds * fps
   val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, w, h).apply {
    setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Flexible)
-   setInteger(MediaFormat.KEY_BIT_RATE, 2_500_000)
+   setInteger(MediaFormat.KEY_BIT_RATE, 4_000_000)
    setInteger(MediaFormat.KEY_FRAME_RATE, fps)
    setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 2)
   }
