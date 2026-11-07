@@ -352,12 +352,17 @@ class MainActivity : ComponentActivity() {
       }
       if (busy) {
         Button(onClick = { cancelGeneration() }, colors = ButtonDefaults.buttonColors(containerColor = UiColor(0xFFB3261E), contentColor = UiColor.White), modifier = Modifier.fillMaxWidth()) { Text("Cancel") }
-        LinearProgressIndicator(progress = { generationPercent / 100f }, modifier = Modifier.fillMaxWidth())
+        if (!nativeProgress && generationPercent >= 80) {
+         LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+         Text("Waiting for AI result — progress unavailable. You can cancel if it takes too long.")
+        } else {
+         LinearProgressIndicator(progress = { generationPercent / 100f }, modifier = Modifier.fillMaxWidth())
+        }
         Text("Elapsed: ${imageElapsedSeconds}s")
-        Text(if (nativeProgress) "Qwen editing: $generationPercent% (model progress)" else "AI is processing your image… $generationPercent% estimated")
+        Text(if (nativeProgress) "Qwen editing: $generationPercent% (model progress)" else if (generationPercent >= 80) "AI is still processing — 80% is an estimate, not a rendering checkpoint." else "AI is processing your image… $generationPercent% estimated")
         if (!nativeProgress) {
-         Text("Rendering: $renderingPercent% estimated")
-         LinearProgressIndicator(progress = { renderingPercent / 100f }, modifier = Modifier.fillMaxWidth())
+         Text(if (generationPercent >= 80) "Rendering: waiting for service response (actual progress unavailable)" else "Rendering: $renderingPercent% estimated")
+         if (generationPercent >= 80) LinearProgressIndicator(modifier = Modifier.fillMaxWidth()) else LinearProgressIndicator(progress = { renderingPercent / 100f }, modifier = Modifier.fillMaxWidth())
         }
        }
       if (status.isNotEmpty() && !status.startsWith("Nightmare v")) Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceVariant) { Text(status, modifier = Modifier.fillMaxWidth().padding(16.dp)) }
