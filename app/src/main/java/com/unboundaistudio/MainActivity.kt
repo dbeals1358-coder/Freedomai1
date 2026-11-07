@@ -361,8 +361,8 @@ class MainActivity : ComponentActivity() {
         Text("Elapsed: ${imageElapsedSeconds}s")
         Text(if (nativeProgress) "Qwen editing: $generationPercent% (model progress)" else if (generationPercent >= 80) "AI is still processing — 80% is an estimate, not a rendering checkpoint." else "AI is processing your image… $generationPercent% estimated")
         if (!nativeProgress) {
-         Text(if (generationPercent >= 80) "Rendering: waiting for service response (actual progress unavailable)" else "Rendering: $renderingPercent% estimated")
-         if (generationPercent >= 80) LinearProgressIndicator(modifier = Modifier.fillMaxWidth()) else LinearProgressIndicator(progress = { renderingPercent / 100f }, modifier = Modifier.fillMaxWidth())
+         Text(if (renderingPercent >= 95 || generationPercent >= 80) "Rendering: waiting for AI result (actual progress unavailable)" else "Rendering: $renderingPercent% estimated")
+         if (renderingPercent >= 95 || generationPercent >= 80) LinearProgressIndicator(modifier = Modifier.fillMaxWidth()) else LinearProgressIndicator(progress = { renderingPercent / 100f }, modifier = Modifier.fillMaxWidth())
         }
        }
       if (status.isNotEmpty() && !status.startsWith("Nightmare v")) Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceVariant) { Text(status, modifier = Modifier.fillMaxWidth().padding(16.dp)) }
