@@ -791,6 +791,8 @@ class MainActivity : ComponentActivity() {
          }
         }
        }
+       Text("Selected video generator: ${if (useMobileI2V) "MobileI2V (offline)" else "Nightmare"}")
+       Text("Last saved video generator: $lastVideoGenerator")
        if (busy) {
         Text("Video Generator: ${if (useMobileI2V) "MobileI2V (offline)" else "Nightmare"}")
          Text("Video processing: ${generationPercent}% — ${status}")
