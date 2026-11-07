@@ -132,6 +132,7 @@ class MainActivity : ComponentActivity() {
     var generationPercent by remember { mutableStateOf(0) }
     var generationSpeed by remember { mutableStateOf(prefs.getString("generation_speed", "BALANCED") ?: "BALANCED") }
     var imageElapsedSeconds by remember { mutableIntStateOf(0) }
+    var renderingPercent by remember { mutableIntStateOf(0) }
    fun cancelGeneration() {
     generationJob?.cancel()
     videoJob?.cancel()
@@ -353,7 +354,11 @@ class MainActivity : ComponentActivity() {
         Button(onClick = { cancelGeneration() }, colors = ButtonDefaults.buttonColors(containerColor = UiColor(0xFFB3261E), contentColor = UiColor.White), modifier = Modifier.fillMaxWidth()) { Text("Cancel") }
         LinearProgressIndicator(progress = { generationPercent / 100f }, modifier = Modifier.fillMaxWidth())
         Text("Elapsed: ${imageElapsedSeconds}s")
-        Text(if (nativeProgress) "Qwen editing: $generationPercent% (model progress)" else "AI is processing your image… ${generationPercent}% is an estimate; final rendering may take longer.")
+        Text(if (nativeProgress) "Qwen editing: $generationPercent% (model progress)" else "AI is processing your image… $generationPercent% estimated")
+        if (!nativeProgress) {
+         Text("Rendering: $renderingPercent% estimated")
+         LinearProgressIndicator(progress = { renderingPercent / 100f }, modifier = Modifier.fillMaxWidth())
+        }
        }
       if (status.isNotEmpty() && !status.startsWith("Nightmare v")) Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceVariant) { Text(status, modifier = Modifier.fillMaxWidth().padding(16.dp)) }
       fun requestImage(input: Bitmap?, promptOverride: String? = null) {
@@ -395,7 +400,7 @@ class MainActivity : ComponentActivity() {
        }
        val mask = if (input != null && maskMode && strokes.isNotEmpty()) makeMask(input.width, input.height, strokes.toList(), brush) else null
               result = null // Do not leave a previous variation visible as a failed new edit.
-              busy = true; generationPercent = 0; nativeProgress = useNativeEdit
+              busy = true; generationPercent = 0; renderingPercent = 0; nativeProgress = useNativeEdit
               status = if (useOnlineEdit) "Editing with online Qwen…" else if (useNativeEdit) "Editing locally with Qwen Turbo…" else if (input != null) "Editing photo…" else "Creating image…"
         // Nightmare does not currently expose generation progress through this client.
         // Show an explicitly estimated percentage, capped below 100 until an image arrives.
@@ -406,6 +411,9 @@ class MainActivity : ComponentActivity() {
           if (busy) {
            imageElapsedSeconds++
            generationPercent = (generationPercent + 1).coerceAtMost(80)
+            // Remote rendering has no actual progress callback. Display a
+            // clearly labeled estimate that never reaches 100% before completion.
+            if (!nativeProgress) renderingPercent = (renderingPercent + 1).coerceAtMost(95)
           }
          }
         }
