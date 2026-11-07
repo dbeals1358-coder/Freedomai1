@@ -23,9 +23,30 @@ internal object MobileI2VModelUpdater {
 
  fun install(modelsDir: File, progress: (Int) -> Unit): String {
   modelsDir.mkdirs()
+  // Offline-first: once the three checkpoint files have been verified and
+  // installed, do not contact GitHub every time the user generates a video.
+  // In particular, transient connection aborts must not block local inference.
+  val cachedValid = required.all { name ->
+   val model = File(modelsDir, name)
+   val record = File(modelsDir, name.removeSuffix(".onnx") + "_manifest.json")
+   runCatching {
+    if (!model.isFile || !record.isFile) false
+    else {
+     val metadata = JSONObject(record.readText())
+     val expectedSize = metadata.getLong("bytes")
+     val expectedHash = metadata.getString("sha256").lowercase()
+     expectedSize > 0 && expectedHash.matches(Regex("[0-9a-f]{64}")) &&
+      model.length() == expectedSize && sha256(model) == expectedHash
+    }
+   }.getOrDefault(false)
+  }
+  if (cachedValid) {
+   progress(100)
+   return "Verified MobileI2V models available offline."
+  }
   val selected = RELEASES.firstNotNullOfOrNull { release ->
    runCatching { release to JSONObject(String(downloadSmall(release + "validation_report.json"), Charsets.UTF_8)) }.getOrNull()
-  } ?: error("No verified MobileI2V model release is available.")
+  } ?: error("MobileI2V models are missing or unverified, and the model download server could not be reached. Connect to the internet once to install the models; later videos will run offline.")
   val (release, manifest) = selected
   val chunks = runCatching { JSONObject(String(downloadSmall(release + "chunks.json"), Charsets.UTF_8)) }.getOrNull()
   val entries = required.map { name ->
