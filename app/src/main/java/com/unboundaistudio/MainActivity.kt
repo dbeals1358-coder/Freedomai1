@@ -87,7 +87,7 @@ class MainActivity : ComponentActivity() {
    var generationJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
    // Native Qwen editor is fully on-device. Image generation still uses the selected backend.
    var nativeQwen by remember { mutableStateOf(prefs.getBoolean("native_qwen", true)) }
-   var onlineQwen by remember { mutableStateOf(prefs.getBoolean("online_qwen", true)) }
+   var onlineQwen by remember { mutableStateOf(prefs.getBoolean("online_qwen", false)) }
    var onlineQwenUrl by remember { mutableStateOf(prefs.getString("online_qwen_url", "") ?: "") }
    var onlineQwenModel by remember { mutableStateOf(prefs.getString("online_qwen_model", "qwen-image-2.1-turbo") ?: "qwen-image-2.1-turbo") }
    var onlineQwenKey by remember { mutableStateOf(prefs.getString("online_qwen_key", "") ?: "") }
@@ -359,8 +359,8 @@ class MainActivity : ComponentActivity() {
       fun requestImage(input: Bitmap?, promptOverride: String? = null) {
        if ((promptOverride ?: prompt).isBlank() && !(tab == 2 && fictionalAdultMode && (appearance.isNotBlank() || bodyDescription.isNotBlank()))) { status = "Describe the image first"; return }
        // Color-only bikini edits operate on the source pixels, without an external model or painted mask.
-       val useOnlineEdit = input != null && onlineQwen
-        val useNativeEdit = input != null && nativeQwen && !useOnlineEdit
+       val useOnlineEdit = input != null && onlineQwen && !nightmareMode
+        val useNativeEdit = input != null && nativeQwen && !useOnlineEdit && !nightmareMode
        // Native edits receive the actual input bitmap, even for simple color changes.
        val autoColorRequest = if (input != null && !nightmareMode && !maskMode && !useNativeEdit && !useOnlineEdit) AutomaticClothingEdit.parse(promptOverride ?: prompt) else null
        if (useOnlineEdit && (onlineQwenUrl.isBlank() || onlineQwenModel.isBlank() || onlineQwenKey.isBlank())) {
@@ -379,7 +379,7 @@ class MainActivity : ComponentActivity() {
        val useLocal = localMode
        val useNightmare = nightmareMode && !useOnlineEdit && !useNativeEdit
        val tokenForRun = nightmareToken
-       val editFlowForRun = nightmareEditFlow
+       val editFlowForRun = if (input != null && nightmareMode) "flux_edit" else nightmareEditFlow
        val requestedPrompt = if (tab == 2 && fictionalAdultMode && input == null) {
         val age = characterAge.toIntOrNull()
         if (age == null || age < 18 || age > 100) { status = "Enter an adult age from 18 to 100"; return }
@@ -529,7 +529,7 @@ class MainActivity : ComponentActivity() {
        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.weight(1f)) {
          Text("AI editing", style = MaterialTheme.typography.titleMedium)
-         Text(if (onlineQwen) "Online Qwen" else if (nativeQwen) "Offline Qwen" else if (nightmareMode) "Automatic · Nightmare" else "Automatic", style = MaterialTheme.typography.bodySmall)
+         Text(if (nightmareMode) "Nightmare installed Qwen (no extra download)" else if (onlineQwen) "Online Qwen" else if (nativeQwen) "Offline Qwen" else "Automatic", style = MaterialTheme.typography.bodySmall)
         }
         TextButton(onClick = { showAdvancedEditing = !showAdvancedEditing }) {
          Text(if (showAdvancedEditing) "Hide settings" else "Advanced")
