@@ -215,7 +215,9 @@ internal object MobileI2VVideoEngine {
    open(env, File(modelsDir, "turbo_vaed.onnx")).use { session ->
     require("latent" in session.inputNames) { "Unsupported Turbo-VAED decoder" }
     var decodedCount = 0
-    for (offset in 0 until FRAMES step 5) {
+    // Overlap decoder windows by one latent frame. Independent temporal
+    // windows otherwise reset decoder context and can introduce hard cuts.
+    for (offset in 0 until FRAMES step 4) {
      val window = min(5, FRAMES - offset)
      // Turbo-VAED ONNX was traced with exactly five 16x16 latent frames.
      // Repeat the last real latent in the final incomplete chunk.
@@ -247,7 +249,8 @@ internal object MobileI2VVideoEngine {
        val validFrameCount = if (window == decoderFrames) tCount else
         (tCount * window + decoderFrames - 1) / decoderFrames
        require(frames.size + validFrameCount <= 192) { "Too many decoded video frames" }
-       for (t in 0 until validFrameCount) {
+       val overlapFrames = if (offset == 0) 0 else (tCount / decoderFrames).coerceAtLeast(1)
+       for (t in overlapFrames until validFrameCount) {
         if (Thread.currentThread().isInterrupted) throw InterruptedException("Video rendering cancelled")
         val sourceFrame = t
         // Keep decoded frames at half resolution to reduce retained bitmap RAM by 75%.
@@ -270,11 +273,36 @@ internal object MobileI2VVideoEngine {
       }
      }
      checkProcessBudget("decoded $decodedCount frames")
-     decodedCount += window
+     decodedCount = min(FRAMES, offset + window)
      progress(70 + (decodedCount * 17 / FRAMES))
     }
    }
    require(frames.size >= FRAMES) { "MobileI2V did not produce enough frames" }
+   // Detect sudden frame collapse/corruption instead of delivering a broken MP4.
+   // This is a guardrail, not a substitute for validating the model decoder.
+   fun frameDelta(a: Bitmap, b: Bitmap): Double {
+    val stepX = (min(a.width, b.width) / 24).coerceAtLeast(1)
+    val stepY = (min(a.height, b.height) / 24).coerceAtLeast(1)
+    var sum = 0L
+    var count = 0
+    for (y in 0 until min(a.height, b.height) step stepY)
+     for (x in 0 until min(a.width, b.width) step stepX) {
+      val p = a.getPixel(x, y)
+      val q = b.getPixel(x, y)
+      sum += kotlin.math.abs(Color.red(p) - Color.red(q)) +
+       kotlin.math.abs(Color.green(p) - Color.green(q)) +
+       kotlin.math.abs(Color.blue(p) - Color.blue(q))
+      count++
+     }
+    return sum.toDouble() / (count * 3)
+   }
+   val deltas = (1 until frames.size).map { frameDelta(frames[it - 1], frames[it]) }
+   val sorted = deltas.sorted()
+   val typical = sorted[sorted.size / 2].coerceAtLeast(1.0)
+   val abrupt = deltas.withIndex().firstOrNull { it.value > maxOf(45.0, typical * 8.0) }
+   require(abrupt == null) {
+    "MobileI2V detected a corrupted frame transition near frame ${abrupt?.index?.plus(1)}; video was not saved."
+   }
    // Reject static or near-static decoder output rather than labeling it AI motion.
    val samples = listOf(0, frames.size / 4, frames.size / 2, frames.size * 3 / 4, frames.lastIndex)
    val reference = frames[samples.first()]
