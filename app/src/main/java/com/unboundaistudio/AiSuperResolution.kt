@@ -23,65 +23,77 @@ object AiSuperResolution {
  private const val PAD = 24
 
 
- /** Detect thin neon-green scanline corruption spanning much of a row.
-  * Replaces only flagged pixels by vertical interpolation; leaves normal foliage alone. */
- private fun repairGreenBand(source: Bitmap): Bitmap {
+ /** Conservative multicolor horizontal corruption cleanup.
+  * Looks for a narrow row band containing widespread high-contrast color outliers.
+  * This is interpolation, not semantic AI inpainting; uncertain regions stay intact. */
+ private fun repairColorBand(source: Bitmap): Bitmap {
   val w = source.width
   val h = source.height
-  if (w < 32 || h < 16) return source
+  if (w < 64 || h < 32) return source
   val pixels = IntArray(w * h)
   source.getPixels(pixels, 0, w, 0, 0, w, h)
-  val flagged = BooleanArray(w * h)
-  val counts = IntArray(h)
-  for (y in 2 until h - 2) {
+  val rowHits = IntArray(h)
+  val flags = BooleanArray(w * h)
+  fun channel(p: Int, shift: Int) = (p ushr shift) and 255
+  for (y in 5 until h - 5) {
    for (x in 0 until w) {
     val i = y * w + x
     val p = pixels[i]
-    val r = p ushr 16 and 255
-    val g = p ushr 8 and 255
-    val b = p and 255
-    val above = pixels[(y - 2) * w + x]
-    val below = pixels[(y + 2) * w + x]
-    val adjacentGreen = ((above ushr 8 and 255) + (below ushr 8 and 255)) / 2
-    if (g > 110 && g > r * 1.6 && g > b * 1.35 && g - adjacentGreen > 45) {
-     flagged[i] = true
-     counts[y]++
+    val a = pixels[(y - 5) * w + x]
+    val b = pixels[(y + 5) * w + x]
+    val r = channel(p,16); val g = channel(p,8); val blue = channel(p,0)
+    val maxC = maxOf(r,g,blue); val minC = minOf(r,g,blue)
+    val highChroma = maxC - minC > 65
+    val unusualGreen = g > r * 1.35 && g > blue * 1.2 && g > 90
+    val unusualMagenta = r > g * 1.4 && blue > g * 1.3 && r > 90
+    val contrast = (listOf(16,8,0).sumOf { shift ->
+     kotlin.math.abs(channel(p,shift) - (channel(a,shift)+channel(b,shift))/2)
+    })
+    if ((highChroma || unusualGreen || unusualMagenta) && contrast > 115) {
+     flags[i] = true
+     rowHits[y]++
     }
    }
   }
-  // Require an implausibly widespread, narrow scanline rather than local green details.
-  val suspect = BooleanArray(h)
-  for (y in 2 until h - 2) {
-   val nearby = (maxOf(2, y - 2)..minOf(h - 3, y + 2)).sumOf { counts[it] }
-   if (nearby > w * 0.38) suspect[y] = true
+  // Widespread in a narrow horizontal interval; do not mistake ordinary scenery.
+  val dense = BooleanArray(h)
+  for (y in 5 until h - 5) {
+   var total = 0
+   for (dy in -3..3) total += rowHits[y + dy]
+   dense[y] = total > w * 0.65
   }
-  if (!suspect.any { it }) return source
-  val result = pixels.copyOf()
-  var changes = 0
-  for (y in 2 until h - 2) {
-   if (!suspect[y]) continue
+  val candidates = mutableListOf<IntRange>()
+  var y = 5
+  while (y < h - 5) {
+   if (!dense[y]) { y++; continue }
+   val first = y
+   while (y < h - 5 && dense[y]) y++
+   if (y - first <= 42) candidates.add(first..(y-1))
+  }
+  if (candidates.isEmpty()) return source
+  val out = pixels.copyOf()
+  var changed = 0
+  for (band in candidates) {
+   val top = maxOf(0, band.first - 5)
+   val bottom = minOf(h - 1, band.last + 5)
+   if (bottom - top > 55) continue
+   // Repair only columns showing evidence of corruption in this band.
    for (x in 0 until w) {
-    val i = y * w + x
-    if (!flagged[i]) continue
-    var top = y - 1
-    var bottom = y + 1
-    while (top > 0 && flagged[top * w + x]) top--
-    while (bottom < h - 1 && flagged[bottom * w + x]) bottom++
-    if (y - top > 12 || bottom - y > 12) continue
-    val a = pixels[top * w + x]
-    val b = pixels[bottom * w + x]
-    val weight = (y - top).toFloat() / (bottom - top)
-    fun blend(shift: Int): Int {
-     val av = a ushr shift and 255
-     val bv = b ushr shift and 255
-     return (av + (bv - av) * weight).toInt().coerceIn(0, 255)
+    var hits = 0
+    for (yy in top..bottom) if (flags[yy*w+x]) hits++
+    if (hits == 0) continue
+    val from = maxOf(0, top - 4)
+    val to = minOf(h-1, bottom + 4)
+    for (yy in top..bottom) {
+     val t = (yy-from).toFloat()/(to-from)
+     val a = pixels[from*w+x]; val b = pixels[to*w+x]
+     fun mix(s: Int): Int = (channel(a,s)*(1f-t)+channel(b,s)*t).toInt().coerceIn(0,255)
+     out[yy*w+x] = (0xff shl 24) or (mix(16) shl 16) or (mix(8) shl 8) or mix(0)
+     changed++
     }
-    result[i] = (0xff shl 24) or (blend(16) shl 16) or (blend(8) shl 8) or blend(0)
-    changes++
    }
   }
-  if (changes == 0) return source
-  return Bitmap.createBitmap(result, w, h, Bitmap.Config.ARGB_8888)
+  return if (changed == 0) source else Bitmap.createBitmap(out,w,h,Bitmap.Config.ARGB_8888)
  }
 
  private fun modelFile(context: Context): File {
@@ -109,9 +121,9 @@ object AiSuperResolution {
   require(longest in 1..4096) { "Image dimensions unsupported" }
   val targetWidth = (source.width.toLong() * 4096L / longest).toInt().coerceAtLeast(1)
   val targetHeight = (source.height.toLong() * 4096L / longest).toInt().coerceAtLeast(1)
-  // Repair only high-confidence, thin, horizontally continuous green corruption.
+  // Repair high-confidence multicolor horizontal corruption before upscaling.
   // This is deliberately conservative: arbitrary unusual objects are not defects.
-  val cleaned = repairGreenBand(source)
+  val cleaned = repairColorBand(source)
   // A 4x model must process no more than 1024 input pixels on its longest edge.
   val working = if (longest > 1024) Bitmap.createScaledBitmap(cleaned,
    (source.width * 1024f / longest).toInt().coerceAtLeast(1),
