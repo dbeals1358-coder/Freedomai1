@@ -274,6 +274,16 @@ class MainActivity : ComponentActivity() {
         OutlinedButton(onClick = { videoMode = true; tab = 1; result = null }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("Create Video") }
         OutlinedButton(onClick = { showAdultConfirm = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("18+ Private Studio") }
         OutlinedButton(onClick = { tab = 3 }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("AI Assistant") }
+        OutlinedButton(onClick = {
+         val search = Uri.parse("https://www.google.com/search").buildUpon()
+          .appendQueryParameter("tbm", "isch")
+          .appendQueryParameter("q", "adult women nude photography")
+          .build()
+         runCatching {
+          startActivity(Intent(Intent.ACTION_VIEW, search).addCategory(Intent.CATEGORY_BROWSABLE))
+         }.onFailure { status = "Could not open web image search: ${it.message}" }
+        }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("Search Nude Women Images (18+)") }
+
        }
       }
       if (showAdultConfirm) AlertDialog(onDismissRequest = { showAdultConfirm = false }, title = { Text("18+ private editor") }, text = { Text("Only continue if you are 18 or older and have permission to use the images. Imported photos remain on this device unless you choose an online AI server. This is an age confirmation, not identity verification.") }, confirmButton = { TextButton(onClick = { adultConfirmed = true; showAdultConfirm = false; tab = 2; fictionalAdultMode = false; result = null }) { Text("I am 18 or older") } }, dismissButton = { TextButton(onClick = { showAdultConfirm = false }) { Text("Cancel") } })
