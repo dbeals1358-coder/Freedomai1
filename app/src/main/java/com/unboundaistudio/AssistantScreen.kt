@@ -318,8 +318,8 @@ private fun offlineAssistantReply(context: android.content.Context, path: String
  val engine = LlmInference.createFromOptions(context, options)
  try {
   val prompt = buildString {
-   append(assistantInstructionText(allowMatureTopics, customInstructions)).append("\\n")
-   append("Image and video generation use the app controls, not this text-only chat.\\n")
+   append(assistantInstructionText(allowMatureTopics, customInstructions)).append("\n")
+   append("Image and video generation use the app controls, not this text-only chat.\n")
    history.takeLast(8).forEach { (role, message) ->
     append(if (role == "user") "User: " else "Assistant: ")
     append(message.replace(Regex("^(Assistant:\\s*)+", RegexOption.IGNORE_CASE), "")).append("\n")
