@@ -80,7 +80,7 @@ class MainActivity : ComponentActivity() {
    var nightmareVideoFlow by remember { mutableStateOf(prefs.getString("nightmare_video_flow", "auto") ?: "auto") }
    var useMobileI2V by remember { mutableStateOf(false) }
     var runwayKey by remember { mutableStateOf(prefs.getString("runway_key", "") ?: "") }
-   var duration by remember { mutableIntStateOf(1) }
+   var duration by remember { mutableIntStateOf(prefs.getInt("video_duration_seconds", 5).coerceIn(1, 10)) }
    var customSeconds by remember { mutableStateOf("") }
    var lastVideo by remember { mutableStateOf<Uri?>(null) }
    var lastVideoGenerator by remember { mutableStateOf(prefs.getString("last_video_generator", "Not recorded") ?: "Not recorded") }
@@ -107,6 +107,9 @@ class MainActivity : ComponentActivity() {
    val scope = rememberCoroutineScope()
    var tab by remember { mutableStateOf(-1) }
    var videoMode by remember { mutableStateOf(false) }
+   var showStripeFix by remember { mutableStateOf(false) }
+   var stripePosition by remember { mutableFloatStateOf(0.14f) }
+   var stripeRepairUndo by remember { mutableStateOf<Bitmap?>(null) }
    var comparePosition by remember { mutableFloatStateOf(0.5f) }
    var adultConfirmed by remember { mutableStateOf(false) }
    var showAdultConfirm by remember { mutableStateOf(false) }
@@ -411,7 +414,9 @@ class MainActivity : ComponentActivity() {
        val useLocal = localMode
        val useNightmare = nightmareMode && !useOnlineEdit && !useNativeEdit
        val tokenForRun = nightmareToken
-       val editFlowForRun = if (input != null && nightmareMode) "flux_edit" else nightmareEditFlow
+       // Respect Auto: garment changes need auto-masked inpainting; forcing flux_edit
+        // here incorrectly bypassed the selected editing workflow on every photo edit.
+        val editFlowForRun = nightmareEditFlow
        val requestedPrompt = if (tab == 2 && fictionalAdultMode && input == null) {
         val age = characterAge.toIntOrNull()
         if (age == null || age < 18 || age > 100) { status = "Enter an adult age from 18 to 100"; return }
@@ -474,7 +479,11 @@ class MainActivity : ComponentActivity() {
            val generated = try {
             NightmareClient.generate(editPrompt, tokenForRun, input, requestedStrength, requestedHighQuality, requestedResolution, editFlowForRun, generationSpeed)
            } catch (nightmareError: Exception) {
-            val maskUnavailable = input != null && nightmareError.message.orEmpty().contains("automatic clothing mask is unavailable", ignoreCase = true)
+            val maskFailure = nightmareError.message.orEmpty()
+             val maskUnavailable = input != null &&
+              (maskFailure.contains("auto-mask is unavailable", ignoreCase = true) ||
+               maskFailure.contains("cannot automatically mask", ignoreCase = true) ||
+               maskFailure.contains("no working instruction-edit fallback", ignoreCase = true))
             if (maskUnavailable && qwenReady) {
              runOnUiThread { status = "Nightmare mask unavailable. Trying installed Qwen editor…" }
              NativeQwenEditor.edit(this@MainActivity, input!!, editPrompt,
@@ -505,6 +514,7 @@ class MainActivity : ComponentActivity() {
          }
          inferenceFinishedAt = android.os.SystemClock.elapsedRealtime()
          kotlinx.coroutines.currentCoroutineContext().ensureActive()
+         stripeRepairUndo = null
          result = completedImage
          if (result != null && isNearlyWhiteImage(result!!)) {
           result = null
@@ -782,13 +792,42 @@ class MainActivity : ComponentActivity() {
          }
         }
        }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("4K Upscale") }
+       if (!videoMode && original != null && result != null) {
+        OutlinedButton(onClick = { showStripeFix = !showStripeFix }, enabled = !busy,
+         modifier = Modifier.fillMaxWidth()) { Text(if (showStripeFix) "Hide Line Repair" else "Fix Horizontal Line") }
+        if (showStripeFix) {
+         Text("Fast repair from your original photo; no new AI render or painting required.")
+         Text("Position: ${(stripePosition * 100f).roundToInt()}% down from the top")
+         Slider(value = stripePosition, onValueChange = { stripePosition = it },
+          valueRange = 0.02f..0.98f, enabled = !busy)
+         OutlinedButton(onClick = {
+          val source = original
+          if (source != null) {
+           try {
+            val fixed = HorizontalStripeRepair.restoreFromOriginal(image, source, stripePosition)
+            stripeRepairUndo = image
+            result = fixed
+            status = "Horizontal band replaced using the source photo. Check the result before saving; this preserves the original details within the band."
+           } catch (error: Exception) { status = "Line repair failed: ${error.message}. Original image is safe." }
+          }
+         }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Repair Selected Line") }
+        }
+        if (stripeRepairUndo != null) {
+         OutlinedButton(onClick = {
+          result = stripeRepairUndo
+          stripeRepairUndo = null
+          status = "Line repair undone."
+         }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Undo Line Repair") }
+        }
+       }
        if (!videoMode) Button(onClick = { if (tab == 2) this@MainActivity.savePrivate(image) else this@MainActivity.save(image) }) { Text(if (tab == 2) "Save Privately" else "Save Image") }
        Text("Create Video", style = MaterialTheme.typography.titleLarge)
        if (status.isNotBlank()) Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
         Text(status, modifier = Modifier.fillMaxWidth().padding(12.dp))
        }
        if (busy) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-       Text("Choose a photo and describe movement.")
+       Text("Balanced video • default 5 seconds • 16 fps MP4 encoding. Actual resolution and motion depend on the selected model.")
+        Text("Choose a photo and describe movement.")
 
        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
         Text("Use offline MobileI2V (experimental)", modifier = Modifier.weight(1f))
@@ -824,7 +863,7 @@ class MainActivity : ComponentActivity() {
        if (useMobileI2V) Text("Offline MobileI2V is image-conditioned only: it cannot follow typed movement instructions. Switch to Nightmare with a compatible motion workflow for prompt-directed action. Offline video uses the source image without this prompt.")
        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         listOf(1, 2, 5, 10).forEach { secs ->
-         OutlinedButton(onClick = { duration = secs; customSeconds = "" }) {
+         OutlinedButton(onClick = { duration = secs; customSeconds = ""; prefs.edit().putInt("video_duration_seconds", secs).apply() }) {
           Text(if (duration == secs) "✓ ${secs}s" else "${secs}s")
          }
         }

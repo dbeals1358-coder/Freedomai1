@@ -25,11 +25,13 @@ object OfflineVideoEngine {
   val w = decodedFrames?.firstOrNull()?.width ?: 512
   val h = decodedFrames?.firstOrNull()?.height ?: 512
   require(w in 16..1024 && h in 16..1024 && w % 2 == 0 && h % 2 == 0) { "Unsupported video frame dimensions" }
-  val fps = 24
+  // Balanced default: encode at 16 fps to reduce CPU work and memory pressure.
+  // This does not increase the number of unique frames produced by MobileI2V.
+  val fps = 16
   val total = seconds * fps
   val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, w, h).apply {
    setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Flexible)
-   setInteger(MediaFormat.KEY_BIT_RATE, 4_000_000)
+   setInteger(MediaFormat.KEY_BIT_RATE, 2_500_000)
    setInteger(MediaFormat.KEY_FRAME_RATE, fps)
    setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 2)
   }
