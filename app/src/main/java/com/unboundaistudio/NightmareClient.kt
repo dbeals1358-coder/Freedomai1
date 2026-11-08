@@ -88,12 +88,12 @@ internal object NightmareClient {
             .put("prompt", if (input == null) prompt else EditRequestRouting.promptFor(actualFlow, prompt))
 
         if (input == null) {
-            payload.put("steps", when (speed) { "FAST" -> 14; "MAX QUALITY" -> 35; else -> if (highQuality) 35 else 22 })
+            payload.put("steps", when (speed) { "FAST" -> 12; "MAX QUALITY" -> 35; else -> if (highQuality) 35 else 22 })
                 .put("cfg", 6.0).put("width", resolution).put("height", resolution)
         } else {
             // Edit at model-friendly resolution; retain full source for framing/compositing in the UI.
             // FAST is a preview-quality inference path; MAX QUALITY retains the legacy 2048 cap.
-            val maxEditEdge = when (speed) { "FAST" -> 768; "MAX QUALITY" -> 2048; else -> 1024 }
+            val maxEditEdge = when (speed) { "FAST" -> 640; "MAX QUALITY" -> 2048; else -> 1024 }
             val scale = minOf(1.0, maxEditEdge.toDouble() / input.width, maxEditEdge.toDouble() / input.height)
             val editWidth = ((input.width * scale).toInt().coerceAtLeast(1)).coerceAtLeast(512)
             val editHeight = ((input.height * scale).toInt().coerceAtLeast(1)).coerceAtLeast(512)
@@ -127,7 +127,7 @@ internal object NightmareClient {
                     // If the parser isn't installed, Nightmare refuses instead of silently
                     // running a full-frame img2img variation.
                     payload.put("denoise", strength.coerceAtLeast(0.60f).toDouble())
-                        .put("steps", when (speed) { "FAST" -> 18; "MAX QUALITY" -> 35; else -> 24 }).put("cfg", 6.0)
+                        .put("steps", when (speed) { "FAST" -> 14; "MAX QUALITY" -> 35; else -> 24 }).put("cfg", 6.0)
                         .put("width", editWidth).put("height", editHeight)
                         .put("params", JSONObject().put("inpaint", JSONObject()
                             .put("pick_select", "true")
@@ -160,7 +160,7 @@ internal object NightmareClient {
                 }
                 else -> {
                     // Explicit saved/current/img2img flows remain available for custom workflows.
-                    payload.put("steps", when (speed) { "FAST" -> 18; "MAX QUALITY" -> 35; else -> 24 }).put("cfg", 6.0)
+                    payload.put("steps", when (speed) { "FAST" -> 14; "MAX QUALITY" -> 35; else -> 24 }).put("cfg", 6.0)
                         .put("width", editWidth).put("height", editHeight)
                         .put("denoise", strength.toDouble())
                 }
@@ -212,6 +212,7 @@ internal object NightmareClient {
             ?: error("Nightmare did not return a PNG image: ${reply.toString().take(350)}")
         val resultPath = result.getString("url")
         require(resultPath.startsWith("/results/")) { "Unexpected Nightmare result path" }
+        val downloadStarted = android.os.SystemClock.elapsedRealtime()
         val download = URL("$BASE_URL$resultPath").openConnection() as HttpURLConnection
         try {
             download.connectTimeout = 10000
@@ -219,6 +220,7 @@ internal object NightmareClient {
             download.setRequestProperty("Authorization", "Bearer $token")
             check(download.responseCode == 200) { "Image download failed: HTTP ${download.responseCode}" }
             val bitmap = download.inputStream.buffered(64 * 1024).use { android.graphics.BitmapFactory.decodeStream(it) }
+            android.util.Log.i("FreedomAI-Timing", "Nightmare download=${android.os.SystemClock.elapsedRealtime() - downloadStarted}ms")
             android.util.Log.i("FreedomAI-Timing", "Nightmare total=${android.os.SystemClock.elapsedRealtime() - requestStarted}ms")
             return bitmap
                 ?: error("Nightmare returned an unreadable image")
