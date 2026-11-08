@@ -311,6 +311,37 @@ internal object MobileI2VVideoEngine {
    require(abrupt == null) {
     "MobileI2V detected a corrupted frame transition near frame ${abrupt?.index?.plus(1)}; video was not saved."
    }
+   // A video can degrade gradually into colorful pixel noise without any single
+   // abrupt frame transition. Measure spatial neighbor differences and compare
+   // later frames to the beginning of the decoded clip.
+   fun spatialNoise(frame: Bitmap): Double {
+    val stride = (min(frame.width, frame.height) / 96).coerceAtLeast(1)
+    var total = 0L
+    var count = 0
+    for (y in 0 until frame.height - stride step stride)
+     for (x in 0 until frame.width - stride step stride) {
+      val p = frame.getPixel(x, y)
+      val q = frame.getPixel(x + stride, y)
+      val r = frame.getPixel(x, y + stride)
+      for (neighbor in listOf(q, r)) {
+       total += kotlin.math.abs(Color.red(p) - Color.red(neighbor)) +
+        kotlin.math.abs(Color.green(p) - Color.green(neighbor)) +
+        kotlin.math.abs(Color.blue(p) - Color.blue(neighbor))
+       count += 3
+      }
+     }
+    return if (count == 0) 0.0 else total.toDouble() / count
+   }
+   val noiseLevels = listOf(0, frames.size / 4, frames.size / 2,
+    frames.size * 3 / 4, frames.lastIndex).map { spatialNoise(frames[it]) }
+   val baselineNoise = noiseLevels.first().coerceAtLeast(1.0)
+   val noisy = noiseLevels.drop(1).any { it > maxOf(32.0, baselineNoise * 3.5) }
+   require(!noisy) {
+    "MobileI2V frames degraded into spatial noise (baseline=" +
+     "%.1f".format(java.util.Locale.US, baselineNoise) +
+     ", later=" + "%.1f".format(java.util.Locale.US, noiseLevels.maxOrNull() ?: 0.0) +
+     "). Video was rejected. Switch to a compatible Nightmare image-to-video workflow."
+   }
    // Reject static or near-static decoder output rather than labeling it AI motion.
    val samples = listOf(0, frames.size / 4, frames.size / 2, frames.size * 3 / 4, frames.lastIndex)
    val reference = frames[samples.first()]
