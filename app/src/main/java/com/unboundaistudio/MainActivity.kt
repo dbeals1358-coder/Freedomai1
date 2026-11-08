@@ -78,7 +78,7 @@ class MainActivity : ComponentActivity() {
    var videoUrl by remember { mutableStateOf(prefs.getString("video_url", "") ?: "") }
    var motionPrompt by remember { mutableStateOf("") }
    var nightmareVideoFlow by remember { mutableStateOf(prefs.getString("nightmare_video_flow", "auto") ?: "auto") }
-   var useMobileI2V by remember { mutableStateOf(prefs.getBoolean("video_mobilei2v_experimental", false)) }
+   var useMobileI2V by remember { mutableStateOf(false) }
     var runwayKey by remember { mutableStateOf(prefs.getString("runway_key", "") ?: "") }
    var duration by remember { mutableIntStateOf(1) }
    var customSeconds by remember { mutableStateOf("") }
