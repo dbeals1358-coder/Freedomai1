@@ -21,7 +21,7 @@ class HorizontalStripeRepairTest {
     @Test fun featherIsSmoothAndPreservesAlpha() {
         assertEquals(0.4f, HorizontalStripeRepair.blendWeight(42, 45, 55, 5), 0.00001f)
         val mixed = HorizontalStripeRepair.blend(0x40102030, 0xc0506070.toInt(), 0.5f)
-        assertEquals(0x80404050.toInt(), mixed)
+        assertEquals(0x80304050.toInt(), mixed)
     }
 
     @Test fun invalidFeatherRejected() {
