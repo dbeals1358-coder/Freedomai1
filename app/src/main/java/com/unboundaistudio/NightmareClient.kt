@@ -11,6 +11,18 @@ import org.json.JSONObject
  */
 internal object NightmareClient {
     private const val BASE_URL = "http://127.0.0.1:8820"
+    private var cachedModels: org.json.JSONArray? = null
+    private var cachedModelsAt: Long = 0L
+
+    @Synchronized private fun installedModels(token: String): org.json.JSONArray {
+        val now = android.os.SystemClock.elapsedRealtime()
+        cachedModels?.takeIf { now - cachedModelsAt < 300_000L }?.let { return it }
+        val models = JSONObject(authenticatedGet("/models", token)).optJSONArray("models")
+            ?: error("Nightmare did not report its installed picture models.")
+        cachedModels = models
+        cachedModelsAt = now
+        return models
+    }
 
     fun checkConnection(): String {
         val connection = URL("$BASE_URL/info").openConnection() as HttpURLConnection
@@ -70,6 +82,7 @@ internal object NightmareClient {
                 editFlow == "inpaint" || editFlow == "flux_edit" || editFlow.startsWith("saved:")) {
             "Invalid Nightmare edit workflow: $editFlow"
         }
+        val requestStarted = android.os.SystemClock.elapsedRealtime()
         val actualFlow = if (input == null) "saved:FreedomAI RealVis" else EditRequestRouting.chooseFlow(editFlow, prompt)
         val payload = JSONObject().put("flow", actualFlow)
             .put("prompt", if (input == null) prompt else EditRequestRouting.promptFor(actualFlow, prompt))
@@ -97,7 +110,11 @@ internal object NightmareClient {
                         android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG))
                 }
             val stream = java.io.ByteArrayOutputStream()
-            check(editBitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, stream)) {
+            // JPEG dramatically reduces local API upload size for photographic inputs.
+            // Use PNG for images with transparency to avoid destroying alpha masks.
+            val hasAlpha = editBitmap.hasAlpha() && !editBitmap.isOpaque
+            val format = if (hasAlpha) android.graphics.Bitmap.CompressFormat.PNG else android.graphics.Bitmap.CompressFormat.JPEG
+            check(editBitmap.compress(format, if (hasAlpha) 100 else 92, stream)) {
                 "Failed to encode original image for editing"
             }
             payload.put("images", JSONObject().put("image",
@@ -123,8 +140,7 @@ internal object NightmareClient {
                 "flux_edit" -> {
                     // Instruction-following edit is a DIFFERENT Nightmare recipe from img2img.
                     // Do not run an SDXL restyle and claim a requested object edit succeeded.
-                    val installed = JSONObject(authenticatedGet("/models", token)).optJSONArray("models")
-                        ?: error("Nightmare did not report its installed picture models.")
+                    val installed = installedModels(token)
                     val supported = setOf("FLUX2", "FLUX3", "QWEN21", "FIBO2")
                     // Prefer an already-installed Qwen checkpoint; do not download a
                     // duplicate model into FreedomAI's private storage.
@@ -150,6 +166,7 @@ internal object NightmareClient {
                 }
             }
         }
+        val preparationMs = android.os.SystemClock.elapsedRealtime() - requestStarted
         val connection = URL("$BASE_URL/run").openConnection() as HttpURLConnection
         val reply = try {
             connection.requestMethod = "POST"
@@ -187,6 +204,8 @@ internal object NightmareClient {
         } finally {
             connection.disconnect()
         }
+        val processingMs = android.os.SystemClock.elapsedRealtime() - requestStarted - preparationMs
+        android.util.Log.i("FreedomAI-Timing", "Nightmare prepare=${preparationMs}ms backend=${processingMs}ms flow=$actualFlow")
         val results = reply.optJSONArray("results") ?: error("Nightmare response has no results: ${reply.toString().take(350)}")
         val result = (0 until results.length()).mapNotNull { results.optJSONObject(it) }
             .firstOrNull { it.optString("url").endsWith(".png", ignoreCase = true) }
@@ -199,7 +218,9 @@ internal object NightmareClient {
             download.readTimeout = 60000
             download.setRequestProperty("Authorization", "Bearer $token")
             check(download.responseCode == 200) { "Image download failed: HTTP ${download.responseCode}" }
-            return download.inputStream.buffered(64 * 1024).use { android.graphics.BitmapFactory.decodeStream(it) }
+            val bitmap = download.inputStream.buffered(64 * 1024).use { android.graphics.BitmapFactory.decodeStream(it) }
+            android.util.Log.i("FreedomAI-Timing", "Nightmare total=${android.os.SystemClock.elapsedRealtime() - requestStarted}ms")
+            return bitmap
                 ?: error("Nightmare returned an unreadable image")
         } finally {
             download.disconnect()
