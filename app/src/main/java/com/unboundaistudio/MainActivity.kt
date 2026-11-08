@@ -1265,13 +1265,7 @@ private fun preserveFraming(original: Bitmap?, generated: Bitmap): Bitmap {
  return Bitmap.createScaledBitmap(generated, original.width, original.height, true)
 }
 
-/**
- * Automatically restore the source character's face after a strong full-frame edit.
- * Android's built-in face detector can miss angled or stylized faces; in that case
- * leave the generated result untouched rather than guessing a face location.
- * The soft elliptical blend avoids a sharp pasted-face rectangle.
- */
-
+/** A safe automated face-only edit: no arbitrary pixel masking or repainting. */
 /**
  * Replaces only detected face regions, preserving full-resolution eyes/body/background outside
  * those regions. Face detection works on a <=1024px preview to limit memory on 4K images.
@@ -1328,6 +1322,10 @@ private fun compositeRefinedFaces(original: Bitmap, edited: Bitmap): Bitmap? = r
  } finally { detectorInput.recycle() }
 }.getOrNull()
 
+/**
+ * Preserve the original face when a regular whole-image edit is not intended
+ * to change faces. Face-refinement edits deliberately skip this restoration.
+ */
 private fun preserveDetectedFace(original: Bitmap, generated: Bitmap): Bitmap {
  return runCatching {
   val width = original.width
