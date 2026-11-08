@@ -870,7 +870,6 @@ class MainActivity : ComponentActivity() {
         }
        }, modifier = Modifier.fillMaxWidth()) { Text("Generate AI Video") }
        
-       if (busy) OutlinedButton(onClick = { cancelGeneration() }, modifier = Modifier.fillMaxWidth()) { Text("Cancel video generation") }
        lastVideo?.let { uri ->
         OutlinedButton(onClick = {
          startActivity(Intent(Intent.ACTION_VIEW).apply {
