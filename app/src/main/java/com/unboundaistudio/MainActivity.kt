@@ -78,7 +78,7 @@ class MainActivity : ComponentActivity() {
    var videoUrl by remember { mutableStateOf(prefs.getString("video_url", "") ?: "") }
    var motionPrompt by remember { mutableStateOf("") }
    var nightmareVideoFlow by remember { mutableStateOf(prefs.getString("nightmare_video_flow", "auto") ?: "auto") }
-   var useMobileI2V by remember { mutableStateOf(false) }
+   var useMobileI2V by remember { mutableStateOf(prefs.getBoolean("video_mobilei2v_experimental", false)) }
     var runwayKey by remember { mutableStateOf(prefs.getString("runway_key", "") ?: "") }
    var duration by remember { mutableIntStateOf(prefs.getInt("video_duration_seconds", 5).coerceIn(1, 10)) }
    var customSeconds by remember { mutableStateOf("") }
@@ -376,7 +376,7 @@ class MainActivity : ComponentActivity() {
        AssistantScreen(
          onCreateImage = { request -> prompt = request; cartoonMode = false; videoMode = false; tab = 0; pendingAssistantImage = request; status = "Assistant is starting image generation…" },
          onEditImage = { request -> prompt = request; videoMode = false; tab = 1; status = "Edit instructions ready. Select an image and tap AI Edit." },
-         onCreateVideo = { request -> prompt = request; videoMode = true; tab = 1; status = "Video request ready. Select a photo to animate." }
+         onCreateVideo = { request -> motionPrompt = request; videoMode = true; tab = 1; status = "Video request ready. Select a photo and tap Generate AI Video." }
         )
       }
       if (tab == -1) {
@@ -987,9 +987,17 @@ class MainActivity : ComponentActivity() {
         }
        }
        if (!videoMode) Button(onClick = { if (tab == 2) this@MainActivity.savePrivate(image) else this@MainActivity.save(image) }) { Text(if (tab == 2) "Save Privately" else "Save Image") }
-       Text("Create Video", style = MaterialTheme.typography.titleLarge)
-       if (lastVideo == null) {
-        Text("No video generated yet. The photo edit above is complete, but it did not create an MP4. Describe movement and tap Generate AI Video.")
+        if (!videoMode) OutlinedButton(onClick = {
+         original = image
+         result = null
+         videoMode = true
+         tab = 1
+         status = "Photo selected for video. Describe movement, then tap Generate AI Video."
+        }, modifier = Modifier.fillMaxWidth()) { Text("Create Video From This Photo") }
+        if (videoMode) {
+        Text("Create Video", style = MaterialTheme.typography.titleLarge)
+        if (lastVideo == null) {
+        Text("No MP4 saved yet. Describe movement and tap Generate AI Video. Corrupted video is rejected instead of saved.")
        } else {
         Button(enabled = !busy, onClick = { showVideoPlayer = true },
          modifier = Modifier.fillMaxWidth()) { Text("▶ Play Last Saved Video") }
@@ -1008,12 +1016,18 @@ class MainActivity : ComponentActivity() {
        }
        Text(if (useMobileI2V) "Offline video • Experimental" else "Video powered by Nightmare")
        if (!useMobileI2V && status.contains("corrupted video frames", ignoreCase = true)) {
-        Text("Nightmare generated colored noise. In Nightmare go to Settings → Performance → Memory and turn ON Video: stream the model.")
+        Text("Nightmare returned unusable video frames. In Nightmare turn ON Settings → Performance → Memory → Video: stream the model. FreedomAI cannot change Nightmare settings through its API.")
         OutlinedButton(onClick = {
          val app = packageManager.getLaunchIntentForPackage("com.abrah.nightmare")
          if (app != null) startActivity(app)
          else status = "Open Nightmare from your apps, then Settings → Performance → Memory → Video: stream the model → ON."
         }, modifier = Modifier.fillMaxWidth()) { Text("Open Nightmare to Fix Video") }
+         OutlinedButton(enabled = !busy, onClick = {
+          duration = 2
+          customSeconds = ""
+          prefs.edit().putInt("video_duration_seconds", 2).apply()
+          status = "2-second test selected. Enable video model streaming in Nightmare first, then tap Generate AI Video."
+         }, modifier = Modifier.fillMaxWidth()) { Text("Set 2-Second Test") }
        }
        if (useMobileI2V) {
         OutlinedButton(enabled = !busy, onClick = {
@@ -1150,7 +1164,8 @@ class MainActivity : ComponentActivity() {
         }
        }, modifier = Modifier.fillMaxWidth()) { Text("Generate AI Video") }
        
-       if (!videoMode) OutlinedButton(onClick = { videoMode = false; original = image; originalGeneratedHere = resultGeneratedHere; brightness = 0f; saturation = 1f; strokes.clear(); maskMode = false; precisionEdit = false; result = null; tab = 1 }) { Text("Edit this image") }
+        }
+        if (!videoMode) OutlinedButton(onClick = { videoMode = false; original = image; originalGeneratedHere = resultGeneratedHere; brightness = 0f; saturation = 1f; strokes.clear(); maskMode = false; precisionEdit = false; result = null; tab = 1 }) { Text("Edit this image") }
       }
      }
     }
