@@ -112,7 +112,7 @@ internal object NightmareClient {
             val stream = java.io.ByteArrayOutputStream()
             // JPEG dramatically reduces local API upload size for photographic inputs.
             // Use PNG for images with transparency to avoid destroying alpha masks.
-            val hasAlpha = editBitmap.hasAlpha() && !editBitmap.isOpaque
+            val hasAlpha = input.hasAlpha()
             val format = if (hasAlpha) android.graphics.Bitmap.CompressFormat.PNG else android.graphics.Bitmap.CompressFormat.JPEG
             check(editBitmap.compress(format, if (hasAlpha) 100 else 92, stream)) {
                 "Failed to encode original image for editing"
