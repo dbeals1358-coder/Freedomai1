@@ -87,6 +87,33 @@ class MainActivity : ComponentActivity() {
     mutableStateOf(prefs.getString("last_video_uri", null)?.let { Uri.parse(it) })
    }
    var showVideoPlayer by remember { mutableStateOf(false) }
+   // Find videos exported by older app versions, even if they did not save the URI.
+   LaunchedEffect(Unit) {
+    if (lastVideo == null) {
+     val found = withContext(Dispatchers.IO) {
+      runCatching {
+       contentResolver.query(
+        MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+        arrayOf(MediaStore.Video.Media._ID),
+        "${MediaStore.Video.Media.RELATIVE_PATH} LIKE ?",
+        arrayOf("Movies/FreedomAI/%"),
+        "${MediaStore.Video.Media.DATE_ADDED} DESC"
+       )?.use { cursor ->
+        if (cursor.moveToFirst()) {
+         android.content.ContentUris.withAppendedId(
+          MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+          cursor.getLong(0)
+         )
+        } else null
+       }
+      }.getOrNull()
+     }
+     if (found != null && lastVideo == null) {
+      lastVideo = found
+      prefs.edit().putString("last_video_uri", found.toString()).apply()
+     }
+    }
+   }
    var lastVideoGenerator by remember { mutableStateOf(prefs.getString("last_video_generator", "Not recorded") ?: "Not recorded") }
    var busy by remember { mutableStateOf(false) }
    var generationJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
