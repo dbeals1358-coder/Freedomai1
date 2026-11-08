@@ -941,6 +941,14 @@ class MainActivity : ComponentActivity() {
         })
        }
        Text(if (useMobileI2V) "Offline video • Experimental" else "Video powered by Nightmare")
+       if (!useMobileI2V && status.contains("corrupted video frames", ignoreCase = true)) {
+        Text("Nightmare generated colored noise. In Nightmare go to Settings → Performance → Memory and turn ON Video: stream the model.")
+        OutlinedButton(onClick = {
+         val app = packageManager.getLaunchIntentForPackage("com.abrah.nightmare")
+         if (app != null) startActivity(app)
+         else status = "Open Nightmare from your apps, then Settings → Performance → Memory → Video: stream the model → ON."
+        }, modifier = Modifier.fillMaxWidth()) { Text("Open Nightmare to Fix Video") }
+       }
        if (useMobileI2V) {
         OutlinedButton(enabled = !busy, onClick = {
          useMobileI2V = false
@@ -1028,7 +1036,7 @@ class MainActivity : ComponentActivity() {
               runOnUiThread { generationPercent = p; status = "MobileI2V processing… $p%" }
              }
             } else {
-             NightmareVideoClient.generate(nightmareToken, nightmareVideoFlow, image, motionPrompt, duration) { stage ->
+             NightmareVideoClient.generate(this@MainActivity, nightmareToken, nightmareVideoFlow, image, motionPrompt, duration) { stage ->
               runOnUiThread {
                if (busy && !useMobileI2V && generationJob?.isActive == true) status = stage
               }

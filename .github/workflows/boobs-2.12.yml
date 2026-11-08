@@ -1,4 +1,4 @@
-name: Boobs 2.11
+name: Boobs 2.12
 on:
   workflow_dispatch:
   pull_request:
@@ -7,6 +7,9 @@ on:
     branches: [main]
     paths:
       - 'app/src/main/java/com/unboundaistudio/MainActivity.kt'
+      - 'app/src/main/java/com/unboundaistudio/VideoFrameContinuity.kt'
+      - 'app/src/main/java/com/unboundaistudio/NightmareVideoQualityGate.kt'
+      - 'app/src/test/java/com/unboundaistudio/VideoFrameContinuityTest.kt'
       - 'app/src/main/java/com/unboundaistudio/AutomaticClothingEdit.kt'
       - 'app/src/test/java/com/unboundaistudio/AutomaticClothingEditTest.kt'
       - 'app/src/main/java/com/unboundaistudio/NightmareEditModelPicker.kt'
@@ -22,7 +25,7 @@ on:
       - 'app/src/main/java/com/unboundaistudio/MobileI2VVideoEngine.kt'
       - 'app/src/main/java/com/unboundaistudio/OfflineVideoEngine.kt'
       - 'app/src/main/java/com/unboundaistudio/MobileI2VModelUpdater.kt'
-      - '.github/workflows/boobs-2.11.yml'
+      - '.github/workflows/boobs-2.12.yml'
 permissions:
   contents: read
 jobs:
@@ -47,7 +50,7 @@ jobs:
           HF_ACCESS_TOKEN: ${{ secrets.HF_ACCESS_TOKEN }}
           NIGHTMARE_API_TOKEN: ${{ secrets.NIGHTMARE_API_TOKEN }}
         run: |
-          grep -q 'versionName = "2.11"' app/build.gradle.kts
+          grep -q 'versionName = "2.12"' app/build.gradle.kts
           if [ -z "$HF_ACCESS_TOKEN" ]; then echo "::warning::HF_ACCESS_TOKEN not configured; APK will not have embedded Hugging Face access"; fi
           if [ -z "$NIGHTMARE_API_TOKEN" ]; then echo "::warning::NIGHTMARE_API_TOKEN missing; app will use saved token instead"; fi
       - name: Fetch native Qwen 2.1 runtime
@@ -81,15 +84,15 @@ jobs:
           mkdir -p app/src/main/res/drawable-nodpi
           base64 --decode app/icon_source.b64 > app/src/main/res/drawable-nodpi/boobs_launcher.jpg
           test -s app/src/main/res/drawable-nodpi/boobs_launcher.jpg
-      - name: Compile and test FreedomAI v2.11
+      - name: Compile and test FreedomAI v2.12
         env:
           HF_ACCESS_TOKEN: ${{ secrets.HF_ACCESS_TOKEN }}
           NIGHTMARE_API_TOKEN: ${{ secrets.NIGHTMARE_API_TOKEN }}
         run: gradle assembleDebug lintDebug testDebugUnitTest --no-daemon
       - name: Name APK with version
-        run: cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/FreedomAI-v2.11-debug.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/FreedomAI-v2.12-debug.apk
       - uses: actions/upload-artifact@v4
         with:
           if-no-files-found: error
-          name: FreedomAI-v2.11-APK
-          path: app/build/outputs/apk/debug/FreedomAI-v2.11-debug.apk
+          name: FreedomAI-v2.12-APK
+          path: app/build/outputs/apk/debug/FreedomAI-v2.12-debug.apk
