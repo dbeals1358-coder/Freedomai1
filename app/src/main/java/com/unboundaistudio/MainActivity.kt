@@ -520,7 +520,7 @@ class MainActivity : ComponentActivity() {
         if (age == null || age < 18 || age > 100) { status = "Enter an adult age from 18 to 100"; return }
         listOf("Original fictional adult woman, age $age", appearance, bodyDescription, pose, setting, photoStyle, prompt).filter { it.isNotBlank() }.joinToString(", ")
        } else (promptOverride ?: prompt)
-       val requestedStrength = if (input != null) editStrength.coerceIn(0.10f, 0.80f) else editStrength
+       val requestedStrength = if (faceDetailRun) 0.45f else if (input != null) editStrength.coerceIn(0.10f, 0.80f) else editStrength
        val requestedSpeed = if (faceDetailRun) "MAX QUALITY" else if (input != null) editSpeed else generationSpeed
        val requestedHighQuality = requestedSpeed == "MAX QUALITY"
        val requestedResolution = if (input == null && requestedSpeed == "FAST") 768 else resolution
@@ -570,7 +570,7 @@ class MainActivity : ComponentActivity() {
            } else if (useNativeEdit && input != null) {
            val generated = NativeQwenEditor.edit(
             this@MainActivity, input, editPrompt,
-            com.scsonic.qwenimage21.QwenImage21.Size.Tier.valueOf(qwenTier)
+            com.scsonic.qwenimage21.QwenImage21.Size.Tier.valueOf(if (faceDetailRun) "STANDARD" else qwenTier)
            ) { percentage -> runOnUiThread {
             if (generationJob?.isActive == true) {
              generationPercent = percentage
@@ -591,7 +591,7 @@ class MainActivity : ComponentActivity() {
             if (maskUnavailable && qwenReady) {
              runOnUiThread { status = "Nightmare mask unavailable. Trying installed Qwen editor…" }
              NativeQwenEditor.edit(this@MainActivity, input!!, editPrompt,
-              com.scsonic.qwenimage21.QwenImage21.Size.Tier.valueOf(qwenTier)
+              com.scsonic.qwenimage21.QwenImage21.Size.Tier.valueOf(if (faceDetailRun) "STANDARD" else qwenTier)
              ) { percentage -> runOnUiThread { generationPercent = percentage } }
             } else if (maskUnavailable) {
              // Do not launch a second expensive Nightmare run after a missing-mask failure.
@@ -612,10 +612,12 @@ class MainActivity : ComponentActivity() {
            val frame = LocalDreamClient.generate(editPrompt, encoded, requestedStrength) { step, total ->
             runOnUiThread { if (generationJob?.isActive == true) status = "Creating image: step $step of $total" }
            }
-           Bitmap.createBitmap(frame.pixels, frame.width, frame.height, Bitmap.Config.ARGB_8888)
+           Bitmap.createBitmap(frame.pixels, frame.width, frame.height, Bitmap.Config.ARGB_8888).let { generated ->
+             if (faceDetailRun && input != null) compositeRefinedFaces(input, generated) ?: error("No faces located for face-only refinement.") else generated
+            }
           } else {
            val generated = generateImage(address, editPrompt, input, requestedStrength, mask, requestedHighQuality)
-           if (input != null && mask == null) preserveFraming(input, generated) else generated
+           if (faceDetailRun && input != null) compositeRefinedFaces(input, generated) ?: error("No faces located for face-only refinement.") else if (input != null && mask == null) preserveFraming(input, generated) else generated
           }
          }
          inferenceFinishedAt = android.os.SystemClock.elapsedRealtime()
