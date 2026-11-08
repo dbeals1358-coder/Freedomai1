@@ -82,7 +82,38 @@ class MainActivity : ComponentActivity() {
     var runwayKey by remember { mutableStateOf(prefs.getString("runway_key", "") ?: "") }
    var duration by remember { mutableIntStateOf(prefs.getInt("video_duration_seconds", 5).coerceIn(1, 10)) }
    var customSeconds by remember { mutableStateOf("") }
-   var lastVideo by remember { mutableStateOf<Uri?>(null) }
+   // The most recently saved MP4 remains playable when the app is reopened.
+   var lastVideo by remember {
+    mutableStateOf(prefs.getString("last_video_uri", null)?.let { Uri.parse(it) })
+   }
+   var showVideoPlayer by remember { mutableStateOf(false) }
+   // Find videos exported by older app versions, even if they did not save the URI.
+   LaunchedEffect(Unit) {
+    if (lastVideo == null) {
+     val found = withContext(Dispatchers.IO) {
+      runCatching {
+       contentResolver.query(
+        MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+        arrayOf(MediaStore.Video.Media._ID),
+        "${MediaStore.Video.Media.RELATIVE_PATH} LIKE ?",
+        arrayOf("Movies/FreedomAI/%"),
+        "${MediaStore.Video.Media.DATE_ADDED} DESC"
+       )?.use { cursor ->
+        if (cursor.moveToFirst()) {
+         android.content.ContentUris.withAppendedId(
+          MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+          cursor.getLong(0)
+         )
+        } else null
+       }
+      }.getOrNull()
+     }
+     if (found != null && lastVideo == null) {
+      lastVideo = found
+      prefs.edit().putString("last_video_uri", found.toString()).apply()
+     }
+    }
+   }
    var lastVideoGenerator by remember { mutableStateOf(prefs.getString("last_video_generator", "Not recorded") ?: "Not recorded") }
    var busy by remember { mutableStateOf(false) }
    var generationJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
@@ -236,6 +267,45 @@ class MainActivity : ComponentActivity() {
     secondary = UiColor(0xFF8AC7FF), background = UiColor(0xFF101116),
     surface = UiColor(0xFF191B24), surfaceVariant = UiColor(0xFF252836)
    )) {
+    if (showVideoPlayer && lastVideo != null) {
+     val playbackUri = lastVideo!!
+     androidx.compose.ui.window.Dialog(
+      onDismissRequest = { showVideoPlayer = false },
+      properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+     ) {
+      Column(Modifier.fillMaxSize().background(UiColor.Black).padding(16.dp),
+       verticalArrangement = Arrangement.spacedBy(12.dp)) {
+       Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        Text("Your generated video", style = MaterialTheme.typography.titleLarge)
+        TextButton(onClick = { showVideoPlayer = false }) { Text("Close") }
+       }
+       androidx.compose.runtime.key(playbackUri) {
+        androidx.compose.ui.viewinterop.AndroidView(
+         factory = { ctx ->
+          android.widget.VideoView(ctx).apply {
+           setMediaController(android.widget.MediaController(ctx))
+           setOnErrorListener { _, _, _ ->
+            runOnUiThread {
+             showVideoPlayer = false
+             status = "Could not play the MP4. Try opening Movies/FreedomAI in Gallery."
+            }
+            true
+           }
+           setVideoURI(playbackUri)
+           setOnPreparedListener { player ->
+            player.isLooping = false
+            start()
+           }
+          }
+         }, modifier = Modifier.fillMaxWidth().height(280.dp)
+        )
+       }
+       Text("Saved in Movies/FreedomAI. Tap the video for playback controls.",
+        color = UiColor.White)
+      }
+     }
+    }
     expandedPhoto?.let { enlarged ->
      androidx.compose.ui.window.Dialog(
       onDismissRequest = { expandedPhoto = null },
@@ -265,7 +335,7 @@ class MainActivity : ComponentActivity() {
     }
     Scaffold(bottomBar = {
      NavigationBar {
-      NavigationBarItem(selected = tab == -1, onClick = { tab = -1; videoMode = false; prompt = ""; motionPrompt = ""; status = ""; result = null; original = null; lastVideo = null; generationPercent = 0; brightness = 0f; saturation = 1f; strokes.clear(); drawing = emptyList(); maskMode = false; expandedPhoto = null; pendingAssistantImage = null; originalGeneratedHere = false; resultGeneratedHere = false }, icon = { Text("⌂") }, label = { Text("Home") })
+      NavigationBarItem(selected = tab == -1, onClick = { tab = -1; videoMode = false; prompt = ""; motionPrompt = ""; status = ""; result = null; original = null; generationPercent = 0; brightness = 0f; saturation = 1f; strokes.clear(); drawing = emptyList(); maskMode = false; expandedPhoto = null; pendingAssistantImage = null; originalGeneratedHere = false; resultGeneratedHere = false }, icon = { Text("⌂") }, label = { Text("Home") })
       NavigationBarItem(selected = tab == 0, onClick = { tab = 0 }, icon = { Text("✦") }, label = { Text("Create") })
       NavigationBarItem(selected = tab == 1, onClick = { tab = 1 }, icon = { Text("◈") }, label = { Text("Edit") })
       NavigationBarItem(selected = tab == 3, onClick = { tab = 3; videoMode = false }, icon = { Text("AI") }, label = { Text("Assistant") })
@@ -852,8 +922,12 @@ class MainActivity : ComponentActivity() {
        }
        if (!videoMode) Button(onClick = { if (tab == 2) this@MainActivity.savePrivate(image) else this@MainActivity.save(image) }) { Text(if (tab == 2) "Save Privately" else "Save Image") }
        Text("Create Video", style = MaterialTheme.typography.titleLarge)
-       if (status.isNotBlank()) Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
-        Text(status, modifier = Modifier.fillMaxWidth().padding(12.dp))
+       if (lastVideo == null) {
+        Text("No video generated yet. The photo edit above is complete, but it did not create an MP4. Describe movement and tap Generate AI Video.")
+       } else {
+        Button(enabled = !busy, onClick = { showVideoPlayer = true },
+         modifier = Modifier.fillMaxWidth()) { Text("▶ Play Last Saved Video") }
+        Text("Video saved in Movies/FreedomAI.")
        }
        Text(if (useMobileI2V) "Balanced local video • 5-second default • 16 fps MP4 encoding." else
         "Nightmare video • 5-second default. Resolution and frame rate depend on your Nightmare video workflow.")
@@ -977,7 +1051,9 @@ class MainActivity : ComponentActivity() {
             }
             lastVideo = uri
             lastVideoGenerator = if (useMobileI2V) "MobileI2V (offline)" else "Nightmare"
-            prefs.edit().putString("last_video_generator", lastVideoGenerator).apply()
+            prefs.edit().putString("last_video_generator", lastVideoGenerator)
+             .putString("last_video_uri", uri.toString()).apply()
+            showVideoPlayer = true
             generationPercent = 100
             status = if (useMobileI2V) "Experimental MobileI2V video saved (${video.width}×${video.height}, ${video.durationLabel}s). Motion prompts are unsupported in the official checkpoint; check frame quality." else if (video.reducedForMemory) "AI video saved to Movies/FreedomAI (reduced to ${video.width}×${video.height}, ${video.durationLabel}s to fit NPU memory)." else "AI video saved to Movies/FreedomAI (${video.width}×${video.height}, ${video.durationLabel}s)."
             if (quality != null && quality.samples >= 4) {
@@ -1000,14 +1076,6 @@ class MainActivity : ComponentActivity() {
         }
        }, modifier = Modifier.fillMaxWidth()) { Text("Generate AI Video") }
        
-       lastVideo?.let { uri ->
-        OutlinedButton(onClick = {
-         startActivity(Intent(Intent.ACTION_VIEW).apply {
-          setDataAndType(uri, "video/mp4")
-          addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-         })
-        }) { Text("Play saved MP4") }
-       }
        if (!videoMode) OutlinedButton(onClick = { videoMode = false; original = image; originalGeneratedHere = resultGeneratedHere; brightness = 0f; saturation = 1f; strokes.clear(); maskMode = false; precisionEdit = false; result = null; tab = 1 }) { Text("Edit this image") }
       }
      }
