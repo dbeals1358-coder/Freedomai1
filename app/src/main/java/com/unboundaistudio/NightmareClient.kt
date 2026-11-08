@@ -128,7 +128,8 @@ internal object NightmareClient {
                     // If the parser isn't installed, Nightmare refuses instead of silently
                     // running a full-frame img2img variation.
                     payload.put("denoise", strength.coerceAtLeast(0.60f).toDouble())
-                        .put("steps", when (speed) { "FAST" -> 14; "MAX QUALITY" -> 35; else -> 24 }).put("cfg", 6.0)
+                        // Faster 10-step FAST preview; higher-quality modes retain their steps.
+                        .put("steps", when (speed) { "FAST" -> 10; "MAX QUALITY" -> 35; else -> 24 }).put("cfg", 6.0)
                         .put("width", editWidth).put("height", editHeight)
                         .put("params", JSONObject().put("inpaint", JSONObject()
                             .put("pick_select", "true")
