@@ -64,7 +64,7 @@ class MainActivity : ComponentActivity() {
    val prefs = remember { getSharedPreferences("server", MODE_PRIVATE) }
    var server by remember { mutableStateOf(prefs.getString("url", "") ?: "") }
    var localMode by remember { mutableStateOf(prefs.getBoolean("local", true)) }
-   var nightmareMode by remember { mutableStateOf(prefs.getBoolean("nightmare", true)) }
+   var nightmareMode by remember { mutableStateOf(prefs.getBoolean("nightmare", false)) }
    var nightmareToken by remember { mutableStateOf((prefs.getString("nightmare_token", "") ?: "").ifBlank { BuildConfig.NIGHTMARE_API_TOKEN }) }
    var nightmareEditFlow by remember {
     // Migrate the old img2img default. That flow restyles instead of making precise changes.
@@ -425,6 +425,20 @@ class MainActivity : ComponentActivity() {
         Text("✦", style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.primary)
         Text("Build it, Dream it, Crank it!", style = MaterialTheme.typography.headlineLarge)
         Text("Your AI Studio — create or edit photos and videos.", color = UiColor(0xFFD3D0E3))
+        Text("Image engine: ${ImageEngineSelection.imageLabel(nightmareMode, localMode)}", color = UiColor.White)
+        OutlinedButton(enabled = !busy, onClick = {
+         val choice = ImageEngineSelection.withoutNightmare()
+         nightmareMode = choice.nightmare
+         localMode = choice.localDream
+         useMobileI2V = choice.offlineVideo
+         nightmareConnectionFailed = false
+         prefs.edit().putBoolean("nightmare", nightmareMode).putBoolean("local", localMode)
+          .putBoolean("video_mobilei2v_experimental", useMobileI2V).apply()
+         status = "Nightmare is off. Images use Local Dream (a model must be loaded), AI edits can use built-in Qwen, and video uses experimental offline MobileI2V."
+        }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) {
+         Text(if (!nightmareMode && localMode && useMobileI2V) "✓ Without Nightmare Selected" else "Use Without Nightmare")
+        }
+        if (!nightmareMode) Text("No Nightmare required. Images still need a running Local Dream model or HTTPS server; Qwen editing needs model files. Offline MobileI2V video is experimental.", color = UiColor(0xFFD3D0E3))
         Button(onClick = { cartoonMode = false; videoMode = false; tab = 0 }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("Create Image") }
          OutlinedButton(onClick = {
           cartoonMode = true
@@ -467,18 +481,18 @@ class MainActivity : ComponentActivity() {
       if (showConnection) {
       Card(Modifier.fillMaxWidth()) {
       Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-      Text("Nightmare", style = MaterialTheme.typography.titleMedium)
+      Text("Image engine (Nightmare optional)", style = MaterialTheme.typography.titleMedium)
       Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-       Text("Use Nightmare for images")
+       Text("Use Nightmare for images (optional)")
        Switch(checked = nightmareMode, enabled = !busy, onCheckedChange = { nightmareMode = it; prefs.edit().putBoolean("nightmare", it).apply() })
       }
-      Text("Image generation needs Nightmare's local API running on this phone (port 8820).")
-      OutlinedButton(enabled = !busy, onClick = { openNightmare() },
+      Text(if (nightmareMode) "Nightmare uses its local API on port 8820. Turn it off to use Local Dream instead." else "Nightmare is OFF. Local Dream or your HTTPS server can generate images without it.")
+      if (nightmareMode) OutlinedButton(enabled = !busy, onClick = { openNightmare() },
        modifier = Modifier.fillMaxWidth()) { Text("Open Nightmare") }
-      OutlinedButton(enabled = !busy, onClick = { checkNightmareConnection() },
+      if (nightmareMode) OutlinedButton(enabled = !busy, onClick = { checkNightmareConnection() },
        modifier = Modifier.fillMaxWidth()) { Text("Check Nightmare connection") }
-      TextButton(onClick = { showAdvancedConnection = !showAdvancedConnection }) { Text(if (showAdvancedConnection) "Hide advanced options ↑" else "Advanced options ↓") }
-      if (showAdvancedConnection) {
+      if (nightmareMode) TextButton(onClick = { showAdvancedConnection = !showAdvancedConnection }) { Text(if (showAdvancedConnection) "Hide advanced options ↑" else "Advanced options ↓") }
+      if (nightmareMode && showAdvancedConnection) {
       OutlinedTextField(value = nightmareToken, onValueChange = {
        nightmareToken = it.trim()
        prefs.edit().putString("nightmare_token", nightmareToken).apply()
@@ -494,7 +508,7 @@ class MainActivity : ComponentActivity() {
       }
       HorizontalDivider()
       Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-       Text("Local Dream on this phone")
+       Text("Local Dream (no Nightmare needed)")
        Switch(checked = localMode, enabled = !busy, onCheckedChange = { localMode = it; prefs.edit().putBoolean("local", it).apply() })
       }
       if (localMode) {
@@ -564,7 +578,7 @@ class MainActivity : ComponentActivity() {
         }
        }
       if (status.isNotEmpty() && !status.startsWith("Nightmare v")) Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceVariant) { Text(status, modifier = Modifier.fillMaxWidth().padding(16.dp)) }
-      if (nightmareConnectionFailed) {
+      if (nightmareMode && nightmareConnectionFailed) {
        OutlinedButton(enabled = !busy, onClick = { openNightmare() },
         modifier = Modifier.fillMaxWidth()) { Text("Open Nightmare") }
        OutlinedButton(enabled = !busy, onClick = { checkNightmareConnection() },
@@ -791,7 +805,7 @@ class MainActivity : ComponentActivity() {
              modifier = Modifier.weight(1f)) { Text(if (sceneCount == choice) "✓ $choice" else choice) }
            }
           }
-          Text("Results depend on the selected Nightmare model. These controls guide the prompt but do not guarantee anatomy.")
+          Text("Results depend on the selected image generator and installed model. These controls guide the prompt but do not guarantee requested details.")
           OutlinedTextField(value = characterAge, onValueChange = { characterAge = it.filter(Char::isDigit).take(3) }, label = { Text("Fictional character age (18+)") }, modifier = Modifier.fillMaxWidth())
           OutlinedTextField(value = appearance, onValueChange = { appearance = it }, label = { Text("Appearance: hair, face, eyes") }, modifier = Modifier.fillMaxWidth())
           OutlinedTextField(value = bodyDescription, onValueChange = { bodyDescription = it }, label = { Text("Body proportions and physique") }, modifier = Modifier.fillMaxWidth())
@@ -829,7 +843,7 @@ class MainActivity : ComponentActivity() {
          modifier = Modifier.fillMaxWidth().height(170.dp))
        OutlinedButton(onClick = { listenForPrompt() }, enabled = !busy) { Text("🎤 Speak prompt") }
        Button(onClick = { requestImage(null) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text(if (busy) "Creating…" else if (cartoonMode) "Create Cartoon" else "Create Image") }
-       if (cartoonMode) Text("Uses your selected image model. For best results, select a cartoon-capable model in Nightmare if one is installed.")
+       if (cartoonMode) Text("Uses your selected generator. For best results, select a compatible cartoon model in that generator.")
 
       } else if (!videoMode && (tab == 1 || (tab == 2 && adultConfirmed && !fictionalAdultMode))) {
        if (tab == 2) Text("Private editing: adjust brightness and saturation, then save to app-private storage. AI edits may send your photo to the selected model/server. Only use images you have permission to edit.")
