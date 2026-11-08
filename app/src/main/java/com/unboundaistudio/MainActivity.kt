@@ -137,7 +137,18 @@ class MainActivity : ComponentActivity() {
     var generationSpeed by remember { mutableStateOf(prefs.getString("generation_speed", "BALANCED") ?: "BALANCED") }
     var imageElapsedSeconds by remember { mutableIntStateOf(0) }
     var renderingPercent by remember { mutableIntStateOf(0) }
+   LaunchedEffect(videoMode, busy) {
+    if (videoMode && busy) {
+     videoElapsedSeconds = 0
+     while (isActive && busy) {
+      delay(1000)
+      if (busy) videoElapsedSeconds++
+     }
+    }
+   }
    fun cancelGeneration() {
+    // Disconnect blocking Nightmare HTTP I/O as well as cancelling the coroutine.
+    NightmareVideoClient.cancelActive()
     generationJob?.cancel()
     videoJob?.cancel()
     generationJob = null
@@ -146,7 +157,8 @@ class MainActivity : ComponentActivity() {
     nativeProgress = false
     generationPercent = 0
     imageElapsedSeconds = 0
-    status = "Cancelled. Remote Nightmare processing may continue on its server."
+    videoElapsedSeconds = 0
+    status = "Cancelled on phone. Nightmare may continue its server-side job."
    }
 
    var maskMode by remember { mutableStateOf(false) }
@@ -825,8 +837,8 @@ class MainActivity : ComponentActivity() {
        if (status.isNotBlank()) Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
         Text(status, modifier = Modifier.fillMaxWidth().padding(12.dp))
        }
-       if (busy) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-       Text("Balanced video • default 5 seconds • 16 fps MP4 encoding. Actual resolution and motion depend on the selected model.")
+       Text(if (useMobileI2V) "Balanced local video • 5-second default • 16 fps MP4 encoding." else
+        "Nightmare video • 5-second default. Resolution and frame rate depend on your Nightmare video workflow.")
         Text("Choose a photo and describe movement.")
 
        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -869,12 +881,18 @@ class MainActivity : ComponentActivity() {
         }
        }
        Text("Selected video generator: ${if (useMobileI2V) "MobileI2V (offline)" else "Nightmare"}")
-       Text("Last saved video generator: $lastVideoGenerator")
+       if (lastVideoGenerator != "Not recorded") Text("Last successful video generator: $lastVideoGenerator")
        if (busy) {
-        Text("Video Generator: ${if (useMobileI2V) "MobileI2V (offline)" else "Nightmare"}")
-         Text("Video processing: ${generationPercent}% — ${status}")
-        LinearProgressIndicator(progress = { generationPercent.coerceIn(0, 100) / 100f }, modifier = Modifier.fillMaxWidth())
-        Text("MobileI2V model inference may take several minutes; progress advances after each completed model step.")
+        if (useMobileI2V) {
+         Text("MobileI2V processing: ${generationPercent}% — ${status}")
+         LinearProgressIndicator(progress = { generationPercent.coerceIn(0, 100) / 100f },
+          modifier = Modifier.fillMaxWidth())
+         Text("MobileI2V progress updates after completed model steps.")
+        } else {
+         Text("Nightmare: $status")
+         LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+         Text("Elapsed: ${videoElapsedSeconds}s. Nightmare does not report a reliable live completion percentage.")
+        }
         OutlinedButton(onClick = { cancelGeneration() }, modifier = Modifier.fillMaxWidth()) { Text("Cancel video generation") }
        }
        Button(enabled = !busy, onClick = {
@@ -882,7 +900,8 @@ class MainActivity : ComponentActivity() {
         else {
          busy = true
          generationPercent = 0
-         status = if (useMobileI2V) "Running offline MobileI2V models…" else "Generating AI motion in Nightmare…"
+         videoElapsedSeconds = 0
+         status = if (useMobileI2V) "Running offline MobileI2V models…" else "Connecting to Nightmare…"
          generationJob = scope.launch {
           try {
            val video = withContext(Dispatchers.IO) {
@@ -896,9 +915,13 @@ class MainActivity : ComponentActivity() {
               runCatching { file.delete() }
              }
             }
-            System.gc()
-            System.runFinalization()
-            runOnUiThread { status = "Preparing video models…" }
+            // Avoid expensive forced GC/finalization when Nightmare handles video inference.
+            if (useMobileI2V) {
+             System.gc()
+             runOnUiThread { status = "Preparing MobileI2V ONNX models…" }
+            } else {
+             runOnUiThread { status = "Connecting to Nightmare…" }
+            }
             if (useMobileI2V) {
              val models = java.io.File(filesDir, "models/video-v1")
              // Check verified release on every video attempt so previously installed
@@ -913,7 +936,11 @@ class MainActivity : ComponentActivity() {
               runOnUiThread { generationPercent = p; status = "MobileI2V processing… $p%" }
              }
             } else {
-             NightmareVideoClient.generate(nightmareToken, if (nightmareVideoFlow == "current") "auto" else nightmareVideoFlow, image, motionPrompt, duration)
+             NightmareVideoClient.generate(nightmareToken, nightmareVideoFlow, image, motionPrompt, duration) { stage ->
+              runOnUiThread {
+               if (busy && !useMobileI2V && generationJob?.isActive == true) status = stage
+              }
+             }
             }
            }
            kotlinx.coroutines.currentCoroutineContext().ensureActive()
