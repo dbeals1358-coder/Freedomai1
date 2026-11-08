@@ -783,7 +783,9 @@ class MainActivity : ComponentActivity() {
         prefs.edit().putString("nightmare_video_flow", nightmareVideoFlow).apply()
        }, label = { Text("Video workflow (current or saved:Name)") }, modifier = Modifier.fillMaxWidth())
        OutlinedTextField(value = motionPrompt, onValueChange = { motionPrompt = it },
-        label = { Text("Describe AI movement") }, modifier = Modifier.fillMaxWidth())
+        label = { Text(if (useMobileI2V) "Motion prompt (unsupported offline)" else "Describe AI movement") },
+        enabled = !useMobileI2V, modifier = Modifier.fillMaxWidth())
+       if (useMobileI2V) Text("Offline MobileI2V is image-conditioned only: it cannot follow typed movement instructions. Switch to Nightmare with a compatible motion workflow for prompt-directed action. Offline video uses the source image without this prompt.")
        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         listOf(1, 2, 5, 10).forEach { secs ->
          OutlinedButton(onClick = { duration = secs; customSeconds = "" }) {
