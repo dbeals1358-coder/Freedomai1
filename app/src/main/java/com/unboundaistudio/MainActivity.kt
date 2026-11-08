@@ -488,6 +488,7 @@ class MainActivity : ComponentActivity() {
        }
       if (status.isNotEmpty() && !status.startsWith("Nightmare v")) Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceVariant) { Text(status, modifier = Modifier.fillMaxWidth().padding(16.dp)) }
       fun requestImage(input: Bitmap?, promptOverride: String? = null) {
+        val faceDetailRun = input != null && promptOverride == FaceDetailEnhancement.REFINE_PROMPT
        if ((promptOverride ?: prompt).isBlank() && !(tab == 2 && fictionalAdultMode && (appearance.isNotBlank() || bodyDescription.isNotBlank()))) { status = "Describe the image first"; return }
        // FAST: a conservative, color-only bikini recolor can use source pixels
        // without AI inference. If fabric recognition fails, use the selected editor.
@@ -513,22 +514,24 @@ class MainActivity : ComponentActivity() {
        val tokenForRun = nightmareToken
        // Respect Auto: garment changes need auto-masked inpainting; forcing flux_edit
         // here incorrectly bypassed the selected editing workflow on every photo edit.
-        val editFlowForRun = nightmareEditFlow
+        val editFlowForRun = if (faceDetailRun && nightmareMode) "flux_edit" else nightmareEditFlow
        val requestedPrompt = if (tab == 2 && fictionalAdultMode && input == null) {
         val age = characterAge.toIntOrNull()
         if (age == null || age < 18 || age > 100) { status = "Enter an adult age from 18 to 100"; return }
         listOf("Original fictional adult woman, age $age", appearance, bodyDescription, pose, setting, photoStyle, prompt).filter { it.isNotBlank() }.joinToString(", ")
        } else (promptOverride ?: prompt)
        val requestedStrength = if (input != null) editStrength.coerceIn(0.10f, 0.80f) else editStrength
-       val requestedSpeed = if (input != null) editSpeed else generationSpeed
+       val requestedSpeed = if (faceDetailRun) "MAX QUALITY" else if (input != null) editSpeed else generationSpeed
        val requestedHighQuality = requestedSpeed == "MAX QUALITY"
        val requestedResolution = if (input == null && requestedSpeed == "FAST") 768 else resolution
-       val editPrompt = if (input != null) "$requestedPrompt. Keep the same person, face, pose, camera and background." else requestedPrompt
-       if (input != null && precisionEdit && (!maskMode || strokes.isEmpty())) {
+       val editPrompt = if (input != null) {
+         if (faceDetailRun) requestedPrompt else "$requestedPrompt. Keep the same person, face, pose, camera and background."
+        } else FaceDetailEnhancement.generationPrompt(requestedPrompt)
+       if (input != null && !faceDetailRun && precisionEdit && (!maskMode || strokes.isEmpty())) {
         status = "Precision Edit requires a painted area. Paint the region to change or disable Precision Edit."
         return
        }
-       val mask = if (input != null && maskMode && strokes.isNotEmpty()) makeMask(input.width, input.height, strokes.toList(), brush) else null
+       val mask = if (input != null && !faceDetailRun && maskMode && strokes.isNotEmpty()) makeMask(input.width, input.height, strokes.toList(), brush) else null
               result = null // Do not leave a previous variation visible as a failed new edit.
               busy = true; generationPercent = 0; renderingPercent = 0; nativeProgress = useNativeEdit
               status = if (useOnlineEdit) "Editing with online Qwen…" else if (useNativeEdit) "Editing locally with Qwen Turbo…" else if (input != null) "Editing photo…" else "Creating image…"
@@ -563,7 +566,7 @@ class MainActivity : ComponentActivity() {
           } else if (useOnlineEdit && input != null) {
             val generated = OnlineQwenEditor.edit(input, editPrompt, onlineQwenUrl, onlineQwenModel, onlineQwenKey)
             check(!isNearlyWhiteImage(generated)) { "Online editor returned a blank image." }
-            if (mask != null) compositeMaskedEdit(input, generated, mask) else generated
+            if (faceDetailRun) compositeRefinedFaces(input, generated) ?: error("No faces could be located for face-only refinement.") else if (mask != null) compositeMaskedEdit(input, generated, mask) else generated
            } else if (useNativeEdit && input != null) {
            val generated = NativeQwenEditor.edit(
             this@MainActivity, input, editPrompt,
@@ -575,7 +578,7 @@ class MainActivity : ComponentActivity() {
             }
            } }
            check(!isNearlyWhiteImage(generated)) { "Qwen returned a blank image." }
-           if (mask != null) compositeMaskedEdit(input, generated, mask) else generated
+           if (faceDetailRun) compositeRefinedFaces(input, generated) ?: error("No faces could be located for face-only refinement.") else if (mask != null) compositeMaskedEdit(input, generated, mask) else generated
           } else if (useNightmare) {
            val generated = try {
             NightmareClient.generate(editPrompt, tokenForRun, input, requestedStrength, requestedHighQuality, requestedResolution, editFlowForRun, requestedSpeed)
@@ -598,7 +601,9 @@ class MainActivity : ComponentActivity() {
            }
            check(!isNearlyWhiteImage(generated)) { "The AI returned a blank white image. Try a different flow or restart the model." }
            if (input != null && isSameImage(input, generated)) error("Nightmare returned the original image unchanged; verify the img2img flow and its image input.")
-           if (mask != null && input != null) compositeMaskedEdit(input, generated, mask) else if (input != null) preserveDetectedFace(input, preserveFraming(input, generated)) else generated
+           if (mask != null && input != null) compositeMaskedEdit(input, generated, mask) else if (faceDetailRun && input != null) {
+             compositeRefinedFaces(input, generated) ?: error("No faces could be automatically located for face-only refinement. Original photo preserved.")
+            } else if (input != null) preserveDetectedFace(input, preserveFraming(input, generated)) else generated
           } else if (useLocal) {
            val encoded = input?.let { bitmap ->
             ByteArrayOutputStream().use { stream -> bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream); Base64.encodeToString(stream.toByteArray(), Base64.NO_WRAP) }
@@ -868,6 +873,11 @@ class MainActivity : ComponentActivity() {
         Slider(value = comparePosition, onValueChange = { comparePosition = it }, valueRange = 0f..1f)
        }
        if (!videoMode) OutlinedButton(onClick = { original = image; originalGeneratedHere = resultGeneratedHere; result = null; videoMode = false; tab = 1; maskMode = false; strokes.clear(); status = "Image loaded for editing. Choose an edit below."; }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Edit Image") }
+       if (!videoMode) OutlinedButton(onClick = {
+        status = "Refining faces and eyes with high-quality AI editing…"
+        requestImage(image, FaceDetailEnhancement.REFINE_PROMPT)
+       }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Improve Faces & Eyes") }
+       if (!videoMode) Text("Face refinement uses a higher-quality edit and blends detected faces back into the original. It may take longer than Fast Edit.")
        if (!videoMode) OutlinedButton(onClick = {
         if (image.width >= 4096 || image.height >= 4096) {
          status = "Image is already 4K or larger."
@@ -1259,6 +1269,63 @@ private fun preserveFraming(original: Bitmap?, generated: Bitmap): Bitmap {
  * leave the generated result untouched rather than guessing a face location.
  * The soft elliptical blend avoids a sharp pasted-face rectangle.
  */
+
+/**
+ * Replaces only detected face regions, preserving full-resolution eyes/body/background outside
+ * those regions. Face detection works on a <=1024px preview to limit memory on 4K images.
+ */
+private fun compositeRefinedFaces(original: Bitmap, edited: Bitmap): Bitmap? = runCatching {
+ val width = original.width
+ val height = original.height
+ if (width < 64 || height < 64) return@runCatching null
+ val previewScale = minOf(1f, 1024f / maxOf(width, height))
+ val detectorW = ((width * previewScale).toInt().coerceAtLeast(2) / 2) * 2
+ val detectorH = (height * previewScale).toInt().coerceAtLeast(2)
+ val detectorInput = Bitmap.createBitmap(detectorW, detectorH, Bitmap.Config.RGB_565)
+ try {
+  val rect = android.graphics.Rect(0, 0, detectorW, detectorH)
+  android.graphics.Canvas(detectorInput).drawBitmap(original, null, rect,
+   android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG))
+  val found = arrayOfNulls<android.media.FaceDetector.Face>(12)
+  val count = android.media.FaceDetector(detectorW, detectorH, found.size).findFaces(detectorInput, found)
+  if (count <= 0) return@runCatching null
+  val out = original.copy(Bitmap.Config.ARGB_8888, true)
+  val canvas = android.graphics.Canvas(out)
+  val sx = width.toFloat() / detectorW
+  val sy = height.toFloat() / detectorH
+  var changed = 0
+  for (face in found.take(count)) {
+   if (face == null || face.confidence() < 0.3f) continue
+   val eye = face.eyesDistance()
+   if (eye < 2f) continue
+   val mid = android.graphics.PointF()
+   face.getMidPoint(mid)
+   val cx = mid.x * sx
+   val cy = (mid.y + eye * 0.55f) * sy
+   val rx = eye * 1.65f * sx
+   val ry = eye * 2.20f * sy
+   val oval = android.graphics.RectF(cx-rx, cy-ry, cx+rx, cy+ry)
+   val layer = canvas.saveLayer(oval.left, oval.top, oval.right, oval.bottom, null)
+   try {
+    canvas.drawBitmap(edited, null, android.graphics.RectF(0f, 0f, width.toFloat(), height.toFloat()),
+     android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG))
+    val radial = android.graphics.RadialGradient(0f, 0f, 1f,
+     intArrayOf(Color.WHITE, Color.WHITE, Color.TRANSPARENT),
+     floatArrayOf(0f, 0.60f, 1f), android.graphics.Shader.TileMode.CLAMP)
+    radial.setLocalMatrix(android.graphics.Matrix().apply { setScale(rx, ry); postTranslate(cx, cy) })
+    val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+     shader = radial
+     xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.DST_IN)
+    }
+    canvas.drawOval(oval, paint)
+    paint.xfermode = null
+   } finally { canvas.restoreToCount(layer) }
+   changed++
+  }
+  if (changed == 0) { out.recycle(); null } else out
+ } finally { detectorInput.recycle() }
+}.getOrNull()
+
 private fun preserveDetectedFace(original: Bitmap, generated: Bitmap): Bitmap {
  return runCatching {
   val width = original.width
