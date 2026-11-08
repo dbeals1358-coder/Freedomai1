@@ -155,6 +155,8 @@ class MainActivity : ComponentActivity() {
    var showConnection by remember { mutableStateOf(false) }
    var showAdvancedConnection by remember { mutableStateOf(false) }
    var prompt by remember { mutableStateOf("") }
+    var cartoonMode by remember { mutableStateOf(false) }
+    var cartoonStyle by remember { mutableStateOf(CartoonImagePrompt.DEFAULT_STYLE) }
    var pendingAssistantImage by remember { mutableStateOf<String?>(null) }
    var showRemoveClothingConfirm by remember { mutableStateOf(false) }
    var original by remember { mutableStateOf<Bitmap?>(null) }
@@ -346,7 +348,7 @@ class MainActivity : ComponentActivity() {
       Text(if (videoMode) "Create video from a photo" else if (tab == -1) "What will you create?" else if (tab == 0) "Turn your ideas into images" else if (tab == 3) "Your conversational AI" else if (tab == 2) "Private 18+ studio" else "Give your photos a fresh look", style = MaterialTheme.typography.titleLarge)
       if (tab == 3) {
        AssistantScreen(
-         onCreateImage = { request -> prompt = request; videoMode = false; tab = 0; pendingAssistantImage = request; status = "Assistant is starting image generation…" },
+         onCreateImage = { request -> prompt = request; cartoonMode = false; videoMode = false; tab = 0; pendingAssistantImage = request; status = "Assistant is starting image generation…" },
          onEditImage = { request -> prompt = request; videoMode = false; tab = 1; status = "Edit instructions ready. Select an image and tap AI Edit." },
          onCreateVideo = { request -> prompt = request; videoMode = true; tab = 1; status = "Video request ready. Select a photo to animate." }
         )
@@ -356,7 +358,16 @@ class MainActivity : ComponentActivity() {
         Text("✦", style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.primary)
         Text("Build it, Dream it, Crank it!", style = MaterialTheme.typography.headlineLarge)
         Text("Your AI Studio — create or edit photos and videos.", color = UiColor(0xFFD3D0E3))
-        Button(onClick = { tab = 0 }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("Create Image") }
+        Button(onClick = { cartoonMode = false; videoMode = false; tab = 0 }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("Create Image") }
+         OutlinedButton(onClick = {
+          cartoonMode = true
+          videoMode = false
+          tab = 0
+          prompt = ""
+          cartoonStyle = CartoonImagePrompt.DEFAULT_STYLE
+          result = null
+          status = "Describe any cartoon you want. Customize the art style or leave the default."
+         }, enabled = !busy, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("Create Cartoon Image") }
         OutlinedButton(onClick = { tab = 1 }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("Edit Photo") }
         OutlinedButton(onClick = {
          videoMode = false
@@ -526,7 +537,8 @@ class MainActivity : ComponentActivity() {
        val requestedResolution = if (input == null && requestedSpeed == "FAST") 768 else resolution
        val editPrompt = if (input != null) {
          if (faceDetailRun) requestedPrompt else "$requestedPrompt. Keep the same person, face, pose, camera and background."
-        } else FaceDetailEnhancement.generationPrompt(requestedPrompt)
+        } else if (cartoonMode && tab == 0) CartoonImagePrompt.build(requestedPrompt, cartoonStyle)
+         else FaceDetailEnhancement.generationPrompt(requestedPrompt)
        if (input != null && !faceDetailRun && precisionEdit && (!maskMode || strokes.isEmpty())) {
         status = "Precision Edit requires a painted area. Paint the region to change or disable Precision Edit."
         return
@@ -616,7 +628,7 @@ class MainActivity : ComponentActivity() {
              if (faceDetailRun && input != null) compositeRefinedFaces(input, generated) ?: error("No faces located for face-only refinement.") else generated
             }
           } else {
-           val generated = generateImage(address, editPrompt, input, requestedStrength, mask, requestedHighQuality)
+           val generated = generateImage(address, editPrompt, input, requestedStrength, mask, requestedHighQuality, cartoonMode && tab == 0 && input == null)
            if (faceDetailRun && input != null) compositeRefinedFaces(input, generated) ?: error("No faces located for face-only refinement.") else if (input != null && mask == null) preserveFraming(input, generated) else generated
           }
          }
@@ -679,9 +691,21 @@ class MainActivity : ComponentActivity() {
        }
       }
       if (tab == 0) {
-       OutlinedTextField(value = prompt, onValueChange = { prompt = it }, label = { Text("Describe your image") }, placeholder = { Text("A peaceful beach at sunset, warm light, gentle waves…") }, modifier = Modifier.fillMaxWidth().height(170.dp))
+        if (cartoonMode) {
+         Text("Cartoon image creator", style = MaterialTheme.typography.titleMedium)
+         Text("You choose the subject and style. Try 2D, anime, comic book, 3D, watercolor, or describe any other cartoon style.")
+         OutlinedTextField(value = cartoonStyle, onValueChange = { cartoonStyle = it },
+          label = { Text("Cartoon style — type anything") },
+          placeholder = { Text("e.g. 2D, comic, anime, 3D, hand-drawn") },
+          modifier = Modifier.fillMaxWidth())
+        }
+        OutlinedTextField(value = prompt, onValueChange = { prompt = it },
+         label = { Text(if (cartoonMode) "Describe your cartoon" else "Describe your image") },
+         placeholder = { Text(if (cartoonMode) "A cheerful dragon riding a bicycle through a colorful city…" else "A peaceful beach at sunset, warm light, gentle waves…") },
+         modifier = Modifier.fillMaxWidth().height(170.dp))
        OutlinedButton(onClick = { listenForPrompt() }, enabled = !busy) { Text("🎤 Speak prompt") }
-       Button(onClick = { requestImage(null) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text(if (busy) "Creating…" else "Create Image") }
+       Button(onClick = { requestImage(null) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text(if (busy) "Creating…" else if (cartoonMode) "Create Cartoon" else "Create Image") }
+       if (cartoonMode) Text("Uses your selected image model. For best results, select a cartoon-capable model in Nightmare if one is installed.")
 
       } else if (!videoMode && (tab == 1 || (tab == 2 && adultConfirmed && !fictionalAdultMode))) {
        if (tab == 2) Text("Private editing: adjust brightness and saturation, then save to app-private storage. AI edits may send your photo to the selected model/server. Only use images you have permission to edit.")
@@ -1142,8 +1166,8 @@ private fun adjust(bitmap: Bitmap, brightness: Float, saturation: Float): Bitmap
  return Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888).apply { setPixels(pixels, 0, w, 0, 0, w, h) }
 }
 
-private fun generateImage(server: String, prompt: String, input: Bitmap?, editStrength: Float, mask: Bitmap? = null, highQuality: Boolean = true): Bitmap {
- val payload = JSONObject().put("prompt", prompt).put("negative_prompt", "cartoon, anime, illustration, CGI, plastic skin, waxy skin, blurry, distorted anatomy, extra fingers, deformed face, watermark, text").put("steps", if (highQuality) 35 else 20).put("cfg_scale", 6.0).put("width", if (input == null && highQuality) 768 else ((input?.width ?: 512).coerceIn(256, 1024) / 8 * 8)).put("height", if (input == null && highQuality) 1024 else ((input?.height ?: 512).coerceIn(256, 1024) / 8 * 8)).put("batch_size", 1)
+private fun generateImage(server: String, prompt: String, input: Bitmap?, editStrength: Float, mask: Bitmap? = null, highQuality: Boolean = true, cartoonMode: Boolean = false): Bitmap {
+ val payload = JSONObject().put("prompt", prompt).put("negative_prompt", CartoonImagePrompt.negativePrompt(cartoonMode)).put("steps", if (highQuality) 35 else 20).put("cfg_scale", 6.0).put("width", if (input == null && highQuality) 768 else ((input?.width ?: 512).coerceIn(256, 1024) / 8 * 8)).put("height", if (input == null && highQuality) 1024 else ((input?.height ?: 512).coerceIn(256, 1024) / 8 * 8)).put("batch_size", 1)
  if (input != null) {
   val bytes = ByteArrayOutputStream().use { stream -> input.compress(Bitmap.CompressFormat.PNG, 100, stream); stream.toByteArray() }
   payload.put("init_images", JSONArray().put(Base64.encodeToString(bytes, Base64.NO_WRAP))).put("denoising_strength", editStrength.toDouble())
