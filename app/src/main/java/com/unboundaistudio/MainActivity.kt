@@ -277,7 +277,7 @@ class MainActivity : ComponentActivity() {
         OutlinedButton(onClick = {
          val search = Uri.parse("https://www.google.com/search").buildUpon()
           .appendQueryParameter("tbm", "isch")
-          .appendQueryParameter("q", "adult women nude photography")
+          .appendQueryParameter("q", "nude photos of girls 18-80")
           .build()
          runCatching {
           startActivity(Intent(Intent.ACTION_VIEW, search).addCategory(Intent.CATEGORY_BROWSABLE))
