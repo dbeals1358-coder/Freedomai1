@@ -1,6 +1,7 @@
 package com.unboundaistudio
 
 import android.graphics.Bitmap
+import android.content.Context
 import android.util.Base64
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
@@ -46,6 +47,7 @@ internal object NightmareVideoClient {
  )
 
  fun generate(
+  context: Context,
   token: String,
   flow: String,
   image: Bitmap,
@@ -150,6 +152,9 @@ internal object NightmareVideoClient {
    require(mp4.size >= 12 && String(mp4, 4, 4, Charsets.US_ASCII) == "ftyp") {
     "Nightmare returned an invalid MP4 file"
    }
+   operation.check()
+   onStatus("Checking decoded video frames for corruption…")
+   NightmareVideoQualityGate.requireUsable(context, mp4)
    operation.check()
    return RenderedVideo(mp4, plan.seconds, plan.durationLabel, plan.width, plan.height, reduced)
   } catch (error: Exception) {
