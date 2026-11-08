@@ -1028,7 +1028,7 @@ class MainActivity : ComponentActivity() {
               runOnUiThread { generationPercent = p; status = "MobileI2V processing… $p%" }
              }
             } else {
-             NightmareVideoClient.generate(nightmareToken, nightmareVideoFlow, image, motionPrompt, duration) { stage ->
+             NightmareVideoClient.generate(this@MainActivity, nightmareToken, nightmareVideoFlow, image, motionPrompt, duration) { stage ->
               runOnUiThread {
                if (busy && !useMobileI2V && generationJob?.isActive == true) status = stage
               }
