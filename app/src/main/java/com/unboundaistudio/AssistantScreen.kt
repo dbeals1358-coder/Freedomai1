@@ -134,6 +134,26 @@ fun AssistantScreen(onCreateImage: (String) -> Unit = {}, onEditImage: (String) 
   }
   if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error)
   OutlinedTextField(message, { message = it }, label = { Text("Ask anything") }, modifier = Modifier.fillMaxWidth())
+  // Web image discovery is separate from AI image generation and works without a chat API token.
+  // Results open in the user's browser, where the provider controls adult filtering.
+  OutlinedButton(
+   enabled = !busy && message.isNotBlank(),
+   onClick = {
+    val query = message.trim()
+    val url = Uri.parse("https://www.google.com/search").buildUpon()
+     .appendQueryParameter("tbm", "isch")
+     .appendQueryParameter("q", query)
+     .build()
+    runCatching {
+     context.startActivity(Intent(Intent.ACTION_VIEW, url).addCategory(Intent.CATEGORY_BROWSABLE))
+     history.add("user" to "Search web images: $query")
+     history.add("assistant" to "Opened live web image results in your browser. Search results and adult-content filtering are controlled by the search provider and browser settings.")
+     message = ""
+    }.onFailure { error = "No browser available to open image results: ${it.message}" }
+   },
+   modifier = Modifier.fillMaxWidth()
+  ) { Text("Search Web Images") }
+  Text("Search Web Images finds existing online photos. Send/Create Image generates a new image instead. Search-provider SafeSearch and content rules still apply.")
   Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
    OutlinedButton(onClick = {
     runCatching {
@@ -147,6 +167,18 @@ fun AssistantScreen(onCreateImage: (String) -> Unit = {}, onEditImage: (String) 
     val input = message.trim()
     message = ""
     history.add("user" to input)
+    // Search intent must not be mistaken for an image-generation prompt.
+    val searchRequest = Regex("(?i)\\b(search|find|look up|browse|web|internet)\\b").containsMatchIn(input) &&
+     Regex("(?i)\\b(images?|photos?|pictures?|pics?)\\b").containsMatchIn(input)
+    if (searchRequest) {
+     val url = Uri.parse("https://www.google.com/search").buildUpon()
+      .appendQueryParameter("tbm", "isch").appendQueryParameter("q", input).build()
+     runCatching {
+      context.startActivity(Intent(Intent.ACTION_VIEW, url).addCategory(Intent.CATEGORY_BROWSABLE))
+      history.add("assistant" to "Opened web image search in your browser. Search-provider filtering may apply.")
+     }.onFailure { error = "Cannot open web image search: ${it.message}" }
+     return@Button
+    }
     val imageRequest = Regex("(?i)\\b(show|make|create|generate|draw|picture|image|photo)\\b").containsMatchIn(input)
     val editRequest = Regex("(?i)\\b(edit|modify|change|replace|remove|adjust)\\b").containsMatchIn(input)
     val videoRequest = Regex("(?i)\\b(video|animate|animation|motion)\\b").containsMatchIn(input)
