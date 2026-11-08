@@ -48,4 +48,9 @@ class AutomaticClothingEditTest {
         assertNull(AutomaticClothingEdit.parse("Remove the blue bikini"))
         assertNull(AutomaticClothingEdit.parse("Make the beach red"))
     }
+    @Test fun rejectsAdditionalFaceOrSceneEdit() {
+        assertNull(AutomaticClothingEdit.parse("Make the bikini red and make her smile"))
+        assertNull(AutomaticClothingEdit.parse("Change bikini to green and brighten background"))
+    }
+
 }
