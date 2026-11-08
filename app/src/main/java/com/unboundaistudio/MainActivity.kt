@@ -132,6 +132,7 @@ class MainActivity : ComponentActivity() {
    var videoElapsedSeconds by remember { mutableIntStateOf(0) }
    var videoJob by remember { mutableStateOf<Job?>(null) }
    var status by remember { mutableStateOf("") }
+   var nightmareConnectionFailed by remember { mutableStateOf(false) }
    var result by remember { mutableStateOf<Bitmap?>(null) }
    var originalGeneratedHere by remember { mutableStateOf(false) }
    var resultGeneratedHere by remember { mutableStateOf(false) }
@@ -264,6 +265,31 @@ class MainActivity : ComponentActivity() {
    }
    var expandedPhoto by remember { mutableStateOf<Bitmap?>(null) }
    val edited = remember(original, brightness, saturation) { original?.let { adjust(it, brightness, saturation) } }
+   fun openNightmare() {
+    val intent = packageManager.getLaunchIntentForPackage("com.abrah.nightmare")
+    if (intent == null) {
+     status = "Nightmare app not found. Open Nightmare from your phone's app list."
+    } else {
+     runCatching { startActivity(intent) }.onFailure {
+      status = "Could not open Nightmare: ${it.message ?: "Try launching it from your app list."}"
+     }
+    }
+   }
+   fun checkNightmareConnection() {
+    busy = true
+    scope.launch {
+     try {
+      val version = withContext(Dispatchers.IO) { NightmareClient.checkConnection() }
+      nightmareConnectionFailed = false
+      status = "Nightmare v$version is connected on port 8820. You can generate now."
+     } catch (e: kotlinx.coroutines.CancellationException) { throw e
+     } catch (e: Exception) {
+      nightmareConnectionFailed = true
+      status = NightmareConnectionDiagnostics.helpFor(e)
+       ?: "Nightmare API check failed: ${e.message ?: "unexpected response"}. Open Nightmare and confirm its API is enabled."
+     } finally { busy = false }
+    }
+   }
    MaterialTheme(colorScheme = darkColorScheme(
     primary = UiColor(0xFF98F5D0), onPrimary = UiColor(0xFF10372A),
     secondary = UiColor(0xFF8AC7FF), background = UiColor(0xFF101116),
@@ -405,6 +431,11 @@ class MainActivity : ComponentActivity() {
        Text("Use Nightmare for images")
        Switch(checked = nightmareMode, enabled = !busy, onCheckedChange = { nightmareMode = it; prefs.edit().putBoolean("nightmare", it).apply() })
       }
+      Text("Image generation needs Nightmare's local API running on this phone (port 8820).")
+      OutlinedButton(enabled = !busy, onClick = { openNightmare() },
+       modifier = Modifier.fillMaxWidth()) { Text("Open Nightmare") }
+      OutlinedButton(enabled = !busy, onClick = { checkNightmareConnection() },
+       modifier = Modifier.fillMaxWidth()) { Text("Check Nightmare connection") }
       TextButton(onClick = { showAdvancedConnection = !showAdvancedConnection }) { Text(if (showAdvancedConnection) "Hide advanced options ↑" else "Advanced options ↓") }
       if (showAdvancedConnection) {
       OutlinedTextField(value = nightmareToken, onValueChange = {
@@ -413,18 +444,6 @@ class MainActivity : ComponentActivity() {
       }, label = { Text("Nightmare API token (kept on this phone)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
       Text("Creation uses RealVis. Auto Edit uses Nightmare's Clothes auto-mask for garment changes, or an installed FLUX/Qwen edit model for other instructions. Img2img only restyles photos.")
       OutlinedTextField(value = nightmareEditFlow, onValueChange = { nightmareEditFlow = it.trim(); prefs.edit().putString("nightmare_edit_flow", nightmareEditFlow).apply() }, label = { Text("Nightmare edit workflow") }, supportingText = { Text("Recommended: auto. Others: inpaint, flux_edit, img2img (restyle only), current, or saved:Your Flow Name.") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-      OutlinedButton(enabled = !busy, onClick = {
-       busy = true
-       scope.launch {
-        try {
-         val version = withContext(Dispatchers.IO) { NightmareClient.checkConnection() }
-         status = "Nightmare v$version is reachable on port 8820."
-        } catch (e: kotlinx.coroutines.CancellationException) { throw e
-        } catch (e: Exception) {
-         status = "Cannot reach Nightmare on port 8820: ${e.message ?: "connection failed"}. Enable its API in Advanced settings."
-        } finally { busy = false }
-       }
-      }) { Text("Check Nightmare connection") }
       }
       HorizontalDivider()
       Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -498,6 +517,12 @@ class MainActivity : ComponentActivity() {
         }
        }
       if (status.isNotEmpty() && !status.startsWith("Nightmare v")) Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceVariant) { Text(status, modifier = Modifier.fillMaxWidth().padding(16.dp)) }
+      if (nightmareConnectionFailed) {
+       OutlinedButton(enabled = !busy, onClick = { openNightmare() },
+        modifier = Modifier.fillMaxWidth()) { Text("Open Nightmare") }
+       OutlinedButton(enabled = !busy, onClick = { checkNightmareConnection() },
+        modifier = Modifier.fillMaxWidth()) { Text("Check Nightmare connection") }
+      }
       fun requestImage(input: Bitmap?, promptOverride: String? = null) {
         val faceDetailRun = input != null && promptOverride == FaceDetailEnhancement.REFINE_PROMPT
        if ((promptOverride ?: prompt).isBlank() && !(tab == 2 && fictionalAdultMode && (appearance.isNotBlank() || bodyDescription.isNotBlank()))) { status = "Describe the image first"; return }
@@ -546,7 +571,8 @@ class MainActivity : ComponentActivity() {
        val mask = if (input != null && !faceDetailRun && maskMode && strokes.isNotEmpty()) makeMask(input.width, input.height, strokes.toList(), brush) else null
               result = null // Do not leave a previous variation visible as a failed new edit.
               busy = true; generationPercent = 0; renderingPercent = 0; nativeProgress = useNativeEdit
-              status = if (useOnlineEdit) "Editing with online Qwen…" else if (useNativeEdit) "Editing locally with Qwen Turbo…" else if (input != null) "Editing photo…" else "Creating image…"
+              nightmareConnectionFailed = false
+              status = if (useOnlineEdit) "Editing with online Qwen…" else if (useNativeEdit) "Editing locally with Qwen Turbo…" else if (input != null) "Editing photo…" else "Creating image…" 
         // Nightmare does not currently expose generation progress through this client.
         // Show an explicitly estimated percentage, capped below 100 until an image arrives.
         val progressJob = if (useNativeEdit) null else scope.launch {
@@ -648,8 +674,12 @@ class MainActivity : ComponentActivity() {
          val engineSeconds = (inferenceFinishedAt - editStartedAt) / 1000
          status += " | Engine: ${if (usedFastLocalEdit) "On-device color edit" else editEngine} | Processing: ${engineSeconds}s | Total: ${totalSeconds}s"
         } catch (e: kotlinx.coroutines.CancellationException) { throw e
-        } catch (e: Exception) { status = when {
-          useOnlineEdit -> "Online Qwen edit failed: ${e.message ?: "Check your endpoint, model and token"}. Original image unchanged." 
+        } catch (e: Exception) {
+         val nightmareHelp = if (useNightmare) NightmareConnectionDiagnostics.helpFor(e) else null
+         nightmareConnectionFailed = nightmareHelp != null
+         status = when {
+          nightmareHelp != null -> nightmareHelp
+          useOnlineEdit -> "Online Qwen edit failed: ${e.message ?: "Check your endpoint, model and token"}. Original image unchanged."
            useNativeEdit -> "Native Qwen edit failed: ${e.message ?: "Unknown model error"}. Your original image is unchanged."
           useNightmare -> "Nightmare ${if (input != null) "edit" else "generation"} failed (flow: ${if (input != null) editFlowForRun else "saved:FreedomAI RealVis"}): ${e.message ?: "connection failed"}. Open the matching flow in Nightmare, check its model and image input."
           useLocal -> "Local Dream: ${e.message ?: "connection failed"}. Keep the model loaded; try split screen if disconnected."
