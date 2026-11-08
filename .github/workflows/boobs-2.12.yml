@@ -1,0 +1,98 @@
+name: Boobs 2.12
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+    paths:
+      - 'app/src/main/java/com/unboundaistudio/MainActivity.kt'
+      - 'app/src/main/java/com/unboundaistudio/VideoFrameContinuity.kt'
+      - 'app/src/main/java/com/unboundaistudio/NightmareVideoQualityGate.kt'
+      - 'app/src/test/java/com/unboundaistudio/VideoFrameContinuityTest.kt'
+      - 'app/src/main/java/com/unboundaistudio/AutomaticClothingEdit.kt'
+      - 'app/src/test/java/com/unboundaistudio/AutomaticClothingEditTest.kt'
+      - 'app/src/main/java/com/unboundaistudio/NightmareEditModelPicker.kt'
+      - 'app/src/test/java/com/unboundaistudio/NightmareEditModelPickerTest.kt'
+      - 'app/src/main/java/com/unboundaistudio/NightmareVideoClient.kt'
+      - 'app/src/main/java/com/unboundaistudio/HorizontalStripeRepair.kt'
+      - 'app/src/main/java/com/unboundaistudio/AiSuperResolution.kt'
+      - 'app/src/test/java/com/unboundaistudio/HorizontalStripeRepairTest.kt'
+      - 'app/build.gradle.kts'
+      - 'app/src/main/AndroidManifest.xml'
+      - 'app/src/main/java/com/unboundaistudio/NightmareClient.kt'
+      - 'app/src/main/java/com/unboundaistudio/NativeQwenEditor.kt'
+      - 'app/src/main/java/com/unboundaistudio/MobileI2VVideoEngine.kt'
+      - 'app/src/main/java/com/unboundaistudio/OfflineVideoEngine.kt'
+      - 'app/src/main/java/com/unboundaistudio/MobileI2VModelUpdater.kt'
+      - '.github/workflows/boobs-2.12.yml'
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+          log-accepted-android-sdk-licenses: false
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+      - name: Verify source version and Hugging Face build secret
+        env:
+          HF_ACCESS_TOKEN: ${{ secrets.HF_ACCESS_TOKEN }}
+          NIGHTMARE_API_TOKEN: ${{ secrets.NIGHTMARE_API_TOKEN }}
+        run: |
+          grep -q 'versionName = "2.12"' app/build.gradle.kts
+          if [ -z "$HF_ACCESS_TOKEN" ]; then echo "::warning::HF_ACCESS_TOKEN not configured; APK will not have embedded Hugging Face access"; fi
+          if [ -z "$NIGHTMARE_API_TOKEN" ]; then echo "::warning::NIGHTMARE_API_TOKEN missing; app will use saved token instead"; fi
+      - name: Fetch native Qwen 2.1 runtime
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p app/libs "$RUNNER_TEMP/qwen-aar"
+          gh release download v0.4.0 --repo scsonic/libQwenImage21 --pattern '*.aar' --dir "$RUNNER_TEMP/qwen-aar"
+          count=$(find "$RUNNER_TEMP/qwen-aar" -name '*.aar' -type f | wc -l)
+          test "$count" -eq 1
+          cp "$(find "$RUNNER_TEMP/qwen-aar" -name '*.aar' -type f -print -quit)" app/libs/qwenimage21.aar
+          unzip -l app/libs/qwenimage21.aar | grep 'jni/arm64-v8a/libqwenimage21_jni.so'
+      - name: Bundle Qwen2 tokenizer for offline MobileI2V text conditioning
+        run: |
+          set -euo pipefail
+          mkdir -p app/src/main/assets
+          curl --fail --location --retry 4 --retry-delay 5 --connect-timeout 30 \
+            https://huggingface.co/Qwen/Qwen2-0.5B/resolve/main/tokenizer.json \
+            -o app/src/main/assets/qwen2_tokenizer.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          path = Path("app/src/main/assets/qwen2_tokenizer.json")
+          model = json.loads(path.read_text())["model"]
+          assert len(model["vocab"]) > 100000 and len(model["merges"]) > 100000
+          print("Qwen2 tokenizer asset verified:", path.stat().st_size, "bytes")
+          PY
+      - name: Install selected launcher photo
+        run: |
+          mkdir -p app/src/main/res/drawable-nodpi
+          base64 --decode app/icon_source.b64 > app/src/main/res/drawable-nodpi/boobs_launcher.jpg
+          test -s app/src/main/res/drawable-nodpi/boobs_launcher.jpg
+      - name: Compile and test FreedomAI v2.12
+        env:
+          HF_ACCESS_TOKEN: ${{ secrets.HF_ACCESS_TOKEN }}
+          NIGHTMARE_API_TOKEN: ${{ secrets.NIGHTMARE_API_TOKEN }}
+        run: gradle assembleDebug lintDebug testDebugUnitTest --no-daemon
+      - name: Name APK with version
+        run: cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/FreedomAI-v2.12-debug.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          if-no-files-found: error
+          name: FreedomAI-v2.12-APK
+          path: app/build/outputs/apk/debug/FreedomAI-v2.12-debug.apk
