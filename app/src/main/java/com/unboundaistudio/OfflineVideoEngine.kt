@@ -22,8 +22,9 @@ object OfflineVideoEngine {
  }
  fun render(photo: Bitmap, seconds: Int, motion: String, output: File, progress: (Int) -> Unit, decodedFrames: List<Bitmap>? = null) {
   require(seconds in 1..120)
-  val w = 512
-  val h = 512
+  val w = decodedFrames?.firstOrNull()?.width ?: 512
+  val h = decodedFrames?.firstOrNull()?.height ?: 512
+  require(w in 16..1024 && h in 16..1024 && w % 2 == 0 && h % 2 == 0) { "Unsupported video frame dimensions" }
   val fps = 24
   val total = seconds * fps
   val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, w, h).apply {
