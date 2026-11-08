@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
     paths:
+      - 'app/src/main/java/com/unboundaistudio/NightmareClient.kt'
+      - 'app/src/main/java/com/unboundaistudio/NativeQwenEditor.kt'
       - 'app/src/main/java/com/unboundaistudio/MobileI2VVideoEngine.kt'
       - 'app/src/main/java/com/unboundaistudio/MobileI2VModelUpdater.kt'
       - '.github/workflows/boobs-2.6.yml'
