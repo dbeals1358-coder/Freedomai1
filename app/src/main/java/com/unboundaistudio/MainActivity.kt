@@ -479,7 +479,11 @@ class MainActivity : ComponentActivity() {
            val generated = try {
             NightmareClient.generate(editPrompt, tokenForRun, input, requestedStrength, requestedHighQuality, requestedResolution, editFlowForRun, generationSpeed)
            } catch (nightmareError: Exception) {
-            val maskUnavailable = input != null && nightmareError.message.orEmpty().contains("automatic clothing mask is unavailable", ignoreCase = true)
+            val maskFailure = nightmareError.message.orEmpty()
+             val maskUnavailable = input != null &&
+              (maskFailure.contains("auto-mask is unavailable", ignoreCase = true) ||
+               maskFailure.contains("cannot automatically mask", ignoreCase = true) ||
+               maskFailure.contains("no working instruction-edit fallback", ignoreCase = true))
             if (maskUnavailable && qwenReady) {
              runOnUiThread { status = "Nightmare mask unavailable. Trying installed Qwen editor…" }
              NativeQwenEditor.edit(this@MainActivity, input!!, editPrompt,
