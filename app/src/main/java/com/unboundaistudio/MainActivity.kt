@@ -78,6 +78,9 @@ class MainActivity : ComponentActivity() {
    var videoUrl by remember { mutableStateOf(prefs.getString("video_url", "") ?: "") }
    var motionPrompt by remember { mutableStateOf("") }
    var nightmareVideoFlow by remember { mutableStateOf(prefs.getString("nightmare_video_flow", "auto") ?: "auto") }
+   var nightmareImageFlow by remember {
+    mutableStateOf(prefs.getString("nightmare_image_flow", "saved:FreedomAI RealVis")?.ifBlank { "saved:FreedomAI RealVis" } ?: "saved:FreedomAI RealVis")
+   }
    var useMobileI2V by remember { mutableStateOf(prefs.getBoolean("video_mobilei2v_experimental", false)) }
     var runwayKey by remember { mutableStateOf(prefs.getString("runway_key", "") ?: "") }
    var duration by remember { mutableIntStateOf(prefs.getInt("video_duration_seconds", 5).coerceIn(1, 10)) }
@@ -172,6 +175,9 @@ class MainActivity : ComponentActivity() {
    var showAdultConfirm by remember { mutableStateOf(false) }
    var fictionalAdultMode by remember { mutableStateOf(false) }
    var characterAge by remember { mutableStateOf("30") }
+   var characterSubject by remember {
+    mutableStateOf(prefs.getString("fictional_adult_subject", "Man")?.takeIf { it in listOf("Man", "Woman", "Person") } ?: "Man")
+   }
    var appearance by remember { mutableStateOf("") }
    var bodyDescription by remember { mutableStateOf("") }
    var pose by remember { mutableStateOf("") }
@@ -471,8 +477,14 @@ class MainActivity : ComponentActivity() {
        nightmareToken = it.trim()
        prefs.edit().putString("nightmare_token", nightmareToken).apply()
       }, label = { Text("Nightmare API token (kept on this phone)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-      Text("Creation uses RealVis. Auto Edit uses Nightmare's Clothes auto-mask for garment changes, or an installed FLUX/Qwen edit model for other instructions. Img2img only restyles photos.")
-      OutlinedTextField(value = nightmareEditFlow, onValueChange = { nightmareEditFlow = it.trim(); prefs.edit().putString("nightmare_edit_flow", nightmareEditFlow).apply() }, label = { Text("Nightmare edit workflow") }, supportingText = { Text("Recommended: auto. Others: inpaint, flux_edit, img2img (restyle only), current, or saved:Your Flow Name.") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+      Text("Image generation uses the selected saved Nightmare workflow (RealVis by default). Auto Edit uses the appropriate Nightmare editing workflow. A compatible installed image model determines the details it can produce.")
+      OutlinedTextField(value = nightmareImageFlow, onValueChange = {
+        nightmareImageFlow = it.trim()
+        prefs.edit().putString("nightmare_image_flow", nightmareImageFlow).apply()
+       }, label = { Text("Nightmare image-generation workflow") },
+        supportingText = { Text("Default: saved:FreedomAI RealVis. For a different installed image generator, use saved:Your Workflow Name or current.") },
+        singleLine = true, modifier = Modifier.fillMaxWidth())
+       OutlinedTextField(value = nightmareEditFlow, onValueChange = { nightmareEditFlow = it.trim(); prefs.edit().putString("nightmare_edit_flow", nightmareEditFlow).apply() }, label = { Text("Nightmare edit workflow") }, supportingText = { Text("Recommended: auto. Others: inpaint, flux_edit, img2img (restyle only), current, or saved:Your Flow Name.") }, singleLine = true, modifier = Modifier.fillMaxWidth())
       }
       HorizontalDivider()
       Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -583,7 +595,7 @@ class MainActivity : ComponentActivity() {
        val requestedPrompt = if (tab == 2 && fictionalAdultMode && input == null) {
         val age = characterAge.toIntOrNull()
         if (age == null || age < 18 || age > 100) { status = "Enter an adult age from 18 to 100"; return }
-        listOf("Original fictional adult woman, age $age", appearance, bodyDescription, pose, setting, photoStyle, prompt).filter { it.isNotBlank() }.joinToString(", ")
+        FictionalAdultPrompt.build(age, characterSubject, appearance, bodyDescription, pose, setting, photoStyle, prompt)
        } else (promptOverride ?: prompt)
        val requestedStrength = if (faceDetailRun) 0.45f else if (input != null) editStrength.coerceIn(0.10f, 0.80f) else editStrength
        val requestedSpeed = if (faceDetailRun) "MAX QUALITY" else if (input != null) editSpeed else generationSpeed
@@ -648,7 +660,7 @@ class MainActivity : ComponentActivity() {
            if (faceDetailRun) compositeRefinedFaces(input, generated) ?: error("No faces could be located for face-only refinement.") else if (mask != null) compositeMaskedEdit(input, generated, mask) else generated
           } else if (useNightmare) {
            val generated = try {
-            NightmareClient.generate(editPrompt, tokenForRun, input, requestedStrength, requestedHighQuality, requestedResolution, editFlowForRun, requestedSpeed)
+            NightmareClient.generate(editPrompt, tokenForRun, input, requestedStrength, requestedHighQuality, requestedResolution, editFlowForRun, requestedSpeed, nightmareImageFlow)
            } catch (nightmareError: Exception) {
             val maskFailure = nightmareError.message.orEmpty()
              val maskUnavailable = input != null &&
@@ -710,7 +722,7 @@ class MainActivity : ComponentActivity() {
           nightmareHelp != null -> nightmareHelp
           useOnlineEdit -> "Online Qwen edit failed: ${e.message ?: "Check your endpoint, model and token"}. Original image unchanged."
            useNativeEdit -> "Native Qwen edit failed: ${e.message ?: "Unknown model error"}. Your original image is unchanged."
-          useNightmare -> "Nightmare ${if (input != null) "edit" else "generation"} failed (flow: ${if (input != null) editFlowForRun else "saved:FreedomAI RealVis"}): ${e.message ?: "connection failed"}. Open the matching flow in Nightmare, check its model and image input."
+          useNightmare -> "Nightmare ${if (input != null) "edit" else "generation"} failed (flow: ${if (input != null) editFlowForRun else nightmareImageFlow}): ${e.message ?: "connection failed"}. Open the matching flow in Nightmare, check its model and image input."
           useLocal -> "Local Dream: ${e.message ?: "connection failed"}. Keep the model loaded; try split screen if disconnected."
           else -> "Could not create image: ${e.message ?: "connection failed"}"
          }
@@ -727,6 +739,16 @@ class MainActivity : ComponentActivity() {
           Switch(checked = fictionalAdultMode, onCheckedChange = { fictionalAdultMode = it; result = null })
          }
          if (fictionalAdultMode) {
+          Text("Fictional adult subject")
+          Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+           listOf("Man", "Woman", "Person").forEach { choice ->
+            OutlinedButton(onClick = {
+             characterSubject = choice
+             prefs.edit().putString("fictional_adult_subject", choice).apply()
+            }, enabled = !busy) { Text(if (characterSubject == choice) "✓ $choice" else choice) }
+           }
+          }
+          Text("The selected subject is used in the generated prompt; actual anatomical detail depends on the model and workflow.")
           OutlinedTextField(value = characterAge, onValueChange = { characterAge = it.filter(Char::isDigit).take(3) }, label = { Text("Fictional character age (18+)") }, modifier = Modifier.fillMaxWidth())
           OutlinedTextField(value = appearance, onValueChange = { appearance = it }, label = { Text("Appearance: hair, face, eyes") }, modifier = Modifier.fillMaxWidth())
           OutlinedTextField(value = bodyDescription, onValueChange = { bodyDescription = it }, label = { Text("Body proportions and physique") }, modifier = Modifier.fillMaxWidth())

@@ -73,7 +73,7 @@ internal object NightmareClient {
         return Pair(w.coerceAtLeast(512), h.coerceAtLeast(512))
     }
 
-    fun generate(prompt: String, token: String, input: android.graphics.Bitmap?, strength: Float, highQuality: Boolean, resolution: Int = 1024, editFlow: String = "auto", speed: String = "BALANCED"): android.graphics.Bitmap {
+    fun generate(prompt: String, token: String, input: android.graphics.Bitmap?, strength: Float, highQuality: Boolean, resolution: Int = 1024, editFlow: String = "auto", speed: String = "BALANCED", generationFlow: String = "saved:FreedomAI RealVis"): android.graphics.Bitmap {
         require(token.isNotBlank()) { "Enter your Nightmare API token in Connection settings" }
         require(!token.contains('\n') && !token.contains('\r')) { "Invalid Nightmare API token" }
         // Skip the redundant authenticated /info round trip on every generation.
@@ -83,7 +83,12 @@ internal object NightmareClient {
             "Invalid Nightmare edit workflow: $editFlow"
         }
         val requestStarted = android.os.SystemClock.elapsedRealtime()
-        val actualFlow = if (input == null) "saved:FreedomAI RealVis" else EditRequestRouting.chooseFlow(editFlow, prompt)
+        val actualFlow = if (input == null) {
+            require(generationFlow == "current" || (generationFlow.startsWith("saved:") && generationFlow.length > 6)) {
+                "Choose a valid installed Nightmare image workflow: current or saved:Your Workflow Name."
+            }
+            generationFlow
+        } else EditRequestRouting.chooseFlow(editFlow, prompt)
         val payload = JSONObject().put("flow", actualFlow)
             .put("prompt", if (input == null) prompt else EditRequestRouting.promptFor(actualFlow, prompt))
 
