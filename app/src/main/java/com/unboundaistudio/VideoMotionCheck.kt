@@ -8,7 +8,7 @@ import kotlin.math.abs
 
 /** Samples actual decoded frames; a duration or file size alone cannot prove motion. */
 internal object VideoMotionCheck {
- data class Result(val meanChange: Double, val nearlyStatic: Boolean, val samples: Int)
+ data class Result(val meanChange: Double, val nearlyStatic: Boolean, val samples: Int, val largeFrameChanges: Int = 0)
 
  fun inspect(context: Context, uri: Uri): Result {
   val retriever = MediaMetadataRetriever()
@@ -20,6 +20,7 @@ internal object VideoMotionCheck {
    var previous: IntArray? = null
    var total = 0.0
    var comparisons = 0
+   var largeFrameChanges = 0
    val grid = 32
    for (index in 0 until 6) {
     val timeUs = (durationMs * 1000L * (index + 1) / 7L)
@@ -39,14 +40,16 @@ internal object VideoMotionCheck {
       difference += abs(android.graphics.Color.green(a) - android.graphics.Color.green(b))
       difference += abs(android.graphics.Color.blue(a) - android.graphics.Color.blue(b))
      }
-     total += difference.toDouble() / (pixels.size * 3 * 255)
+     val change = difference.toDouble() / (pixels.size * 3 * 255)
+     total += change
+     if (change > 0.10) largeFrameChanges++
      comparisons++
     }
     previous = pixels
    }
    val mean = if (comparisons == 0) 0.0 else total / comparisons
    // Conservative heuristic: compression noise alone can create tiny differences.
-   return Result(mean, comparisons >= 3 && mean < 0.012, comparisons + 1)
+   return Result(mean, comparisons >= 3 && mean < 0.012, comparisons + 1, largeFrameChanges)
   } finally {
    retriever.release()
   }
