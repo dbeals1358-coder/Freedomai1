@@ -92,8 +92,9 @@ internal object NightmareClient {
                 .put("cfg", 6.0).put("width", resolution).put("height", resolution)
         } else {
             // Edit at model-friendly resolution; retain full source for framing/compositing in the UI.
-            // FAST is a preview-quality inference path; MAX QUALITY retains the legacy 2048 cap.
-            val maxEditEdge = when (speed) { "FAST" -> 640; "MAX QUALITY" -> 2048; else -> 1024 }
+            // Fast photo edits run at 512px in Nightmare, avoiding the much slower 1024px
+            // diffusion pass. Preserve aspect with letterboxing and keep source untouched.
+            val maxEditEdge = when (speed) { "FAST" -> 512; "MAX QUALITY" -> 2048; else -> 1024 }
             val scale = minOf(1.0, maxEditEdge.toDouble() / input.width, maxEditEdge.toDouble() / input.height)
             val editWidth = ((input.width * scale).toInt().coerceAtLeast(1)).coerceAtLeast(512)
             val editHeight = ((input.height * scale).toInt().coerceAtLeast(1)).coerceAtLeast(512)
@@ -141,20 +142,16 @@ internal object NightmareClient {
                     // Instruction-following edit is a DIFFERENT Nightmare recipe from img2img.
                     // Do not run an SDXL restyle and claim a requested object edit succeeded.
                     val installed = installedModels(token)
-                    val supported = setOf("FLUX2", "FLUX3", "QWEN21", "FIBO2")
-                    // Prefer an already-installed Qwen checkpoint; do not download a
-                    // duplicate model into FreedomAI's private storage.
-                    val candidates = (0 until installed.length()).mapNotNull { installed.optJSONObject(it) }
-                        .filter { it.optString("family").uppercase() in supported }
-                    val model = candidates.firstOrNull { it.optString("family").equals("QWEN21", true) }
-                        ?.optString("id")
-                        ?: candidates.firstOrNull()?.optString("id").orEmpty()
+                    // FAST selects an installed Klein model when available;
+                    // BALANCED/MAX QUALITY may use the more detailed Qwen model.
+                    // No additional download and no SDXL img2img substitution.
+                    val model = NightmareEditModelPicker.select(installed, speed).orEmpty()
                     check(model.isNotBlank()) {
                         "Nightmare has no instruction-edit model installed. Open Nightmare → Models → Edit and install a compatible FLUX Klein or Qwen Image model. Your RealVis/SDXL image-to-image flow only restyles the photo."
                     }
                     // Respect the requested edit resolution instead of forcing 512 px.
                     // Higher sizes require more memory in Nightmare; report backend errors rather than silently downgrading.
-                    val editSize = minOf(resolution.coerceIn(512, 1024), if (speed == "FAST") 768 else 1024) / 64 * 64
+                    val editSize = minOf(resolution.coerceIn(512, 1024), if (speed == "FAST") 512 else 1024) / 64 * 64
                     payload.put("model", model).put("cfg", 1.0).put("denoise", 1.0)
                         .put("width", editSize).put("height", editSize)
                 }
