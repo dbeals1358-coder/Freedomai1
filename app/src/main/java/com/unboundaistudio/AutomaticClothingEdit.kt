@@ -29,10 +29,12 @@ internal object AutomaticClothingEdit {
     private val colors = Regex("\\b(red|crimson|orange|yellow|green|teal|turquoise|blue|navy|purple|pink|magenta)\\b", RegexOption.IGNORE_CASE)
     private val bikini = Regex("\\b(bikini|two[- ]piece|swimsuit|swimwear|bathing\\s+suit)\\b", RegexOption.IGNORE_CASE)
     private val otherChanges = Regex("\\b(nude|naked|remove|erase|add|shorts|jeans|pants|dress|skirt|smaller|larger|resize|replace|reposition|background to|different person)\\b", RegexOption.IGNORE_CASE)
+    // Do not silently skip an additional face, pose, lighting, or scene edit in FAST mode.
+    private val otherSceneChanges = Regex("\\b(smile|smiling|laugh|wink|close eyes|open eyes|turn head|wave|walk|move arm|change hair|change background|darken background|lighten background|brighten background|pose differently)\\b", RegexOption.IGNORE_CASE)
 
     /** A short color-only command, e.g. 'red bikini' or 'change the blue bikini to red'. */
     fun parse(prompt: String): Request? {
-        if (!bikini.containsMatchIn(prompt) || otherChanges.containsMatchIn(prompt)) return null
+        if (!bikini.containsMatchIn(prompt) || otherChanges.containsMatchIn(prompt) || otherSceneChanges.containsMatchIn(prompt)) return null
         // Associate the color with the garment, not unrelated colors in the scenery.
         // "red bikini; keep the blue ocean" must select RED, not BLUE.
         val palette = "(red|crimson|orange|yellow|green|teal|turquoise|blue|navy|purple|pink|magenta)"
