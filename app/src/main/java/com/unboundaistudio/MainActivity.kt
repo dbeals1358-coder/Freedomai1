@@ -885,6 +885,11 @@ class MainActivity : ComponentActivity() {
             prefs.edit().putString("last_video_generator", lastVideoGenerator).apply()
             generationPercent = 100
             status = if (useMobileI2V) "Experimental MobileI2V video saved (${video.width}×${video.height}, ${video.durationLabel}s). Motion prompts are unsupported in the official checkpoint; check frame quality." else if (video.reducedForMemory) "AI video saved to Movies/FreedomAI (reduced to ${video.width}×${video.height}, ${video.durationLabel}s to fit NPU memory)." else "AI video saved to Movies/FreedomAI (${video.width}×${video.height}, ${video.durationLabel}s)."
+            if (quality != null && quality.samples >= 4) {
+             if (quality.nearlyStatic) status += " WARNING: Video contains almost no movement."
+             if (quality.largeFrameChanges >= 3) status += " WARNING: Abrupt frame changes detected; possible video model/decoder corruption. Try another compatible Nightmare image-to-video workflow."
+             android.util.Log.i("FreedomAI-VideoQuality", "Generator=${lastVideoGenerator}, change=${quality.meanChange}, abrupt=${quality.largeFrameChanges}")
+            }
            } catch (e: Exception) { contentResolver.delete(uri, null, null); throw e }
           } catch (e: kotlinx.coroutines.CancellationException) { throw e }
           catch (e: OutOfMemoryError) {
