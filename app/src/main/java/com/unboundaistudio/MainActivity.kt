@@ -135,6 +135,8 @@ class MainActivity : ComponentActivity() {
     var resolution by remember { mutableIntStateOf(prefs.getInt("resolution", 1024)) }
     var generationPercent by remember { mutableStateOf(0) }
     var generationSpeed by remember { mutableStateOf(prefs.getString("generation_speed", "BALANCED") ?: "BALANCED") }
+    // Keep photo generation quality separate from the faster default AI editing mode.
+    var editSpeed by remember { mutableStateOf(prefs.getString("edit_speed", "FAST") ?: "FAST") }
     var imageElapsedSeconds by remember { mutableIntStateOf(0) }
     var renderingPercent by remember { mutableIntStateOf(0) }
    LaunchedEffect(videoMode, busy) {
@@ -372,6 +374,18 @@ class MainActivity : ComponentActivity() {
       }
       }
       }
+      if (tab == 1 || tab == 2) {
+       Text("AI edit speed")
+       Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        listOf("FAST", "BALANCED", "MAX QUALITY").forEach { speed ->
+         OutlinedButton(enabled = !busy, onClick = {
+          editSpeed = speed
+          prefs.edit().putString("edit_speed", speed).apply()
+         }) { Text(if (editSpeed == speed) "✓ $speed" else speed) }
+        }
+       }
+       Text("FAST: 512px edits and an already-installed FLUX Klein model when available in Nightmare. BALANCED / MAX QUALITY can use slower, more detailed Qwen editing.")
+      }
       if (tab == 0 || tab == 2) {
        Text("Generation speed")
        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -435,8 +449,9 @@ class MainActivity : ComponentActivity() {
         listOf("Original fictional adult woman, age $age", appearance, bodyDescription, pose, setting, photoStyle, prompt).filter { it.isNotBlank() }.joinToString(", ")
        } else (promptOverride ?: prompt)
        val requestedStrength = if (input != null) editStrength.coerceIn(0.10f, 0.80f) else editStrength
-       val requestedHighQuality = generationSpeed == "MAX QUALITY"
-       val requestedResolution = if (input == null && generationSpeed == "FAST") 768 else resolution
+       val requestedSpeed = if (input != null) editSpeed else generationSpeed
+       val requestedHighQuality = requestedSpeed == "MAX QUALITY"
+       val requestedResolution = if (input == null && requestedSpeed == "FAST") 768 else resolution
        val editPrompt = if (input != null) "$requestedPrompt. Keep the same person, face, pose, camera and background." else requestedPrompt
        if (input != null && precisionEdit && (!maskMode || strokes.isEmpty())) {
         status = "Precision Edit requires a painted area. Paint the region to change or disable Precision Edit."
@@ -489,7 +504,7 @@ class MainActivity : ComponentActivity() {
             ?: error("Unable to confidently identify colored bikini fabric in this photo. Original image was not changed. Automatic color editing currently supports vivid bikini fabric in a front-facing portrait.")
           } else if (useNightmare) {
            val generated = try {
-            NightmareClient.generate(editPrompt, tokenForRun, input, requestedStrength, requestedHighQuality, requestedResolution, editFlowForRun, generationSpeed)
+            NightmareClient.generate(editPrompt, tokenForRun, input, requestedStrength, requestedHighQuality, requestedResolution, editFlowForRun, requestedSpeed)
            } catch (nightmareError: Exception) {
             val maskFailure = nightmareError.message.orEmpty()
              val maskUnavailable = input != null &&
