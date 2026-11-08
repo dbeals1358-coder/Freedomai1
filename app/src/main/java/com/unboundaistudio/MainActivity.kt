@@ -137,6 +137,31 @@ class MainActivity : ComponentActivity() {
    var originalGeneratedHere by remember { mutableStateOf(false) }
    var resultGeneratedHere by remember { mutableStateOf(false) }
    val scope = rememberCoroutineScope()
+   // Use Android's native Save As picker; leave the original MP4 in Movies/FreedomAI.
+   var exportVideoSource by remember { mutableStateOf<Uri?>(null) }
+   val exportVideoLauncher = rememberLauncherForActivityResult(
+    ActivityResultContracts.CreateDocument("video/mp4")
+   ) { destination: Uri? ->
+    val source = exportVideoSource
+    exportVideoSource = null
+    if (destination != null && source != null) {
+     scope.launch {
+      try {
+       withContext(Dispatchers.IO) {
+        contentResolver.openInputStream(source)?.use { input ->
+         contentResolver.openOutputStream(destination, "w")?.use { output ->
+          input.copyTo(output)
+          output.flush()
+         } ?: error("Could not write video to the selected folder.")
+        } ?: error("Original video is no longer accessible.")
+       }
+       status = "Video saved to your selected folder. Original remains in Movies/FreedomAI."
+      } catch (e: Exception) {
+       status = "Save Video failed: ${e.message ?: "Unable to copy MP4"}"
+      }
+     }
+    }
+   }
    var tab by remember { mutableStateOf(-1) }
    var videoMode by remember { mutableStateOf(false) }
    var showStripeFix by remember { mutableStateOf(false) }
@@ -329,7 +354,11 @@ class MainActivity : ComponentActivity() {
          }, modifier = Modifier.fillMaxWidth().height(280.dp)
         )
        }
-       Text("Saved in Movies/FreedomAI. Tap the video for playback controls.",
+       Button(enabled = !busy, onClick = {
+         exportVideoSource = playbackUri
+         exportVideoLauncher.launch("FreedomAI_Video_${System.currentTimeMillis()}.mp4")
+        }, modifier = Modifier.fillMaxWidth()) { Text("Save Video") }
+        Text("Automatically saved in Movies/FreedomAI. Save Video lets you choose another folder.",
         color = UiColor.White)
       }
      }
@@ -1003,6 +1032,13 @@ class MainActivity : ComponentActivity() {
          modifier = Modifier.fillMaxWidth()) { Text("▶ Play Last Saved Video") }
         Text("Video saved in Movies/FreedomAI.")
        }
+       OutlinedButton(enabled = !busy && lastVideo != null, onClick = {
+        lastVideo?.let { saved ->
+         exportVideoSource = saved
+         exportVideoLauncher.launch("FreedomAI_Video_${System.currentTimeMillis()}.mp4")
+        }
+       }, modifier = Modifier.fillMaxWidth()) { Text("Save Video") }
+       Text("Videos save automatically. Save Video lets you choose another folder.")
        Text(if (useMobileI2V) "Balanced local video • 5-second default • 16 fps MP4 encoding." else
         "Nightmare video • 5-second default. Resolution and frame rate depend on your Nightmare video workflow.")
         Text("Choose a photo and describe movement.")
