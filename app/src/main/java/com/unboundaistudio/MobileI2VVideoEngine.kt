@@ -253,29 +253,21 @@ internal object MobileI2VVideoEngine {
        for (t in overlapFrames until validFrameCount) {
         if (Thread.currentThread().isInterrupted) throw InterruptedException("Video rendering cancelled")
         val sourceFrame = t
-        // Downsample using a 2x2 box filter instead of skipping 3 of 4 pixels.
-        // Point sampling aliases decoder patterns into blocky/checkerboard video.
-        // RGB_565 keeps the retained frame memory bounded on 4 GB devices.
-        val previewW = (outW / 2).coerceAtLeast(1)
-        val previewH = (outH / 2).coerceAtLeast(1)
-        val pixels = IntArray(previewW * previewH)
+        // Preserve the decoder's full spatial resolution and 8-bit RGB channels.
+        // The former 2x downsample plus RGB_565 conversion discarded 75% of
+        // spatial pixels and introduced visible color banding.
+        // Keep only decoded frames (not full decoded tensor copies) in memory.
+        val pixels = IntArray(outW * outH)
         for (p in pixels.indices) {
-         val x0 = p % previewW * 2
-         val y0 = p / previewW * 2
-         var r = 0; var g = 0; var b = 0; var count = 0
-         for (dy in 0..1) for (dx in 0..1) {
-          val x = min(outW - 1, x0 + dx)
-          val y = min(outH - 1, y0 + dy)
-          val src = y * outW + x
-          r += rgbByte(buffer.get(sourceFrame * area + src))
-          g += rgbByte(buffer.get((tCount + sourceFrame) * area + src))
-          b += rgbByte(buffer.get((2 * tCount + sourceFrame) * area + src))
-          count++
-         }
-         pixels[p] = Color.rgb(r / count, g / count, b / count)
+         val src = p
+         pixels[p] = Color.rgb(
+          rgbByte(buffer.get(sourceFrame * area + src)),
+          rgbByte(buffer.get((tCount + sourceFrame) * area + src)),
+          rgbByte(buffer.get((2 * tCount + sourceFrame) * area + src))
+         )
         }
-        val bitmap = Bitmap.createBitmap(previewW, previewH, Bitmap.Config.RGB_565)
-        bitmap.setPixels(pixels, 0, previewW, 0, 0, previewW, previewH)
+        val bitmap = Bitmap.createBitmap(outW, outH, Bitmap.Config.ARGB_8888)
+        bitmap.setPixels(pixels, 0, outW, 0, 0, outW, outH)
         frames.add(bitmap)
        }
       }
