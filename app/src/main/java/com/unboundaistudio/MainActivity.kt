@@ -175,6 +175,12 @@ class MainActivity : ComponentActivity() {
    var showAdultConfirm by remember { mutableStateOf(false) }
    var fictionalAdultMode by remember { mutableStateOf(false) }
    var characterAge by remember { mutableStateOf("30") }
+   var anatomyChoice by remember {
+    mutableStateOf(prefs.getString("fictional_anatomy", "Default")?.takeIf { it in listOf("Default", "Male anatomy", "Female anatomy", "Both anatomies") } ?: "Default")
+   }
+   var sceneCount by remember {
+    mutableStateOf(prefs.getString("fictional_scene_count", "Single")?.takeIf { it in listOf("Single", "Couple", "Group") } ?: "Single")
+   }
    var characterSubject by remember {
     mutableStateOf(prefs.getString("fictional_adult_subject", "Man")?.takeIf { it in listOf("Man", "Woman", "Person") } ?: "Man")
    }
@@ -566,7 +572,7 @@ class MainActivity : ComponentActivity() {
       }
       fun requestImage(input: Bitmap?, promptOverride: String? = null) {
         val faceDetailRun = input != null && promptOverride == FaceDetailEnhancement.REFINE_PROMPT
-       if ((promptOverride ?: prompt).isBlank() && !(tab == 2 && fictionalAdultMode && (appearance.isNotBlank() || bodyDescription.isNotBlank()))) { status = "Describe the image first"; return }
+       if ((promptOverride ?: prompt).isBlank() && !(tab == 2 && fictionalAdultMode && input == null)) { status = "Describe the image first"; return }
        // FAST: a conservative, color-only bikini recolor can use source pixels
        // without AI inference. If fabric recognition fails, use the selected editor.
        val useOnlineEdit = input != null && onlineQwen && !nightmareMode
@@ -595,7 +601,7 @@ class MainActivity : ComponentActivity() {
        val requestedPrompt = if (tab == 2 && fictionalAdultMode && input == null) {
         val age = characterAge.toIntOrNull()
         if (age == null || age < 18 || age > 100) { status = "Enter an adult age from 18 to 100"; return }
-        FictionalAdultPrompt.build(age, characterSubject, appearance, bodyDescription, pose, setting, photoStyle, prompt)
+        FictionalAdultPrompt.build(age, characterSubject, appearance, bodyDescription, pose, setting, photoStyle, prompt, anatomyChoice, sceneCount)
        } else (promptOverride ?: prompt)
        val requestedStrength = if (faceDetailRun) 0.45f else if (input != null) editStrength.coerceIn(0.10f, 0.80f) else editStrength
        val requestedSpeed = if (faceDetailRun) "MAX QUALITY" else if (input != null) editSpeed else generationSpeed
@@ -740,15 +746,52 @@ class MainActivity : ComponentActivity() {
          }
          if (fictionalAdultMode) {
           Text("Fictional adult subject")
-          Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-           listOf("Man", "Woman", "Person").forEach { choice ->
-            OutlinedButton(onClick = {
-             characterSubject = choice
-             prefs.edit().putString("fictional_adult_subject", choice).apply()
-            }, enabled = !busy) { Text(if (characterSubject == choice) "✓ $choice" else choice) }
+          Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+           listOf(listOf("Man", "Woman"), listOf("Both People", "Person")).forEach { options ->
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+             options.forEach { choice ->
+              OutlinedButton(onClick = {
+               characterSubject = choice
+               if (choice == "Both People" && sceneCount == "Single") {
+                sceneCount = "Couple"
+                prefs.edit().putString("fictional_scene_count", sceneCount).apply()
+               }
+               prefs.edit().putString("fictional_adult_subject", choice).apply()
+              }, enabled = !busy, modifier = Modifier.weight(1f)) {
+               Text(if (characterSubject == choice) "✓ $choice" else choice)
+              }
+             }
+            }
            }
           }
-          Text("The selected subject is used in the generated prompt; actual anatomical detail depends on the model and workflow.")
+          Text("Both People places an adult man and woman in the same image.")
+          Text("Anatomy details")
+          Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+           listOf(listOf("Default", "Male anatomy"), listOf("Female anatomy", "Both anatomies")).forEach { options ->
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+             options.forEach { choice ->
+              OutlinedButton(onClick = {
+               anatomyChoice = choice
+               prefs.edit().putString("fictional_anatomy", choice).apply()
+              }, enabled = !busy, modifier = Modifier.weight(1f)) {
+               Text(if (anatomyChoice == choice) "✓ $choice" else choice)
+              }
+             }
+            }
+           }
+          }
+          Text("Both anatomies requests both characteristics on one fictional adult. Default follows the selected subject.")
+          Text("People in image")
+          Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+           listOf("Single", "Couple", "Group").forEach { choice ->
+            OutlinedButton(onClick = {
+             sceneCount = choice
+             prefs.edit().putString("fictional_scene_count", sceneCount).apply()
+            }, enabled = !busy && !(characterSubject == "Both People" && choice == "Single"),
+             modifier = Modifier.weight(1f)) { Text(if (sceneCount == choice) "✓ $choice" else choice) }
+           }
+          }
+          Text("Results depend on the selected Nightmare model. These controls guide the prompt but do not guarantee anatomy.")
           OutlinedTextField(value = characterAge, onValueChange = { characterAge = it.filter(Char::isDigit).take(3) }, label = { Text("Fictional character age (18+)") }, modifier = Modifier.fillMaxWidth())
           OutlinedTextField(value = appearance, onValueChange = { appearance = it }, label = { Text("Appearance: hair, face, eyes") }, modifier = Modifier.fillMaxWidth())
           OutlinedTextField(value = bodyDescription, onValueChange = { bodyDescription = it }, label = { Text("Body proportions and physique") }, modifier = Modifier.fillMaxWidth())
