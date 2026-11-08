@@ -424,7 +424,11 @@ class MainActivity : ComponentActivity() {
          }
         }
        generationJob = scope.launch {
+        val editEngine = if (useOnlineEdit) "Online Qwen" else if (useNativeEdit) "On-device Qwen" else if (autoColorRequest != null) "Automatic recolor" else if (useNightmare) "Nightmare" else if (useLocal) "Local Dream" else "Remote image server"
+        val editStartedAt = android.os.SystemClock.elapsedRealtime()
+        var inferenceFinishedAt = editStartedAt
         try {
+         status = "$editEngine: processing image (elapsed time shown below)"
          val completedImage = withContext(Dispatchers.IO) {
           if (useOnlineEdit && input != null) {
             val generated = OnlineQwenEditor.edit(input, editPrompt, onlineQwenUrl, onlineQwenModel, onlineQwenKey)
@@ -478,6 +482,7 @@ class MainActivity : ComponentActivity() {
            if (input != null && mask == null) preserveFraming(input, generated) else generated
           }
          }
+         inferenceFinishedAt = android.os.SystemClock.elapsedRealtime()
          kotlinx.coroutines.currentCoroutineContext().ensureActive()
          result = completedImage
          if (result != null && isNearlyWhiteImage(result!!)) {
@@ -488,6 +493,9 @@ class MainActivity : ComponentActivity() {
            resultGeneratedHere = if (input == null) true else originalGeneratedHere
            status = if (useOnlineEdit) "Online Qwen edit complete. Check the result against the original." else if (useNativeEdit) "Qwen Turbo edit complete. Compare the face, pose and background with the original." else if (autoColorRequest != null) "Bikini recolored to ${autoColorRequest.color}. Original face, body, pose and background pixels preserved." else if (input != null && useNightmare) "Nightmare local edit complete (requested flow: ${EditRequestRouting.chooseFlow(editFlowForRun, requestedPrompt)}). Actual model must be confirmed in Nightmare run details." else if (input != null) "AI returned an edit — compare it with your requested change below" else "Image ready"
          }
+         val totalSeconds = (android.os.SystemClock.elapsedRealtime() - editStartedAt) / 1000
+         val engineSeconds = (inferenceFinishedAt - editStartedAt) / 1000
+         status += " | Engine: $editEngine | AI processing: ${engineSeconds}s | Total: ${totalSeconds}s"
         } catch (e: kotlinx.coroutines.CancellationException) { throw e
         } catch (e: Exception) { status = when {
           useOnlineEdit -> "Online Qwen edit failed: ${e.message ?: "Check your endpoint, model and token"}. Original image unchanged." 
