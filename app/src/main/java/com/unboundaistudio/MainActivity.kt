@@ -877,6 +877,9 @@ class MainActivity : ComponentActivity() {
            try {
             withContext(Dispatchers.IO) { contentResolver.openOutputStream(uri)?.use { it.write(video.bytes) } ?: error("Cannot write MP4") }
             contentResolver.update(uri, ContentValues().apply { put(MediaStore.Video.Media.IS_PENDING, 0) }, null, null)
+            val quality = withContext(Dispatchers.IO) {
+             runCatching { VideoMotionCheck.inspect(this@MainActivity, uri) }.getOrNull()
+            }
             lastVideo = uri
             lastVideoGenerator = if (useMobileI2V) "MobileI2V (offline)" else "Nightmare"
             prefs.edit().putString("last_video_generator", lastVideoGenerator).apply()
