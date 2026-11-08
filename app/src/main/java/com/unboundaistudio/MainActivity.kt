@@ -271,6 +271,17 @@ class MainActivity : ComponentActivity() {
         Text("Your AI Studio — create or edit photos and videos.", color = UiColor(0xFFD3D0E3))
         Button(onClick = { tab = 0 }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("Create Image") }
         OutlinedButton(onClick = { tab = 1 }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("Edit Photo") }
+        OutlinedButton(onClick = {
+         videoMode = false
+         tab = 1
+         maskMode = false
+         strokes.clear()
+         prompt = "Create a new photorealistic image very similar to this reference photo. Preserve the same subject, facial features, hairstyle, pose, camera angle, lighting, composition and background, with only subtle natural variations. Maintain realistic detail and proportions."
+         editStrength = 0.30f
+         status = "Choose a reference image, then tap AI Edit to generate a similar variation. Adjust the prompt if desired."
+         picker.launch("image/*")
+        }, enabled = !busy, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("Create Similar Image") }
+
         OutlinedButton(onClick = { videoMode = true; tab = 1; result = null }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("Create Video") }
         OutlinedButton(onClick = { showAdultConfirm = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("18+ Private Studio") }
         OutlinedButton(onClick = { tab = 3 }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("AI Assistant") }
