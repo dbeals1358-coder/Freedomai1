@@ -19,7 +19,7 @@ internal object NightmareVideoFlowPlanner {
   val height: Int
  )
 
- fun plan(schema: JSONObject, requestedSeconds: Int, targetSide: Int = 480): Plan {
+ fun plan(schema: JSONObject, requestedSeconds: Int, targetSide: Int = 480, sourceWidth: Int = 0, sourceHeight: Int = 0): Plan {
   require(requestedSeconds in 1..10) { "Select 1–10 seconds" }
   val nodes = schema.optJSONArray("nodes") ?: error("Nightmare returned no workflow nodes")
   val allNodes = (0 until nodes.length()).mapNotNull { nodes.optJSONObject(it) }
@@ -45,8 +45,11 @@ internal object NightmareVideoFlowPlanner {
   var width = targetSide
   var height = targetSide
   for (node in videoNodes) {
-   val w = safeSide(targetSide, widget(node, "width")!!)
-   val h = safeSide(targetSide, widget(node, "height")!!)
+   val aspect = if (sourceWidth > 0 && sourceHeight > 0) sourceWidth.toFloat() / sourceHeight else 1f
+   val requestedWidth = if (aspect >= 1f) targetSide else (targetSide * aspect).toInt()
+   val requestedHeight = if (aspect <= 1f) targetSide else (targetSide / aspect).toInt()
+   val w = safeSide(requestedWidth, widget(node, "width")!!)
+   val h = safeSide(requestedHeight, widget(node, "height")!!)
    val secondsWidget = widget(node, "seconds")!!
    val maxSeconds = secondsWidget.optInt("max", requestedSeconds).takeIf { it > 0 } ?: requestedSeconds
    val partsWidget = widget(node, "parts")
@@ -87,7 +90,7 @@ internal object NightmareVideoFlowPlanner {
  private fun safeSide(target: Int, widget: JSONObject): Int {
   val min = widget.optInt("min", 320)
   val max = widget.optInt("max", 1280)
-  val snapped = (target / 32) * 32
+  val snapped = (target.coerceAtLeast(32) / 32) * 32
   return snapped.coerceIn(min, max)
  }
 

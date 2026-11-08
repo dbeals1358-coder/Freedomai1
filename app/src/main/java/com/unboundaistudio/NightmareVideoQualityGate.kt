@@ -24,7 +24,7 @@ internal object NightmareVideoQualityGate {
             require(durationMs >= 300L) { "Nightmare output contains no usable video frames" }
             // Earlier samples catch a first photograph followed by colored static;
             // later samples catch a collapse partway through the clip.
-            val fractions = doubleArrayOf(0.0, 0.05, 0.10, 0.15, 0.20, 0.35, 0.60)
+            val fractions = doubleArrayOf(0.0, 0.05, 0.10, 0.15, 0.20, 0.35, 0.60, 0.75, 0.90, 0.98)
             val samples = fractions.map { fraction ->
                 val timeUs = (durationMs * 1000.0 * fraction).toLong()
                 val frame = retriever.getScaledFrameAtTime(
@@ -53,7 +53,7 @@ internal object NightmareVideoQualityGate {
                 "Nightmare returned corrupted video frames (colored static instead of movement). " +
                 "MP4 was not saved. In Nightmare open Settings > Performance > Memory, turn ON " +
                 "'Video: stream the model', then try a 2-second clip. If this continues, " +
-                "the installed Wan video model may not support your phone's Snapdragon chip."
+                "the installed Wan video model may not support your Snapdragon chip. Try a compatible Wan 14B model if available."
             }
         } finally {
             retriever.release()

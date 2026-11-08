@@ -24,6 +24,13 @@ class VideoFrameContinuityTest {
         assertTrue(result.failedComparisons >= 3)
     }
 
+    @Test fun catchesNoiseOnlyNearTheEndOfClip() {
+        val source = photo()
+        val rng = Random(977)
+        val good = List(6) { shift -> IntArray(source.size) { i -> (source[i] + shift).coerceAtMost(255) } }
+        val bad = List(4) { IntArray(source.size) { rng.nextInt(256) } }
+        assertTrue(VideoFrameContinuity.assess(good + bad).likelyCorrupted)
+    }
     @Test fun acceptsSimilarMovingFrames() {
         val source = photo()
         val frames = (0 until 7).map { offset ->

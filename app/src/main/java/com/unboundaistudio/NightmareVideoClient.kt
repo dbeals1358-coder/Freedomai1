@@ -93,7 +93,7 @@ internal object NightmareVideoClient {
   } finally { if (resized !== image) resized.recycle() }
   val base64Image = Base64.encodeToString(png, Base64.NO_WRAP)
 
-  var plan = NightmareVideoFlowPlanner.plan(schema, seconds, targetSide = 480)
+  var plan = NightmareVideoFlowPlanner.plan(schema, seconds, targetSide = 480, sourceWidth = image.width, sourceHeight = image.height)
   var reduced = false
   operation.check()
   onStatus("Generating AI motion in Nightmare (no live percentage)…")
@@ -105,7 +105,7 @@ internal object NightmareVideoClient {
    // Never silently retry with a different person or an image pan/zoom effect.
    operation.check()
    onStatus("Video model memory limited; retrying at smaller resolution…")
-   plan = NightmareVideoFlowPlanner.plan(schema, seconds, targetSide = 384)
+   plan = NightmareVideoFlowPlanner.plan(schema, seconds, targetSide = 384, sourceWidth = image.width, sourceHeight = image.height)
    reduced = true
    try {
     run(token, selected, prompt, base64Image, plan, operation)
@@ -218,8 +218,11 @@ internal object NightmareVideoClient {
   val ordered = candidates.distinct().filterNot {
    it.contains("FreedomAI RealVis", ignoreCase = true)
   }.sortedWith(compareByDescending<String> {
-   it.contains("image to video", true) || it.contains("image-to-video", true) ||
-    it.contains("i2v", true) || it.contains("wan", true) || it.contains("video", true)
+   // Respect the user's configured canvas video flow, if compatible.
+   if (it == "current") 3
+   else if (it.contains("image to video", true) || it.contains("image-to-video", true) ||
+    it.contains("i2v", true) || it.contains("wan", true) || it.contains("video", true)) 2
+   else 1
   })
   val diagnostics = mutableListOf<String>()
   for ((index, candidate) in ordered.withIndex()) {
@@ -233,7 +236,7 @@ internal object NightmareVideoClient {
     return candidate
    } catch (e: Exception) { diagnostics.add("$candidate: ${e.message.orEmpty().take(120)}") }
   }
-  error("No compatible image-to-video workflow found. Checked ${ordered.size} candidate flows. ${diagnostics.take(3).joinToString(" | ")}. No compatible installed Nightmare video workflow was detected. Select/install an image-to-video workflow in Nightmare; RealVis is image-only. MobileI2V is not available until its inference pipeline is implemented.")
+  error("No compatible image-to-video workflow found. Checked ${ordered.size} candidate flows. ${diagnostics.take(3).joinToString(" | ")}. No compatible installed Nightmare video workflow was detected. Select/install an image-to-video workflow in Nightmare; RealVis is image-only. MobileI2V remains experimental and requires compatible ONNX models.")
  }
 
  private fun run(

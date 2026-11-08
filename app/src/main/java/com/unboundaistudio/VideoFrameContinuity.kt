@@ -24,7 +24,7 @@ internal object VideoFrameContinuity {
             "All frame samples must have the same dimensions"
         }
         val reference = frames.first()
-        val comparisons = frames.drop(1).take(5)
+        val comparisons = frames.drop(1) // Include the final video frames.
         val lost = comparisons.count { frame ->
             val correlation = correlation(reference, frame)
             val delta = absoluteDifference(reference, frame)

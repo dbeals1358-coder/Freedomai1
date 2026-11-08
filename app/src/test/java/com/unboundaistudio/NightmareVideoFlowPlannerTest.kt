@@ -33,6 +33,14 @@ class NightmareVideoFlowPlannerTest {
   assertEquals("2", plan.durationLabel)
  }
 
+ @Test fun preservesImageOrientationForVideo() {
+  val wide = NightmareVideoFlowPlanner.plan(schema(), 2, 480, 1600, 900)
+  assertEquals("480", wide.params.getJSONObject("video123").getString("width"))
+  assertEquals("320", wide.params.getJSONObject("video123").getString("height"))
+  val tall = NightmareVideoFlowPlanner.plan(schema(), 2, 480, 900, 1600)
+  assertEquals("320", tall.params.getJSONObject("video123").getString("width"))
+  assertEquals("480", tall.params.getJSONObject("video123").getString("height"))
+ }
  @Test fun reduceMemoryAndChainTenSeconds() {
   val low = NightmareVideoFlowPlanner.plan(schema(), 1, 384)
   assertEquals("384", low.params.getJSONObject("video123").getString("width"))
