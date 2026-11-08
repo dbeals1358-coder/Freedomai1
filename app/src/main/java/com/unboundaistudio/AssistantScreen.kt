@@ -38,6 +38,8 @@ fun AssistantScreen(onCreateImage: (String) -> Unit = {}, onEditImage: (String) 
  var offlineSettingsVisible by remember { mutableStateOf(false) }
  var showAssistantSettings by remember { mutableStateOf(false) }
  var useOfflineAssistant by remember { mutableStateOf(prefs.getBoolean("use_offline_assistant", false)) }
+ var allowMatureTopics by remember { mutableStateOf(prefs.getBoolean("allow_mature_topics", true)) }
+ var customInstructions by remember { mutableStateOf(prefs.getString("custom_instructions", "").orEmpty()) }
  val modelPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
   if (uri != null) {
    val target = File(context.filesDir, "assistant-model.task")
@@ -60,7 +62,20 @@ fun AssistantScreen(onCreateImage: (String) -> Unit = {}, onEditImage: (String) 
  var message by remember { mutableStateOf("") }
  var busy by remember { mutableStateOf(false) }
  var speak by remember { mutableStateOf(true) }
- val history = remember { mutableStateListOf<Pair<String, String>>() }
+ val history = remember {
+  mutableStateListOf<Pair<String, String>>().apply {
+   runCatching {
+    val saved = JSONArray(prefs.getString("chat_history", "[]") ?: "[]")
+    for (i in 0 until saved.length()) {
+     val item = saved.optJSONObject(i) ?: continue
+     val role = item.optString("role")
+     if (role == "user" || role == "assistant") add(role to item.optString("text"))
+    }
+   }
+  }
+ }
+ LaunchedEffect(history.size) { saveAssistantHistory(prefs, history.toList()) }
+ DisposableEffect(history) { onDispose { saveAssistantHistory(prefs, history.toList()) } }
  val scope = rememberCoroutineScope()
  val tts = remember { TextToSpeech(context) { } }
  DisposableEffect(tts) { onDispose { tts.stop(); tts.shutdown() } }
@@ -74,6 +89,25 @@ fun AssistantScreen(onCreateImage: (String) -> Unit = {}, onEditImage: (String) 
   TextButton(onClick = { showAssistantSettings = !showAssistantSettings }) { Text(if (showAssistantSettings) "Hide settings ↑" else "Assistant settings ↓") }
   if (showAssistantSettings) {
   Text("Online assistant: Hugging Face Inference Providers. HTTP 402 means provider credits or billing are required. When a compatible offline model is installed, online failures can fall back to offline automatically.")
+  Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+   Text("Discuss mature adult topics", modifier = Modifier.weight(1f))
+   Switch(checked = allowMatureTopics, onCheckedChange = {
+    allowMatureTopics = it
+    prefs.edit().putBoolean("allow_mature_topics", it).apply()
+   })
+  }
+  Text("This changes chat guidance for lawful adult discussions. Online providers and image/video services may still have their own content rules.")
+  OutlinedTextField(
+   value = customInstructions,
+   onValueChange = { next ->
+    customInstructions = next.take(1500)
+    prefs.edit().putString("custom_instructions", customInstructions).apply()
+   },
+   label = { Text("My AI instructions (optional)") },
+   placeholder = { Text("Example: Be direct, creative, and detailed.") },
+   modifier = Modifier.fillMaxWidth(),
+   minLines = 2
+  )
   if (BuildConfig.HF_ACCESS_TOKEN.isNotBlank()) {
    Text("Hugging Face access configured for this build.")
   }
@@ -127,6 +161,10 @@ fun AssistantScreen(onCreateImage: (String) -> Unit = {}, onEditImage: (String) 
   }) { Text("Save connection") }
   } // End assistant settings; keep chat visible
   Row { Checkbox(checked = speak, onCheckedChange = { speak = it }); Text("Read replies aloud") }
+  Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+   Text("Conversation", style = MaterialTheme.typography.titleMedium)
+   TextButton(onClick = { history.clear(); prefs.edit().remove("chat_history").apply() }) { Text("Clear chat") }
+  }
   Column(Modifier.fillMaxWidth().heightIn(max = 350.dp).verticalScroll(rememberScrollState())) {
    history.forEach { (role, text) ->
     Text(if (role == "user") "You: $text" else "Assistant: ${text.replace(Regex("^(Assistant:\\s*)+", RegexOption.IGNORE_CASE), "").trim()}", modifier = Modifier.padding(vertical = 6.dp))
@@ -167,32 +205,34 @@ fun AssistantScreen(onCreateImage: (String) -> Unit = {}, onEditImage: (String) 
     val input = message.trim()
     message = ""
     history.add("user" to input)
-    // Search intent must not be mistaken for an image-generation prompt.
-    val searchRequest = Regex("(?i)\\b(search|find|look up|browse|web|internet)\\b").containsMatchIn(input) &&
-     Regex("(?i)\\b(images?|photos?|pictures?|pics?)\\b").containsMatchIn(input)
-    if (searchRequest) {
-     val url = Uri.parse("https://www.google.com/search").buildUpon()
-      .appendQueryParameter("tbm", "isch").appendQueryParameter("q", input).build()
-     runCatching {
-      context.startActivity(Intent(Intent.ACTION_VIEW, url).addCategory(Intent.CATEGORY_BROWSABLE))
-      history.add("assistant" to "Opened web image search in your browser. Search-provider filtering may apply.")
-     }.onFailure { error = "Cannot open web image search: ${it.message}" }
-     return@Button
-    }
-    val imageRequest = Regex("(?i)\\b(show|make|create|generate|draw|picture|image|photo)\\b").containsMatchIn(input)
-    val editRequest = Regex("(?i)\\b(edit|modify|change|replace|remove|adjust)\\b").containsMatchIn(input)
-    val videoRequest = Regex("(?i)\\b(video|animate|animation|motion)\\b").containsMatchIn(input)
-    if (videoRequest && imageRequest) {
-     onCreateVideo(input)
-     return@Button
-    }
-    if (editRequest && !videoRequest) {
-     onEditImage(input)
-     return@Button
-    }
-    if (imageRequest) {
-     onCreateImage(input)
-     return@Button
+    when (AssistantCommandRouter.classify(input)) {
+     AssistantCommand.SEARCH_IMAGES, AssistantCommand.SEARCH_WEB -> {
+      val images = AssistantCommandRouter.classify(input) == AssistantCommand.SEARCH_IMAGES
+      val builder = Uri.parse("https://www.google.com/search").buildUpon()
+       .appendQueryParameter("q", input)
+      if (images) builder.appendQueryParameter("tbm", "isch")
+      runCatching {
+       context.startActivity(Intent(Intent.ACTION_VIEW, builder.build()).addCategory(Intent.CATEGORY_BROWSABLE))
+       history.add("assistant" to "Opened live search results in your browser. Search-provider filtering may apply.")
+      }.onFailure { error = "Unable to open web search: ${it.message}" }
+      return@Button
+     }
+     AssistantCommand.CREATE_VIDEO -> {
+      history.add("assistant" to "Video instructions ready. Select the photo you want to animate.")
+      onCreateVideo(input)
+      return@Button
+     }
+     AssistantCommand.EDIT_IMAGE -> {
+      history.add("assistant" to "Edit instructions ready. Select a photo and tap AI Edit.")
+      onEditImage(input)
+      return@Button
+     }
+     AssistantCommand.CREATE_IMAGE -> {
+      history.add("assistant" to "Opening image generation with your prompt.")
+      onCreateImage(input)
+      return@Button
+     }
+     AssistantCommand.CHAT -> Unit
     }
     busy = true
     error = ""
@@ -209,18 +249,18 @@ fun AssistantScreen(onCreateImage: (String) -> Unit = {}, onEditImage: (String) 
           downloading = false
           downloadStatus = "Offline assistant ready."
          }
-        offlineAssistantReply(context, localModelPath, history.toList())
+        offlineAssistantReply(context, localModelPath, history.toList(), allowMatureTopics, customInstructions)
        } else {
         val onlineToken = apiKey.ifBlank { BuildConfig.HF_ACCESS_TOKEN }
         if (onlineToken.isBlank() && endpoint == defaultOnlineEndpoint)
          throw IllegalStateException("Hugging Face online chat needs an Inference Providers token. Add one under API token.")
         try {
-         assistantReply(endpoint, model, onlineToken, history.toList())
+         assistantReply(endpoint, model, onlineToken, history.toList(), allowMatureTopics, customInstructions)
         } catch (onlineError: Exception) {
          val offlineFile = File(localModelPath)
          if (localModelPath.isNotBlank() && offlineFile.isFile && offlineFile.length() > 100_000_000L) {
           try {
-           offlineAssistantReply(context, localModelPath, history.toList())
+           offlineAssistantReply(context, localModelPath, history.toList(), allowMatureTopics, customInstructions)
           } catch (offlineError: Exception) {
            throw IllegalStateException("Online assistant failed: ${onlineError.message}. Offline fallback failed: ${offlineError.message}")
           }
@@ -232,7 +272,7 @@ fun AssistantScreen(onCreateImage: (String) -> Unit = {}, onEditImage: (String) 
            prefs.edit().putString("local_model", downloaded).apply()
            downloading = false
            downloadStatus = "Offline assistant ready."
-           offlineAssistantReply(context, downloaded, history.toList())
+           offlineAssistantReply(context, downloaded, history.toList(), allowMatureTopics, customInstructions)
          }
         }
        }
@@ -248,12 +288,12 @@ fun AssistantScreen(onCreateImage: (String) -> Unit = {}, onEditImage: (String) 
  }
 }
 
-private fun assistantReply(endpoint: String, model: String, apiKey: String, history: List<Pair<String, String>>): String {
+private fun assistantReply(endpoint: String, model: String, apiKey: String, history: List<Pair<String, String>>, allowMatureTopics: Boolean, customInstructions: String): String {
  require(endpoint.trim().startsWith("https://", ignoreCase = true)) { "Enter an HTTPS chat API URL, or install the offline AI model." }
  val url = URL(endpoint.trim())
  require(url.protocol == "https" && url.host.isNotBlank() && url.userInfo == null) { "Enter a valid HTTPS chat API URL." }
  require(model.isNotBlank()) { "Enter the chat model name." }
- val messages = JSONArray().put(JSONObject().put("role", "system").put("content", "You are a helpful conversational assistant in an Android creative studio."))
+ val messages = JSONArray().put(JSONObject().put("role", "system").put("content", assistantInstructionText(allowMatureTopics, customInstructions)))
  history.takeLast(20).forEach { (role, text) -> messages.put(JSONObject().put("role", role).put("content", text)) }
  val payload = JSONObject().put("model", model).put("messages", messages).put("stream", false)
  val connection = url.openConnection() as HttpURLConnection
@@ -273,12 +313,13 @@ private fun assistantReply(endpoint: String, model: String, apiKey: String, hist
  } finally { connection.disconnect() }
 }
 
-private fun offlineAssistantReply(context: android.content.Context, path: String, history: List<Pair<String, String>>): String {
+private fun offlineAssistantReply(context: android.content.Context, path: String, history: List<Pair<String, String>>, allowMatureTopics: Boolean, customInstructions: String): String {
  val options = LlmInference.LlmInferenceOptions.builder().setModelPath(path).setMaxTokens(1024).build()
  val engine = LlmInference.createFromOptions(context, options)
  try {
   val prompt = buildString {
-   append("You are a helpful conversational assistant. Answer requests directly and retain context. If asked to display or generate an image, explain that chat cannot display it directly and direct the user to the Create tab.\\n")
+   append(assistantInstructionText(allowMatureTopics, customInstructions)).append("\\n")
+   append("Image and video generation use the app controls, not this text-only chat.\\n")
    history.takeLast(8).forEach { (role, message) ->
     append(if (role == "user") "User: " else "Assistant: ")
     append(message.replace(Regex("^(Assistant:\\s*)+", RegexOption.IGNORE_CASE), "")).append("\n")
@@ -361,4 +402,23 @@ private suspend fun downloadGemmaModel(context: android.content.Context, token: 
   connection?.disconnect()
   partial.delete()
  }
+}
+
+private fun assistantInstructionText(allowMatureTopics: Boolean, customInstructions: String): String =
+ buildString {
+  append("You are FreedomAI's practical conversational assistant. Give accurate, direct responses and use conversation context. Be candid about limitations: do not falsely claim to browse the web, create files or operate app features. Help with creative work, technical tasks and everyday questions. ")
+  if (allowMatureTopics)
+   append("Discuss lawful, consensual adult subjects directly and without needless moralizing. Respect consent, privacy and applicable law. ")
+  else
+   append("Keep the discussion suitable for general audiences. ")
+  if (customInstructions.isNotBlank()) append("User preferences: ").append(customInstructions.take(1500))
+ }
+
+private fun saveAssistantHistory(prefs: android.content.SharedPreferences, history: List<Pair<String, String>>) {
+ val saved = JSONArray()
+ history.takeLast(40).forEach { (role, text) ->
+  if (role == "user" || role == "assistant")
+   saved.put(JSONObject().put("role", role).put("text", text.take(6000)))
+ }
+ prefs.edit().putString("chat_history", saved.toString()).apply()
 }
