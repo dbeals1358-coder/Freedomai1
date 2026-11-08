@@ -78,8 +78,12 @@ internal object NightmareClient {
             payload.put("steps", when (speed) { "FAST" -> 14; "MAX QUALITY" -> 35; else -> if (highQuality) 35 else 22 })
                 .put("cfg", 6.0).put("width", resolution).put("height", resolution)
         } else {
-            val (editWidth, editHeight) = editDimensions(input.width, input.height)
-            val scale = minOf(1.0, 2048.0 / input.width, 2048.0 / input.height)
+            // Edit at model-friendly resolution; retain full source for framing/compositing in the UI.
+            // FAST is a preview-quality inference path; MAX QUALITY retains the legacy 2048 cap.
+            val maxEditEdge = when (speed) { "FAST" -> 768; "MAX QUALITY" -> 2048; else -> 1024 }
+            val scale = minOf(1.0, maxEditEdge.toDouble() / input.width, maxEditEdge.toDouble() / input.height)
+            val editWidth = ((input.width * scale).toInt().coerceAtLeast(1)).coerceAtLeast(512)
+            val editHeight = ((input.height * scale).toInt().coerceAtLeast(1)).coerceAtLeast(512)
             val scaledWidth = (input.width * scale).toInt().coerceAtLeast(1)
             val scaledHeight = (input.height * scale).toInt().coerceAtLeast(1)
             // Scale directly into the final edit bitmap to avoid an intermediate allocation.
@@ -106,7 +110,7 @@ internal object NightmareClient {
                     // If the parser isn't installed, Nightmare refuses instead of silently
                     // running a full-frame img2img variation.
                     payload.put("denoise", strength.coerceAtLeast(0.60f).toDouble())
-                        .put("steps", 35).put("cfg", 6.0)
+                        .put("steps", when (speed) { "FAST" -> 18; "MAX QUALITY" -> 35; else -> 24 }).put("cfg", 6.0)
                         .put("width", editWidth).put("height", editHeight)
                         .put("params", JSONObject().put("inpaint", JSONObject()
                             .put("pick_select", "true")
@@ -134,13 +138,13 @@ internal object NightmareClient {
                     }
                     // Respect the requested edit resolution instead of forcing 512 px.
                     // Higher sizes require more memory in Nightmare; report backend errors rather than silently downgrading.
-                    val editSize = resolution.coerceIn(512, 1024) / 64 * 64
+                    val editSize = minOf(resolution.coerceIn(512, 1024), if (speed == "FAST") 768 else 1024) / 64 * 64
                     payload.put("model", model).put("cfg", 1.0).put("denoise", 1.0)
                         .put("width", editSize).put("height", editSize)
                 }
                 else -> {
                     // Explicit saved/current/img2img flows remain available for custom workflows.
-                    payload.put("steps", 35).put("cfg", 6.0)
+                    payload.put("steps", when (speed) { "FAST" -> 18; "MAX QUALITY" -> 35; else -> 24 }).put("cfg", 6.0)
                         .put("width", editWidth).put("height", editHeight)
                         .put("denoise", strength.toDouble())
                 }
