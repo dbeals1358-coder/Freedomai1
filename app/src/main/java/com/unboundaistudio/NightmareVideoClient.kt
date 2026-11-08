@@ -7,10 +7,34 @@ import java.io.ByteArrayOutputStream
 import java.net.HttpURLConnection
 import java.net.URLEncoder
 import java.net.URL
+import java.util.concurrent.CancellationException
+import java.util.concurrent.atomic.AtomicReference
 
 /** Drives Nightmare's real on-device image-to-video model through its documented local API. */
 internal object NightmareVideoClient {
  private const val BASE = "http://127.0.0.1:8820"
+
+ // A coroutine cancelled during blocking HttpURLConnection I/O does not necessarily
+ // interrupt the socket. Disconnect the active request when Cancel is pressed.
+ private class Operation {
+  @Volatile var cancelled: Boolean = false
+  val connection = AtomicReference<HttpURLConnection?>()
+  fun check() { if (cancelled) throw CancellationException("Video generation cancelled") }
+  fun attach(next: HttpURLConnection) {
+   check()
+   connection.set(next)
+   if (cancelled) {
+    connection.getAndSet(null)?.disconnect()
+    check()
+   }
+  }
+  fun detach(previous: HttpURLConnection) { connection.compareAndSet(previous, null) }
+  fun abort() { cancelled = true; connection.getAndSet(null)?.disconnect() }
+ }
+ private val activeOperation = AtomicReference<Operation?>()
+
+ /** Interrupt local HTTP I/O. Nightmare may continue its already-started server job. */
+ fun cancelActive() { activeOperation.get()?.abort() }
 
  data class RenderedVideo(
   val bytes: ByteArray,
@@ -21,7 +45,18 @@ internal object NightmareVideoClient {
   val reducedForMemory: Boolean
  )
 
- fun generate(token: String, flow: String, image: Bitmap, prompt: String, seconds: Int): RenderedVideo {
+ fun generate(
+  token: String,
+  flow: String,
+  image: Bitmap,
+  prompt: String,
+  seconds: Int,
+  onStatus: (String) -> Unit = {}
+ ): RenderedVideo {
+  val operation = Operation()
+  activeOperation.getAndSet(operation)?.abort()
+  try {
+  onStatus("Connecting to Nightmare…")
   require(token.isNotBlank() && !token.contains('\n') && !token.contains('\r')) {
    "Enter your Nightmare API token in connection settings"
   }
@@ -29,13 +64,19 @@ internal object NightmareVideoClient {
    "Select a saved Nightmare image-to-video workflow or current"
   }
   require(seconds in 1..10) { "Choose 1–10 seconds for AI video" }
+  operation.check()
   NightmareClient.authenticatedGet("/info", token)
+  operation.check()
 
   // Unlike top-level width/height (which affect image samplers only),
   // params.<video node id> changes the actual Wan video generator.
-  val selected = if (flow == "auto" || flow == "current") findVideoFlow(token, flow) else flow
+  val selected = if (flow == "auto" || flow == "current") findVideoFlow(token, flow, operation, onStatus) else flow
+  operation.check()
+  onStatus("Reading selected video workflow…")
   val encodedFlow = URLEncoder.encode(selected, "UTF-8")
   val schema = JSONObject(NightmareClient.authenticatedGet("/flows/$encodedFlow", token))
+  operation.check()
+  onStatus("Preparing source photo for AI video…")
 
   val scale = minOf(1f, 480f / maxOf(image.width, image.height))
   val resized = if (scale < 1f) Bitmap.createScaledBitmap(
@@ -52,21 +93,27 @@ internal object NightmareVideoClient {
 
   var plan = NightmareVideoFlowPlanner.plan(schema, seconds, targetSide = 480)
   var reduced = false
+  operation.check()
+  onStatus("Generating AI motion in Nightmare (no live percentage)…")
   val response = try {
-   run(token, selected, prompt, base64Image, plan)
+   run(token, selected, prompt, base64Image, plan, operation)
   } catch (e: Exception) {
    if (!memoryError(e.message.orEmpty()) || plan.width <= 384 && plan.height <= 384) throw e
    // A smaller video node and shorter clip substantially reduce NPU memory pressure.
    // Never silently retry with a different person or an image pan/zoom effect.
+   operation.check()
+   onStatus("Video model memory limited; retrying at smaller resolution…")
    plan = NightmareVideoFlowPlanner.plan(schema, seconds, targetSide = 384)
    reduced = true
    try {
-    run(token, selected, prompt, base64Image, plan)
+    run(token, selected, prompt, base64Image, plan, operation)
    } catch (retry: Exception) {
     error("Nightmare ran out of video model memory even at ${plan.width}x${plan.height} / ${seconds}s. Use a smaller Nightmare video model. ${retry.message}")
    }
   }
 
+  operation.check()
+  onStatus("Checking Nightmare video output…")
   val results = response.optJSONArray("results") ?: error(
    "Nightmare did not return a video: " + response.optString("error", "no result")
   )
@@ -76,7 +123,10 @@ internal object NightmareVideoClient {
   require(videoPath.startsWith("/results/") && !videoPath.contains("..")) {
    "Unexpected Nightmare video result path"
   }
+  operation.check()
+  onStatus("Downloading finished video…")
   val download = URL("$BASE$videoPath").openConnection() as HttpURLConnection
+  operation.attach(download)
   try {
    download.connectTimeout = 15000
    download.readTimeout = 120000
@@ -87,7 +137,9 @@ internal object NightmareVideoClient {
     ByteArrayOutputStream().use { output ->
      val buffer = ByteArray(65536)
      while (true) {
+      operation.check()
       val count = input.read(buffer)
+      operation.check()
       if (count < 0) break
       check(output.size() + count <= 200 * 1024 * 1024) { "Video exceeds 200MB" }
       output.write(buffer, 0, count)
@@ -98,11 +150,23 @@ internal object NightmareVideoClient {
    require(mp4.size >= 12 && String(mp4, 4, 4, Charsets.US_ASCII) == "ftyp") {
     "Nightmare returned an invalid MP4 file"
    }
+   operation.check()
    return RenderedVideo(mp4, plan.seconds, plan.durationLabel, plan.width, plan.height, reduced)
-  } finally { download.disconnect() }
+  } catch (error: Exception) {
+   operation.check()
+   throw error
+  } finally {
+   operation.detach(download)
+   download.disconnect()
+  }
+  } finally { activeOperation.compareAndSet(operation, null) }
  }
 
- private fun findVideoFlow(token: String, preferred: String): String {
+ private fun findVideoFlow(
+  token: String, preferred: String, operation: Operation, onStatus: (String) -> Unit
+ ): String {
+  onStatus("Searching Nightmare for an image-to-video workflow…")
+  operation.check()
   val raw = NightmareClient.authenticatedGet("/flows", token)
   val candidates = mutableListOf<String>()
   if (preferred == "current") candidates.add("current")
@@ -153,11 +217,14 @@ internal object NightmareVideoClient {
     it.contains("i2v", true) || it.contains("wan", true) || it.contains("video", true)
   })
   val diagnostics = mutableListOf<String>()
-  for (candidate in ordered) {
+  for ((index, candidate) in ordered.withIndex()) {
+   operation.check()
+   onStatus("Checking video workflow ${index + 1} of ${ordered.size}…")
    try {
     val encoded = URLEncoder.encode(candidate, "UTF-8")
     val schema = JSONObject(NightmareClient.authenticatedGet("/flows/$encoded", token))
     NightmareVideoFlowPlanner.plan(schema, 2)
+    operation.check()
     return candidate
    } catch (e: Exception) { diagnostics.add("$candidate: ${e.message.orEmpty().take(120)}") }
   }
@@ -169,13 +236,16 @@ internal object NightmareVideoClient {
   flow: String,
   prompt: String,
   source: String,
-  plan: NightmareVideoFlowPlanner.Plan
+  plan: NightmareVideoFlowPlanner.Plan,
+  operation: Operation
  ): JSONObject {
+  operation.check()
   val images = JSONObject()
   for (id in plan.imageNodeIds) images.put(id, source)
   val request = JSONObject().put("flow", flow).put("prompt", prompt)
    .put("images", images).put("params", plan.params)
   val connection = URL("$BASE/run").openConnection() as HttpURLConnection
+  operation.attach(connection)
   try {
    connection.requestMethod = "POST"
    connection.connectTimeout = 15000
@@ -186,6 +256,7 @@ internal object NightmareVideoClient {
    connection.setRequestProperty("Content-Type", "application/json")
    connection.outputStream.use { it.write(request.toString().toByteArray(Charsets.UTF_8)) }
    val code = connection.responseCode
+   operation.check()
    val body = (if (code in 200..299) connection.inputStream else connection.errorStream)
     ?.bufferedReader()?.use { it.readText() }.orEmpty()
    val reply = runCatching { JSONObject(body) }.getOrElse {
@@ -194,8 +265,15 @@ internal object NightmareVideoClient {
    if (code !in 200..299 || reply.has("error")) {
     error(reply.optString("error", "Nightmare video HTTP $code").take(600))
    }
+   operation.check()
    return reply
-  } finally { connection.disconnect() }
+  } catch (error: Exception) {
+   operation.check()
+   throw error
+  } finally {
+   operation.detach(connection)
+   connection.disconnect()
+  }
  }
 
  private fun memoryError(message: String): Boolean =
