@@ -107,6 +107,9 @@ class MainActivity : ComponentActivity() {
    val scope = rememberCoroutineScope()
    var tab by remember { mutableStateOf(-1) }
    var videoMode by remember { mutableStateOf(false) }
+   var showStripeFix by remember { mutableStateOf(false) }
+   var stripePosition by remember { mutableFloatStateOf(0.14f) }
+   var stripeRepairUndo by remember { mutableStateOf<Bitmap?>(null) }
    var comparePosition by remember { mutableFloatStateOf(0.5f) }
    var adultConfirmed by remember { mutableStateOf(false) }
    var showAdultConfirm by remember { mutableStateOf(false) }
@@ -411,7 +414,9 @@ class MainActivity : ComponentActivity() {
        val useLocal = localMode
        val useNightmare = nightmareMode && !useOnlineEdit && !useNativeEdit
        val tokenForRun = nightmareToken
-       val editFlowForRun = if (input != null && nightmareMode) "flux_edit" else nightmareEditFlow
+       // Respect Auto: garment changes need auto-masked inpainting; forcing flux_edit
+        // here incorrectly bypassed the selected editing workflow on every photo edit.
+        val editFlowForRun = nightmareEditFlow
        val requestedPrompt = if (tab == 2 && fictionalAdultMode && input == null) {
         val age = characterAge.toIntOrNull()
         if (age == null || age < 18 || age > 100) { status = "Enter an adult age from 18 to 100"; return }
@@ -505,6 +510,7 @@ class MainActivity : ComponentActivity() {
          }
          inferenceFinishedAt = android.os.SystemClock.elapsedRealtime()
          kotlinx.coroutines.currentCoroutineContext().ensureActive()
+         stripeRepairUndo = null
          result = completedImage
          if (result != null && isNearlyWhiteImage(result!!)) {
           result = null
@@ -782,6 +788,34 @@ class MainActivity : ComponentActivity() {
          }
         }
        }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("4K Upscale") }
+       if (!videoMode && original != null && result != null) {
+        OutlinedButton(onClick = { showStripeFix = !showStripeFix }, enabled = !busy,
+         modifier = Modifier.fillMaxWidth()) { Text(if (showStripeFix) "Hide Line Repair" else "Fix Horizontal Line") }
+        if (showStripeFix) {
+         Text("Fast repair from your original photo; no new AI render or painting required.")
+         Text("Position: ${(stripePosition * 100f).roundToInt()}% down from the top")
+         Slider(value = stripePosition, onValueChange = { stripePosition = it },
+          valueRange = 0.02f..0.98f, enabled = !busy)
+         OutlinedButton(onClick = {
+          val source = original
+          if (source != null) {
+           try {
+            val fixed = HorizontalStripeRepair.restoreFromOriginal(image, source, stripePosition)
+            stripeRepairUndo = image
+            result = fixed
+            status = "Horizontal band replaced using the source photo. Check the result before saving; this preserves the original details within the band."
+           } catch (error: Exception) { status = "Line repair failed: ${error.message}. Original image is safe." }
+          }
+         }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Repair Selected Line") }
+        }
+        if (stripeRepairUndo != null) {
+         OutlinedButton(onClick = {
+          result = stripeRepairUndo
+          stripeRepairUndo = null
+          status = "Line repair undone."
+         }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Undo Line Repair") }
+        }
+       }
        if (!videoMode) Button(onClick = { if (tab == 2) this@MainActivity.savePrivate(image) else this@MainActivity.save(image) }) { Text(if (tab == 2) "Save Privately" else "Save Image") }
        Text("Create Video", style = MaterialTheme.typography.titleLarge)
        if (status.isNotBlank()) Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
