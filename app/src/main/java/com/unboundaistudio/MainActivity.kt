@@ -299,7 +299,7 @@ class MainActivity : ComponentActivity() {
          picker.launch("image/*")
         }, enabled = !busy, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("Create Similar Image") }
 
-        OutlinedButton(onClick = { videoMode = true; tab = 1; result = null }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("Create Video") }
+        OutlinedButton(onClick = { videoMode = true; tab = 1; result = null; status = "" }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("Create Video") }
         OutlinedButton(onClick = { showAdultConfirm = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("18+ Private Studio") }
         OutlinedButton(onClick = { tab = 3 }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("AI Assistant") }
         OutlinedButton(onClick = {
@@ -419,11 +419,12 @@ class MainActivity : ComponentActivity() {
       if (status.isNotEmpty() && !status.startsWith("Nightmare v")) Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceVariant) { Text(status, modifier = Modifier.fillMaxWidth().padding(16.dp)) }
       fun requestImage(input: Bitmap?, promptOverride: String? = null) {
        if ((promptOverride ?: prompt).isBlank() && !(tab == 2 && fictionalAdultMode && (appearance.isNotBlank() || bodyDescription.isNotBlank()))) { status = "Describe the image first"; return }
-       // Color-only bikini edits operate on the source pixels, without an external model or painted mask.
+       // FAST: a conservative, color-only bikini recolor can use source pixels
+       // without AI inference. If fabric recognition fails, use the selected editor.
        val useOnlineEdit = input != null && onlineQwen && !nightmareMode
-        val useNativeEdit = input != null && nativeQwen && !useOnlineEdit && !nightmareMode
-       // Native edits receive the actual input bitmap, even for simple color changes.
-       val autoColorRequest = if (input != null && !nightmareMode && !maskMode && !useNativeEdit && !useOnlineEdit) AutomaticClothingEdit.parse(promptOverride ?: prompt) else null
+       val useNativeEdit = input != null && nativeQwen && !useOnlineEdit && !nightmareMode
+       val autoColorRequest = if (input != null && editSpeed == "FAST" &&
+         !maskMode && !precisionEdit) AutomaticClothingEdit.parse(promptOverride ?: prompt) else null
        if (useOnlineEdit && (onlineQwenUrl.isBlank() || onlineQwenModel.isBlank() || onlineQwenKey.isBlank())) {
          status = "Online Qwen needs an HTTPS image-edit endpoint, model name, and API key. Configure these in Edit settings; no edit was sent to Nightmare."
          return
@@ -477,13 +478,19 @@ class MainActivity : ComponentActivity() {
          }
         }
        generationJob = scope.launch {
-        val editEngine = if (useOnlineEdit) "Online Qwen" else if (useNativeEdit) "On-device Qwen" else if (autoColorRequest != null) "Automatic recolor" else if (useNightmare) "Nightmare" else if (useLocal) "Local Dream" else "Remote image server"
+        val editEngine = if (useOnlineEdit) "Online Qwen" else if (useNativeEdit) "On-device Qwen" else if (useNightmare) "Nightmare" else if (useLocal) "Local Dream" else "Remote image server"
+        var usedFastLocalEdit = false
         val editStartedAt = android.os.SystemClock.elapsedRealtime()
         var inferenceFinishedAt = editStartedAt
         try {
          status = "$editEngine: processing image (elapsed time shown below)"
          val completedImage = withContext(Dispatchers.IO) {
-          if (useOnlineEdit && input != null) {
+          val fastLocalColor = if (input != null && autoColorRequest != null)
+           AutomaticClothingEdit.recolor(input, autoColorRequest) else null
+          if (fastLocalColor != null) {
+           usedFastLocalEdit = true
+           fastLocalColor
+          } else if (useOnlineEdit && input != null) {
             val generated = OnlineQwenEditor.edit(input, editPrompt, onlineQwenUrl, onlineQwenModel, onlineQwenKey)
             check(!isNearlyWhiteImage(generated)) { "Online editor returned a blank image." }
             if (mask != null) compositeMaskedEdit(input, generated, mask) else generated
@@ -499,9 +506,6 @@ class MainActivity : ComponentActivity() {
            } }
            check(!isNearlyWhiteImage(generated)) { "Qwen returned a blank image." }
            if (mask != null) compositeMaskedEdit(input, generated, mask) else generated
-          } else if (autoColorRequest != null && input != null) {
-           AutomaticClothingEdit.recolor(input, autoColorRequest)
-            ?: error("Unable to confidently identify colored bikini fabric in this photo. Original image was not changed. Automatic color editing currently supports vivid bikini fabric in a front-facing portrait.")
           } else if (useNightmare) {
            val generated = try {
             NightmareClient.generate(editPrompt, tokenForRun, input, requestedStrength, requestedHighQuality, requestedResolution, editFlowForRun, requestedSpeed)
@@ -549,16 +553,15 @@ class MainActivity : ComponentActivity() {
          } else {
           generationPercent = 100
            resultGeneratedHere = if (input == null) true else originalGeneratedHere
-           status = if (useOnlineEdit) "Online Qwen edit complete. Check the result against the original." else if (useNativeEdit) "Qwen Turbo edit complete. Compare the face, pose and background with the original." else if (autoColorRequest != null) "Bikini recolored to ${autoColorRequest.color}. Original face, body, pose and background pixels preserved." else if (input != null && useNightmare) "Nightmare local edit complete (requested flow: ${EditRequestRouting.chooseFlow(editFlowForRun, requestedPrompt)}). Actual model must be confirmed in Nightmare run details." else if (input != null) "AI returned an edit — compare it with your requested change below" else "Image ready"
+           status = if (usedFastLocalEdit) "Fast local recolor complete. Only detected fabric pixels were changed; no AI render was needed." else if (useOnlineEdit) "Online Qwen edit complete. Check the result against the original." else if (useNativeEdit) "Qwen Turbo edit complete. Compare the face, pose and background with the original." else if (input != null && useNightmare) "Nightmare local edit complete (requested flow: ${EditRequestRouting.chooseFlow(editFlowForRun, requestedPrompt)}). Actual model must be confirmed in Nightmare run details." else if (input != null) "AI returned an edit — compare it with your requested change below" else "Image ready"
          }
          val totalSeconds = (android.os.SystemClock.elapsedRealtime() - editStartedAt) / 1000
          val engineSeconds = (inferenceFinishedAt - editStartedAt) / 1000
-         status += " | Engine: $editEngine | AI processing: ${engineSeconds}s | Total: ${totalSeconds}s"
+         status += " | Engine: ${if (usedFastLocalEdit) "On-device color edit" else editEngine} | Processing: ${engineSeconds}s | Total: ${totalSeconds}s"
         } catch (e: kotlinx.coroutines.CancellationException) { throw e
         } catch (e: Exception) { status = when {
           useOnlineEdit -> "Online Qwen edit failed: ${e.message ?: "Check your endpoint, model and token"}. Original image unchanged." 
            useNativeEdit -> "Native Qwen edit failed: ${e.message ?: "Unknown model error"}. Your original image is unchanged."
-          autoColorRequest != null -> "Automatic color edit: ${e.message ?: "Unsupported outfit or photo"}. No changes made."
           useNightmare -> "Nightmare ${if (input != null) "edit" else "generation"} failed (flow: ${if (input != null) editFlowForRun else "saved:FreedomAI RealVis"}): ${e.message ?: "connection failed"}. Open the matching flow in Nightmare, check its model and image input."
           useLocal -> "Local Dream: ${e.message ?: "connection failed"}. Keep the model loaded; try split screen if disconnected."
           else -> "Could not create image: ${e.message ?: "connection failed"}"
