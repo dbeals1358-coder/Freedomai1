@@ -770,6 +770,13 @@ class MainActivity : ComponentActivity() {
        }
        Text(if (useMobileI2V) "Offline video • Experimental" else "Video powered by Nightmare")
        if (useMobileI2V) {
+        OutlinedButton(enabled = !busy, onClick = {
+         useMobileI2V = false
+         prefs.edit().putBoolean("video_mobilei2v_experimental", false).apply()
+         status = "Nightmare selected for prompt-controlled motion. A compatible image-to-video workflow and valid token are required."
+        }, modifier = Modifier.fillMaxWidth()) { Text("Use prompt-controlled video (Nightmare)") }
+       }
+       if (useMobileI2V) {
         var showMobileI2VInfo by remember { mutableStateOf(false) }
         TextButton(onClick = { showMobileI2VInfo = !showMobileI2VInfo }) {
          Text(if (showMobileI2VInfo) "Hide video details ↑" else "Video details & requirements ↓")
@@ -778,7 +785,7 @@ class MainActivity : ComponentActivity() {
          Text("MobileI2V checks all three ONNX models and downloads missing ones from the verified release. The source VAE must be published in that release for automatic installation. Motion prompts are not supported by the official model.")
         }
        }
-       OutlinedTextField(value = nightmareVideoFlow, onValueChange = {
+       if (!useMobileI2V) OutlinedTextField(value = nightmareVideoFlow, onValueChange = {
         nightmareVideoFlow = it.trim()
         prefs.edit().putString("nightmare_video_flow", nightmareVideoFlow).apply()
        }, label = { Text("Video workflow (current or saved:Name)") }, modifier = Modifier.fillMaxWidth())
