@@ -11,7 +11,7 @@ android {
         minSdk = 29
         targetSdk = 35
         ndk { abiFilters += "arm64-v8a" }
-        versionCode = 41
+        versionCode = 42
         versionName = "3.0"
     }
     // The build injects this into the APK; it can be extracted from the APK.

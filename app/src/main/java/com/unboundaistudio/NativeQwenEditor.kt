@@ -74,6 +74,57 @@ internal object NativeQwenEditor {
     fun cancelDownload() { activeDownloader?.cancel() }
 
     /**
+     * Actual on-device text-to-image inference using the already bundled Qwen-Image-2.1
+     * runtime. This is NOT a request to Nightmare, Local Dream, or a web service.
+     * Users install the compatible converted model files once into FreedomAI storage.
+     * Run on Dispatchers.IO, never the Android UI thread.
+     */
+    fun generate(
+        context: Context,
+        prompt: String,
+        speed: String,
+        aspect: String,
+        onProgress: (Int) -> Unit
+    ): Bitmap {
+        require(prompt.isNotBlank()) { "Describe the image you want to make." }
+        check(ready(context)) {
+            "Built-in Qwen Turbo model files are missing. Tap Install AI Model in FreedomAI (one-time download)."
+        }
+        val size = QwenImage21.Size.of(
+            QwenImage21.Size.Ratio.valueOf(StandaloneImageOptions.ratio(aspect)),
+            QwenImage21.Size.Tier.valueOf(StandaloneImageOptions.tier(speed))
+        )
+        val output = File(context.cacheDir, "qwen-generate-${UUID.randomUUID()}.png")
+        try {
+            val settings = QwenImage21.Options().apply {
+                turbo = true  // the installed six-step Turbo model
+                tinyVae = true
+                useGpu = true
+                textEncoderOnCpu = true
+                keepModelsLoaded = false // lower peak RAM, at some speed cost
+                crashMarkerFile = File(context.filesDir, "qwen-generation-in-progress.txt")
+            }
+            return QwenImage21(directory(context), settings).use { engine ->
+                engine.generate(prompt, size, 6, System.currentTimeMillis().toInt(), output,
+                    QwenImage21.ProgressListener { value ->
+                        onProgress(value.coerceIn(0, 100))
+                    })
+            } ?: error("Qwen generation finished without a readable image.")
+        } catch (e: QwenImage21Exception) {
+            if (e.isOutOfMemory()) {
+                throw IllegalStateException(
+                    "Not enough memory for built-in image generation. Select FAST for 320px, close other apps, and retry.",
+                    e
+                )
+            }
+            throw e
+        } finally {
+            output.delete()
+        }
+    }
+
+
+    /**
      * Uses the supplied bitmap as the actual Qwen edit reference. Turbo is fixed at six DiT steps.
      * The returned image is the model's real result, not a new text-to-image generation.
      */

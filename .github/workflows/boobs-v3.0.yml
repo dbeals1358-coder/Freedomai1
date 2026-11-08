@@ -1,4 +1,4 @@
-name: Boob's V-3.0 - Without Nightmare
+name: Boob's V-3.0 - Built-in Qwen
 on:
   workflow_dispatch:
   pull_request:
@@ -35,6 +35,8 @@ on:
       - 'app/src/main/java/com/unboundaistudio/NightmareConnectionDiagnostics.kt'
       - 'app/src/test/java/com/unboundaistudio/NightmareConnectionDiagnosticsTest.kt'
       - 'app/src/main/java/com/unboundaistudio/NativeQwenEditor.kt'
+      - 'app/src/main/java/com/unboundaistudio/StandaloneImageOptions.kt'
+      - 'app/src/test/java/com/unboundaistudio/StandaloneImageOptionsTest.kt'
       - 'app/src/main/java/com/unboundaistudio/MobileI2VVideoEngine.kt'
       - 'app/src/main/java/com/unboundaistudio/OfflineVideoEngine.kt'
       - 'app/src/main/java/com/unboundaistudio/MobileI2VModelUpdater.kt'
@@ -103,9 +105,9 @@ jobs:
           NIGHTMARE_API_TOKEN: ${{ secrets.NIGHTMARE_API_TOKEN }}
         run: gradle assembleDebug lintDebug testDebugUnitTest --no-daemon
       - name: Name APK with version
-        run: cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/FreedomAI-v3.0-debug.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/Boobs-V3.0-debug.apk
       - uses: actions/upload-artifact@v4
         with:
           if-no-files-found: error
-          name: FreedomAI-v3.0-APK
-          path: app/build/outputs/apk/debug/FreedomAI-v3.0-debug.apk
+          name: Boobs-V3.0-APK
+          path: app/build/outputs/apk/debug/Boobs-V3.0-debug.apk
