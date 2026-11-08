@@ -80,7 +80,7 @@ class MainActivity : ComponentActivity() {
    var nightmareVideoFlow by remember { mutableStateOf(prefs.getString("nightmare_video_flow", "auto") ?: "auto") }
    var useMobileI2V by remember { mutableStateOf(false) }
     var runwayKey by remember { mutableStateOf(prefs.getString("runway_key", "") ?: "") }
-   var duration by remember { mutableIntStateOf(1) }
+   var duration by remember { mutableIntStateOf(prefs.getInt("video_duration_seconds", 5).coerceIn(1, 10)) }
    var customSeconds by remember { mutableStateOf("") }
    var lastVideo by remember { mutableStateOf<Uri?>(null) }
    var lastVideoGenerator by remember { mutableStateOf(prefs.getString("last_video_generator", "Not recorded") ?: "Not recorded") }
@@ -788,7 +788,8 @@ class MainActivity : ComponentActivity() {
         Text(status, modifier = Modifier.fillMaxWidth().padding(12.dp))
        }
        if (busy) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-       Text("Choose a photo and describe movement.")
+       Text("Balanced video • default 5 seconds • 16 fps MP4 encoding. Actual resolution and motion depend on the selected model.")
+        Text("Choose a photo and describe movement.")
 
        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
         Text("Use offline MobileI2V (experimental)", modifier = Modifier.weight(1f))
@@ -824,7 +825,7 @@ class MainActivity : ComponentActivity() {
        if (useMobileI2V) Text("Offline MobileI2V is image-conditioned only: it cannot follow typed movement instructions. Switch to Nightmare with a compatible motion workflow for prompt-directed action. Offline video uses the source image without this prompt.")
        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         listOf(1, 2, 5, 10).forEach { secs ->
-         OutlinedButton(onClick = { duration = secs; customSeconds = "" }) {
+         OutlinedButton(onClick = { duration = secs; customSeconds = ""; prefs.edit().putInt("video_duration_seconds", secs).apply() }) {
           Text(if (duration == secs) "✓ ${secs}s" else "${secs}s")
          }
         }
