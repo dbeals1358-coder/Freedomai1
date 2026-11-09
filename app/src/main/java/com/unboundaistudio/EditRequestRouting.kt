@@ -22,13 +22,17 @@ internal object EditRequestRouting {
 
     /** Preserve identity for ordinary edits, even when the prompt says 'keep face same'. */
     fun shouldPreserveFace(prompt: String): Boolean {
+        val instruction = prompt.replace(
+            Regex("""(?i)\b(keep|preserve|retain|leave)\b.{0,30}\b(face|facial|eyes?|hair|identity)\b"""),
+            ""
+        )
         val actionToFace = Regex(
             """(?i)\b(change|edit|fix|retouch|enhance|improve|replace|remove|add|alter|sharpen|recolor|make|give)\b.{0,28}\b(face|facial|eyes?|eyebrows?|eyelashes?|nose|mouth|lips?|smil(?:e|ing)|hair|beard|wrinkles?|expression)\b"""
         )
         val faceToAction = Regex(
             """(?i)\b(face|eyes?|eyebrows?|eyelashes?|nose|mouth|lips?|hair|beard|expression)\b.{0,28}\b(blue|green|brown|red|blonde|black|smaller|larger|different|color|colour|smiling|smile|change|fix)\b"""
         )
-        return !actionToFace.containsMatchIn(prompt) && !faceToAction.containsMatchIn(prompt)
+        return !actionToFace.containsMatchIn(instruction) && !faceToAction.containsMatchIn(instruction)
     }
 
     /**
