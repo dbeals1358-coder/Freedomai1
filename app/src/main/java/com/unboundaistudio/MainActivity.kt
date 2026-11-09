@@ -143,6 +143,15 @@ class MainActivity : ComponentActivity() {
    var onlineQwenKey by remember { mutableStateOf(prefs.getString("online_qwen_key", "") ?: "") }
    var qwenTier by remember { mutableStateOf(prefs.getString("qwen_tier", "FAST") ?: "FAST") }
    var qwenReady by remember { mutableStateOf(runCatching { NativeQwenEditor.ready(this@MainActivity) }.getOrDefault(false)) }
+   var qwenDiagnostics by remember { mutableStateOf("") }
+   var qwenImporting by remember { mutableStateOf(false) }
+   var qwenImportFile by remember { mutableStateOf("") }
+   var qwenImportPercent by remember { mutableIntStateOf(0) }
+   val qwenLastCrash = remember {
+    runCatching { com.scsonic.qwenimage21.QwenImage21.readCrashMarker(
+     java.io.File(filesDir, "qwen-generation-in-progress.txt")
+    ) }.getOrNull()
+   }
    var qwenDownloading by remember { mutableStateOf(false) }
    var qwenDownloadPercent by remember { mutableIntStateOf(0) }
    var qwenDownloadText by remember { mutableStateOf("") }
@@ -155,6 +164,28 @@ class MainActivity : ComponentActivity() {
    var originalGeneratedHere by remember { mutableStateOf(false) }
    var resultGeneratedHere by remember { mutableStateOf(false) }
    val scope = rememberCoroutineScope()
+   val qwenModelFolderPicker = rememberLauncherForActivityResult(
+    ActivityResultContracts.OpenDocumentTree()
+   ) { uri ->
+    if (uri != null && !qwenImporting) {
+     scope.launch {
+      qwenImporting = true
+      try {
+       status = "Importing existing Qwen MNN files. Originals will not be changed."
+       val imported = withContext(Dispatchers.IO) {
+        NativeQwenModelImport.fromFolder(this@MainActivity, uri) { filename, percent ->
+         runOnUiThread { qwenImportFile = filename; qwenImportPercent = percent }
+        }
+       }
+       qwenReady = runCatching { NativeQwenEditor.ready(this@MainActivity) }.getOrDefault(false)
+       status = if (qwenReady) "Qwen MNN files detected ($imported imported); try FAST image generation."
+        else "Imported $imported compatible Qwen files; other MNN files are still missing. Tap Check Qwen for details."
+      } catch (e: Exception) {
+       status = "Qwen model import failed: ${e.message ?: "Cannot read that folder"}. Original files were preserved."
+      } finally { qwenImporting = false }
+     }
+    }
+   }
    // Use Android's native Save As picker; leave the original MP4 in Movies/FreedomAI.
    var exportVideoSource by remember { mutableStateOf<Uri?>(null) }
    val exportVideoLauncher = rememberLauncherForActivityResult(
@@ -577,10 +608,13 @@ class MainActivity : ComponentActivity() {
       }
       }
       if (!nightmareMode && !localMode && nativeQwen && (tab == -1 || tab == 0 || tab == 1 || tab == 2)) {
+       if (!qwenLastCrash.isNullOrBlank()) {
+        Text("Last Qwen run stopped unexpectedly (possibly low RAM): $qwenLastCrash. Select FAST and retry.", color = UiColor(0xFFFFD6A0))
+       }
        if (qwenReady) {
         Text("✓ Built-in Qwen image AI ready — no Nightmare needed.")
        } else {
-        Text("Install the free on-device Qwen model once (~11 GB) to generate or edit pictures without Nightmare.")
+        Text("Install Qwen Image 2.1 MNN once (~11 GB), or import existing compatible MNN files. Nightmare's private model folder is not accessible here.")
         if (qwenDownloading) {
          LinearProgressIndicator(progress = { qwenDownloadPercent / 100f }, modifier = Modifier.fillMaxWidth())
          Text("Installing: " + qwenDownloadPercent + "% — " + qwenDownloadText)
@@ -589,6 +623,21 @@ class MainActivity : ComponentActivity() {
          Button(onClick = { installBuiltInQwenModels() }, enabled = !busy,
           modifier = Modifier.fillMaxWidth()) { Text("Install AI Image Model (one time)") }
         }
+       }
+       OutlinedButton(onClick = {
+        qwenDiagnostics = runCatching {
+         NativeQwenEditor.status(this@MainActivity) + "\nAvailable RAM: " +
+          com.scsonic.qwenimage21.QwenImage21.availableMemoryMB() + " MB" +
+          "\nModel folder: " + NativeQwenEditor.directory(this@MainActivity).absolutePath
+        }.getOrElse { "Qwen runtime failed to load: ${it.javaClass.simpleName}: ${it.message}" }
+       }, enabled = !busy && !qwenImporting, modifier = Modifier.fillMaxWidth()) { Text("Check Qwen / Show Error") }
+       if (qwenDiagnostics.isNotBlank()) Text(qwenDiagnostics)
+       if (qwenImporting) {
+        LinearProgressIndicator(progress = { qwenImportPercent / 100f }, modifier = Modifier.fillMaxWidth())
+        Text("Importing $qwenImportFile: $qwenImportPercent%")
+       } else {
+        OutlinedButton(onClick = { qwenModelFolderPicker.launch(null) }, enabled = !busy && !qwenDownloading,
+         modifier = Modifier.fillMaxWidth()) { Text("Use Already Downloaded Qwen MNN Files") }
        }
       }
       if (tab == 1 || tab == 2) {
@@ -671,9 +720,11 @@ class MainActivity : ComponentActivity() {
          return
         }
         if (useNativeEdit || useBuiltInGenerate) {
-         qwenReady = NativeQwenEditor.ready(this@MainActivity)
+         val readyCheck = runCatching { NativeQwenEditor.ready(this@MainActivity) }
+         qwenReady = readyCheck.getOrDefault(false)
          if (!qwenReady) {
-          status = "Built-in Qwen model missing. Tap Install AI Image Model (one-time, approximately 11 GB)."
+          status = if (readyCheck.isFailure) "Built-in Qwen runtime failed: ${readyCheck.exceptionOrNull()?.message}. Tap Check Qwen / Show Error."
+           else "Built-in Qwen MNN files missing. Tap Check Qwen / Show Error or import compatible MNN files."
           return
          }
         }
