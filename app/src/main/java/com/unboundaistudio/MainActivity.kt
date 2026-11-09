@@ -208,6 +208,11 @@ class MainActivity : ComponentActivity() {
    var prompt by remember { mutableStateOf("") }
     var cartoonMode by remember { mutableStateOf(false) }
     var cartoonStyle by remember { mutableStateOf(CartoonImagePrompt.DEFAULT_STYLE) }
+    var cartoonCharacters by remember { mutableStateOf(
+     prefs.getString("cartoon_character_selection", "From description")
+      ?.takeIf { it in listOf("From description", "Man", "Woman", "Man and woman") }
+      ?: "From description"
+    ) }
    var pendingAssistantImage by remember { mutableStateOf<String?>(null) }
    var showRemoveClothingConfirm by remember { mutableStateOf(false) }
    var original by remember { mutableStateOf<Bitmap?>(null) }
@@ -622,7 +627,7 @@ class MainActivity : ComponentActivity() {
        val requestedResolution = if (input == null && requestedSpeed == "FAST") 768 else resolution
        val editPrompt = if (input != null) {
          if (faceDetailRun) requestedPrompt else "$requestedPrompt. Keep the same person, face, pose, camera and background."
-        } else if (cartoonMode && tab == 0) CartoonImagePrompt.build(requestedPrompt, cartoonStyle)
+        } else if (cartoonMode && tab == 0) CartoonImagePrompt.build(requestedPrompt, cartoonStyle, cartoonCharacters)
          else FaceDetailEnhancement.generationPrompt(requestedPrompt)
        if (input != null && !faceDetailRun && precisionEdit && (!maskMode || strokes.isEmpty())) {
         status = "Precision Edit requires a painted area. Paint the region to change or disable Precision Edit."
@@ -842,6 +847,21 @@ class MainActivity : ComponentActivity() {
           label = { Text("Cartoon style — type anything") },
           placeholder = { Text("e.g. 2D, comic, anime, 3D, hand-drawn") },
           modifier = Modifier.fillMaxWidth())
+         Text("Characters in cartoon")
+         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+          listOf(listOf("From description", "Man"), listOf("Woman", "Man and woman")).forEach { choices ->
+           Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+            choices.forEach { choice ->
+             OutlinedButton(onClick = {
+              cartoonCharacters = choice
+              prefs.edit().putString("cartoon_character_selection", choice).apply()
+             }, enabled = !busy, modifier = Modifier.weight(1f)) {
+              Text(if (cartoonCharacters == choice) "✓ $choice" else choice)
+             }
+            }
+           }
+          }
+         }
         }
         OutlinedTextField(value = prompt, onValueChange = { prompt = it },
          label = { Text(if (cartoonMode) "Describe your cartoon" else "Describe your image") },

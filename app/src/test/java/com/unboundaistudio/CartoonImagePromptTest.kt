@@ -20,6 +20,19 @@ class CartoonImagePromptTest {
         assertTrue(prompt.contains("An original adult male cartoon character"))
     }
 
+    @Test fun mixedAdultCharactersKeepTheirOwnAppearanceAndClothing() {
+        val prompt = CartoonImagePrompt.build("A fictional adult man and woman in a comic-book scene", "Comic art", "Man and woman")
+        assertTrue(prompt.contains("adult man and adult woman as separate characters"))
+        assertTrue(prompt.contains("clothing and body-coverage details exactly as requested"))
+        assertTrue(prompt.contains("without inventing extra garments"))
+    }
+
+    @Test fun defaultDoesNotAssumeCharacterSex() {
+        val prompt = CartoonImagePrompt.build("A cartoon dragon", "Ink")
+        assertTrue(prompt.contains("Follow the character identities"))
+        assertFalse(prompt.contains("as separate characters"))
+    }
+
     @Test fun blankStyleFallsBackToCartoonArtwork() {
         assertTrue(CartoonImagePrompt.build("Dancing cats", "").contains(CartoonImagePrompt.DEFAULT_STYLE))
     }
