@@ -66,6 +66,7 @@ internal object CartoonImagePrompt {
             styleGuidance,
             actionGuidance,
             subjectGuidance,
+            "Treat the user description as the scene specification: include every explicitly named character, object, action, setting, and clothing detail. Do not substitute a generic character portrait, omit requested subjects, or invent unrelated characters. Compose a new scene rather than copying an existing gallery image.",
             maleDirective,
             femaleDirective,
             "Keep clothing and body-coverage details consistent for each person, without adding unwanted garments or swapping features between characters."
@@ -104,7 +105,8 @@ internal object CartoonModelSelector {
     }
 
     fun chooseInstalled(models: org.json.JSONArray, prompt: String): String? {
-        if (!CartoonImagePrompt.wantsRetroTwoD(prompt)) return null
+        val retro = CartoonImagePrompt.wantsRetroTwoD(prompt)
+        val requested3d = Regex("""(?i)\b(3d|cgi|three[\\s-]?dimensional)\b""").containsMatchIn(prompt) && !retro
         var best: String? = null
         var topScore = 0
         for (i in 0 until models.length()) {
@@ -129,6 +131,9 @@ internal object CartoonModelSelector {
             // A photo checkpoint is not a solution to a flat 1970s cel-animation request.
             if (Regex("""(realvis|photoreal|photo.?real|realistic.?vision|cinematic.?photo)""").containsMatchIn(label)) continue
             val score = when {
+                requested3d && Regex("""(3d|cgi|render|toon)""").containsMatchIn(label) -> 150
+                requested3d -> 0
+                !retro && Regex("""(cartoon|comic|toon|illustrat|anime)""").containsMatchIn(label) -> 140
                 Regex("""(2d|cel.?anim|flat.?toon|hand.?drawn|saturday.?morning|retro.?cartoon)""").containsMatchIn(label) -> 140
                 Regex("""(cartoon|comic|toon|illustrat)""").containsMatchIn(label) -> 110
                 label.contains("dreamshaper") -> 85
