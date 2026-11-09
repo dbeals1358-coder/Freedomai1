@@ -1,4 +1,4 @@
-name: Boob's V-3.1 - Cartoon character consistency
+name: Boob's V-3.2 - Cartoon character consistency
 on:
   workflow_dispatch:
   pull_request:
@@ -35,6 +35,7 @@ on:
       - 'app/src/main/java/com/unboundaistudio/NightmareConnectionDiagnostics.kt'
       - 'app/src/test/java/com/unboundaistudio/NightmareConnectionDiagnosticsTest.kt'
       - 'app/src/main/java/com/unboundaistudio/NativeQwenEditor.kt'
+      - 'app/src/main/java/com/unboundaistudio/NativeQwenModelImport.kt'
       - 'app/src/main/java/com/unboundaistudio/StandaloneImageOptions.kt'
       - 'app/src/test/java/com/unboundaistudio/StandaloneImageOptionsTest.kt'
       - 'app/src/main/java/com/unboundaistudio/MobileI2VVideoEngine.kt'
@@ -65,7 +66,7 @@ jobs:
           HF_ACCESS_TOKEN: ${{ secrets.HF_ACCESS_TOKEN }}
           NIGHTMARE_API_TOKEN: ${{ secrets.NIGHTMARE_API_TOKEN }}
         run: |
-          grep -q 'versionName = "3.1"' app/build.gradle.kts
+          grep -q 'versionName = "3.2"' app/build.gradle.kts
           if [ -z "$HF_ACCESS_TOKEN" ]; then echo "::warning::HF_ACCESS_TOKEN not configured; APK will not have embedded Hugging Face access"; fi
           if [ -z "$NIGHTMARE_API_TOKEN" ]; then echo "::warning::NIGHTMARE_API_TOKEN missing; app will use saved token instead"; fi
       - name: Fetch native Qwen 2.1 runtime
@@ -99,15 +100,15 @@ jobs:
           mkdir -p app/src/main/res/drawable-nodpi
           base64 --decode app/icon_source.b64 > app/src/main/res/drawable-nodpi/boobs_launcher.jpg
           test -s app/src/main/res/drawable-nodpi/boobs_launcher.jpg
-      - name: Compile and test Boob's V-3.1
+      - name: Compile and test Boob's V-3.2
         env:
           HF_ACCESS_TOKEN: ${{ secrets.HF_ACCESS_TOKEN }}
           NIGHTMARE_API_TOKEN: ${{ secrets.NIGHTMARE_API_TOKEN }}
         run: gradle assembleDebug lintDebug testDebugUnitTest --no-daemon
       - name: Name APK with version
-        run: cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/Boobs-V3.1-debug.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/Boobs-V3.2-debug.apk
       - uses: actions/upload-artifact@v4
         with:
           if-no-files-found: error
-          name: Boobs-V3.1-APK
-          path: app/build/outputs/apk/debug/Boobs-V3.1-debug.apk
+          name: Boobs-V3.2-APK
+          path: app/build/outputs/apk/debug/Boobs-V3.2-debug.apk
