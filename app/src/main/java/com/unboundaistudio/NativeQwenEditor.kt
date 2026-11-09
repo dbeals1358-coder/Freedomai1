@@ -70,7 +70,9 @@ internal object NativeQwenEditor {
         activeDownloader = downloader
         try {
             // Turbo int4, Tiny VAE, and visual encoder: no unnecessary standard DiT download.
-            downloader.download(dir, false, true, true, ModelDownloader.Listener { name, done, total ->
+            // Preserve a previously installed Standard MNN model; do not download another 5.2 GB Turbo DiT just to add edit files.
+            val standardOnly = hasStandard(dir) && !hasTurbo(dir)
+            downloader.download(dir, standardOnly, !standardOnly, true, ModelDownloader.Listener { name, done, total ->
                 val percent = if (total > 0) ((done * 100.0) / total).toInt().coerceIn(0, 100) else 0
                 onProgress(name, percent)
             })
