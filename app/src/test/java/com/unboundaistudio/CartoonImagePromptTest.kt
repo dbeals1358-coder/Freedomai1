@@ -26,6 +26,18 @@ class CartoonImagePromptTest {
         assertTrue(CartoonImagePrompt.negativePrompt(false).contains("cartoon"))
     }
 
+    @Test fun maleAndFemaleCharactersReceiveConsistentInstructions() {
+        val man = CartoonImagePrompt.build("An adult man standing in a studio", "Comic art")
+        val woman = CartoonImagePrompt.build("An adult woman standing in a studio", "Comic art")
+        for (result in listOf(man, woman)) {
+            assertTrue(result.contains("anatomical features consistent"))
+            assertTrue(result.contains("equally for adult men and adult women"))
+            assertTrue(result.contains("Do not add or remove clothing"))
+        }
+        assertTrue(man.contains("An adult man"))
+        assertTrue(woman.contains("An adult woman"))
+    }
+
     @Test fun requiresSubject() {
         assertThrows(IllegalArgumentException::class.java) {
             CartoonImagePrompt.build("   ", "2D")
