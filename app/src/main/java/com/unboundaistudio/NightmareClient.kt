@@ -222,7 +222,7 @@ internal object NightmareClient {
             }
             if (code !in 200..299 && input == null && disableControlNet &&
                 NightmareControlNetRecovery.isControlNetNpuFailure(body)) {
-                error("Nightmare still reports insufficient NPU memory for ControlNet. In Nightmare, set the current flow\u0027s Generate → ControlNet to None and retry.")
+                error("Nightmare still reports insufficient NPU memory for ControlNet. In Nightmare, set the current flow's Generate → ControlNet to None and retry.")
             }
             check(code in 200..299) { "Nightmare HTTP $code (flow: $actualFlow): ${body.take(350)}" }
             check(body.isNotBlank()) { "Nightmare returned an empty response" }
