@@ -4,7 +4,17 @@ package com.unboundaistudio
 internal object CartoonImagePrompt {
     const val DEFAULT_STYLE = "Cartoon illustration"
 
-    fun build(description: String, style: String, characters: String = "From description"): String {
+    /** Select the actual Nightmare workflow instead of silently forcing saved RealVis. */
+    fun generationFlow(useCurrentNightmareFlow: Boolean, savedImageFlow: String): String =
+        if (useCurrentNightmareFlow) "current" else savedImageFlow.trim()
+
+    fun build(
+        description: String,
+        style: String,
+        characters: String = "From description",
+        maleClothing: String = "Auto",
+        femaleClothing: String = "Auto"
+    ): String {
         require(description.isNotBlank()) { "Describe the cartoon you want to create." }
         val chosenStyle = style.trim().ifBlank { DEFAULT_STYLE }
         val subjectGuidance = when (characters) {
@@ -13,11 +23,26 @@ internal object CartoonImagePrompt {
             "Man and woman" -> "Show the described adult man and adult woman as separate characters; preserve each character's distinct anatomy and appearance."
             else -> "Follow the character identities and anatomy stated in the description."
         }
-        return "${description.trim()}. Visual style: ${chosenStyle}. " +
-            "Create original, high-quality cartoon artwork. Respect the requested characters, " +
-            "composition, colors and details; do not force photographic realism. " +
-            subjectGuidance + " Keep all characters' clothing and body-coverage details exactly as requested, " +
-            "without inventing extra garments or swapping features between characters."
+        // Apply clothing state separately. The saved RealVis model may still ignore instructions;
+        // these directives make the request explicit, not a post-processing promise.
+        val maleDirective = when (maleClothing) {
+            "Nude" -> "Every original adult male character is fully unclothed, with visible anatomically male external body features, without shorts, pants, underwear, or other clothing."
+            "Clothed" -> "Every adult male character wears clothing as described and has no accidental nudity."
+            else -> ""
+        }
+        val femaleDirective = when (femaleClothing) {
+            "Nude" -> "Every original adult female character is fully unclothed, with anatomically female body features, without dresses, underwear, or other clothing."
+            "Clothed" -> "Every adult female character wears clothing as described and has no accidental nudity."
+            else -> ""
+        }
+        return listOf(
+            "${description.trim()}. Visual style: ${chosenStyle}.",
+            "Create original, high-quality cartoon artwork. Respect the requested characters, composition, colors and details; do not force photographic realism.",
+            subjectGuidance,
+            maleDirective,
+            femaleDirective,
+            "Keep clothing and body-coverage details consistent for each person, without adding unwanted garments or swapping features between characters."
+        ).filter { it.isNotBlank() }.joinToString(" ")
     }
 
     fun negativePrompt(cartoonMode: Boolean): String =
