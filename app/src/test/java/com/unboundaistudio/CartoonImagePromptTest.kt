@@ -14,6 +14,12 @@ class CartoonImagePromptTest {
         assertFalse(prompt.contains("Natural photographic human facial detail"))
     }
 
+    @Test fun keepsDescribedAdultCharacterFeaturesConsistent() {
+        val prompt = CartoonImagePrompt.build("An original adult male cartoon character", "Ink")
+        assertTrue(prompt.contains("requested identity, body features, and anatomy consistent"))
+        assertTrue(prompt.contains("An original adult male cartoon character"))
+    }
+
     @Test fun blankStyleFallsBackToCartoonArtwork() {
         assertTrue(CartoonImagePrompt.build("Dancing cats", "").contains(CartoonImagePrompt.DEFAULT_STYLE))
     }

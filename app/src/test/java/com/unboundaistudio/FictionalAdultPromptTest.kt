@@ -4,6 +4,12 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class FictionalAdultPromptTest {
+ @Test fun switchingSubjectClearsStaleAnatomySelection() {
+  assertEquals("Default", FictionalAdultPrompt.anatomyAfterSubjectChange("Woman", "Man", "Female anatomy"))
+  assertEquals("Default", FictionalAdultPrompt.anatomyAfterSubjectChange("Man", "Woman", "Male anatomy"))
+  assertEquals("Default", FictionalAdultPrompt.anatomyAfterSubjectChange("Man", "Both People", "Both anatomies"))
+  assertEquals("Male anatomy", FictionalAdultPrompt.anatomyAfterSubjectChange("Man", "Man", "Male anatomy"))
+ }
  @Test fun manIsNotOverriddenWithWoman() {
   val prompt = FictionalAdultPrompt.build(30, "Man", "brown hair", "", "", "", "photorealistic", "athletic build")
   assertTrue(prompt.startsWith("Original fictional adult man, age 30"))

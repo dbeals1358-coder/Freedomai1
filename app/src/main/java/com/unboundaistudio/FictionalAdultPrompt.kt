@@ -6,6 +6,10 @@ package com.unboundaistudio
  * No real-person inputs are used by this helper.
  */
 internal object FictionalAdultPrompt {
+ /** Avoid applying an anatomy option selected for a different subject by accident. */
+ fun anatomyAfterSubjectChange(previousSubject: String, newSubject: String, anatomy: String): String =
+  if (previousSubject == newSubject) anatomy else "Default"
+
  fun build(
   age: Int,
   subject: String,

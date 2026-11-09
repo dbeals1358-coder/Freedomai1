@@ -9,7 +9,8 @@ internal object CartoonImagePrompt {
         val chosenStyle = style.trim().ifBlank { DEFAULT_STYLE }
         return "${description.trim()}. Visual style: ${chosenStyle}. " +
             "Create original, high-quality cartoon artwork. Respect the requested characters, " +
-            "composition, colors and details; do not force photographic realism."
+            "composition, colors and details; do not force photographic realism. " +
+            "Keep each adult character's requested identity, body features, and anatomy consistent without swapping traits."
     }
 
     fun negativePrompt(cartoonMode: Boolean): String =

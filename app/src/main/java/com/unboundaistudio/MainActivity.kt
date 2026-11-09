@@ -195,7 +195,7 @@ class MainActivity : ComponentActivity() {
     mutableStateOf(prefs.getString("fictional_scene_count", "Single")?.takeIf { it in listOf("Single", "Couple", "Group") } ?: "Single")
    }
    var characterSubject by remember {
-    mutableStateOf(prefs.getString("fictional_adult_subject", "Man")?.takeIf { it in listOf("Man", "Woman", "Person") } ?: "Man")
+    mutableStateOf(prefs.getString("fictional_adult_subject", "Man")?.takeIf { it in listOf("Man", "Woman", "Both People", "Person") } ?: "Man")
    }
    var appearance by remember { mutableStateOf("") }
    var bodyDescription by remember { mutableStateOf("") }
@@ -764,6 +764,13 @@ class MainActivity : ComponentActivity() {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
              options.forEach { choice ->
               OutlinedButton(onClick = {
+               // A saved anatomy option from a different subject must not silently
+               // override the new subject. The user can reselect it intentionally.
+               val correctedAnatomy = FictionalAdultPrompt.anatomyAfterSubjectChange(characterSubject, choice, anatomyChoice)
+               if (correctedAnatomy != anatomyChoice) {
+                anatomyChoice = correctedAnatomy
+                prefs.edit().putString("fictional_anatomy", correctedAnatomy).apply()
+               }
                characterSubject = choice
                if (choice == "Both People" && sceneCount == "Single") {
                 sceneCount = "Couple"
