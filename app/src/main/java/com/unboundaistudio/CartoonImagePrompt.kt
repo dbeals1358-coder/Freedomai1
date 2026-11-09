@@ -54,14 +54,14 @@ internal object CartoonImagePrompt {
         val styleGuidance = if (referenceComic) {
             "Required look: vintage adult comic-book panel illustration, confident thick black ink contours, flat saturated colors, clean cel shading, exaggerated but coherent cartoon anatomy, expressive eyes and faces, detailed illustrated room or setting, dynamic interaction between characters. Polished hand-drawn 2D artwork, not a photograph, not a 3D render. Match this visual treatment consistently across the entire image."
         } else if (retro2D) {
-            "Required look: an original flat hand-drawn 2D cel-animation frame in a 1970s Saturday-morning adventure-comedy aesthetic. Strong continuous ink contours, clean readable silhouettes, simplified geometric character designs, expressive faces, solid vibrant painted colors with minimal shading, coherent perspective and a painted animation background. Each person has a distinct consistent design and occupies the space described; show complete characters and their interaction, not a modern realistic render. For adult characters, retain any explicitly requested adult nudity and coherent anatomical detail instead of automatically covering bodies with clothing."
+            "Required look: an original flat hand-drawn 2D animation cel frame in a 1970s Saturday-morning adventure-comedy aesthetic. Strong continuous ink contours, clean readable silhouettes, simplified geometric character designs, expressive faces, solid vibrant painted colors with minimal shading, coherent perspective and a painted animation background. Each person has a distinct consistent design and occupies the space described; show complete characters and their interaction, not a modern realistic render. For adult characters, retain any explicitly requested adult nudity and coherent anatomical detail instead of automatically covering bodies with clothing."
         } else if (requested3D) {
             "Required look: fully animated 3D cartoon characters and environments, deliberately stylized proportions and materials, expressive animation-film faces, not live-action photography."
         } else {
             "Required look: original 2D cartoon illustration with clear stylized outlines, drawn shapes and expressive faces. Respect the requested composition, colors and details; no photographic realism."
         }
         val actionGuidance = if (action.containsMatchIn(description)) {
-            "Show a wide single action frame from the story with the characters visibly interacting, doing the exact described action. Stage the scene so every named subject can be seen, with recognizable poses, expressions, silhouettes and their environmental context. No static poses, studio portraits, character lineup, or costume showcase."
+            "Show a wide single action frame from the story with the characters visibly interacting, the described action actually happening. Stage the scene so every named subject can be seen, with recognizable poses, expressions, silhouettes and their environmental context. No static poses, studio portraits, character lineup, or costume showcase."
         } else ""
         val subjectGuidance = when (characters) {
             "Man" -> "For the human subject, preserve the described adult man's identity and anatomy."
