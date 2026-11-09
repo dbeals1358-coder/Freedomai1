@@ -55,6 +55,13 @@ internal object NightmareVideoQualityGate {
                 "'Video: stream the model', then try a 2-second clip. If this continues, " +
                 "the installed Wan video model may not support your Snapdragon chip. Try a compatible Wan 14B model if available."
             }
+            val motion = VideoFrameContinuity.meanConsecutiveChange(samples)
+            check(motion >= 0.007) {
+                "AI video contained almost no frame-to-frame movement (mean change: " +
+                "%.4f".format(java.util.Locale.US, motion) +
+                "). It was not saved as an action video. Try a more specific movement " +
+                "description or a compatible image-to-video model; zooming a photo is not AI motion."
+            }
         } finally {
             retriever.release()
             temp.delete()
