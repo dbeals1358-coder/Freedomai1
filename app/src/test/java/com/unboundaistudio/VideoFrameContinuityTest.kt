@@ -54,4 +54,17 @@ class VideoFrameContinuityTest {
             fail("Expected mismatched frame size rejection")
         } catch (_: IllegalArgumentException) { }
     }
+
+    @Test fun detectsNoVisibleMovementDespiteValidFrames() {
+        val source = photo()
+        assertEquals(0.0, VideoFrameContinuity.meanConsecutiveChange(List(7) { source }), 0.0001)
+    }
+
+    @Test fun detectsChangingFramesWithoutMistakingThemForStillness() {
+        val source = photo()
+        val samples = (0 until 7).map { frame ->
+            IntArray(source.size) { i -> (source[i] + frame * 15).coerceAtMost(255) }
+        }
+        assertTrue(VideoFrameContinuity.meanConsecutiveChange(samples) > 0.02)
+    }
 }
