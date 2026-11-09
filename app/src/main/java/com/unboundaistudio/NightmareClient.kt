@@ -13,11 +13,15 @@ internal object NightmareClient {
     private const val BASE_URL = "http://127.0.0.1:8820"
     private var cachedModels: org.json.JSONArray? = null
     private var cachedModelsAt: Long = 0L
+    @Volatile var lastCartoonModelLabel: String = "Not selected"
+        private set
 
     @Synchronized private fun installedModels(token: String): org.json.JSONArray {
         val now = android.os.SystemClock.elapsedRealtime()
         cachedModels?.takeIf { now - cachedModelsAt < 300_000L }?.let { return it }
-        val models = JSONObject(authenticatedGet("/models", token)).optJSONArray("models")
+        val response = JSONObject(authenticatedGet("/models", token))
+        val models = response.optJSONArray("models") ?: response.optJSONArray("items")
+            ?: response.optJSONArray("checkpoints")
             ?: error("Nightmare did not report its installed picture models.")
         cachedModels = models
         cachedModelsAt = now
@@ -97,18 +101,31 @@ internal object NightmareClient {
             .put("prompt", if (input == null) prompt else EditRequestRouting.promptFor(actualFlow, prompt))
         if (cartoonMode) {
             payload.put("negative", CartoonImagePrompt.negativePrompt(true, prompt))
-            // Switch only to a suitable ALREADY INSTALLED drawing checkpoint for 2D cartoons.
-            // If none exists, use the selected Nightmare model rather than forcing a download.
-            runCatching { CartoonModelSelector.chooseInstalled(installedModels(token), prompt) }
-                .onSuccess { model ->
-                    if (!model.isNullOrBlank()) {
-                        payload.put("model", model)
-                        android.util.Log.i("FreedomAI-Cartoon", "Using installed cartoon checkpoint: " + model)
-                    } else {
-                        android.util.Log.w("FreedomAI-Cartoon", "No installed cartoon checkpoint matched; selected Nightmare model may be photographic.")
-                    }
-                }
-                .onFailure { android.util.Log.w("FreedomAI-Cartoon", "Model lookup unavailable; using selected Nightmare checkpoint.") }
+            val retro2D = CartoonImagePrompt.wantsRetroTwoD(prompt)
+            // Never silently run a photography checkpoint for a required 2D cel look.
+            val installed = try {
+                installedModels(token)
+            } catch (error: Exception) {
+                if (retro2D) throw IllegalStateException(
+                    "Cannot verify a 2D drawing model in Nightmare: ${error.message}. " +
+                        "No image was created. Check the Nightmare connection and installed models.", error)
+                android.util.Log.w("FreedomAI-Cartoon", "Model lookup unavailable; using selected Nightmare checkpoint.")
+                null
+            }
+            val model = installed?.let { CartoonModelSelector.chooseInstalled(it, prompt) }
+            if (!model.isNullOrBlank()) {
+                payload.put("model", model)
+                lastCartoonModelLabel = model
+                android.util.Log.i("FreedomAI-Cartoon", "Using installed cartoon checkpoint: " + model)
+            } else if (retro2D) {
+                throw IllegalStateException(
+                    "No compatible 2D cartoon model was found in Nightmare. " +
+                        "The current photo model cannot reliably make a 1970s hand-drawn animation frame. " +
+                        "Select an already-installed cartoon, Pony or illustration model in Nightmare; " +
+                        "no model was deleted or downloaded.")
+            } else {
+                lastCartoonModelLabel = "current Nightmare checkpoint"
+            }
         }
 
         if (input == null) {

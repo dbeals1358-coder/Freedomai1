@@ -107,4 +107,26 @@ class CartoonImagePromptTest {
         assertEquals(null, CartoonModelSelector.chooseInstalled(both, "3D cartoon"))
     }
 
+
+    @Test fun writtenSeventiesDescriptionOverridesOldThreeDStyle() {
+        val description = "70's Hanna Barbera cartoon characters fighting crime"
+        val prompt = CartoonImagePrompt.build(description, "3D cinematic cartoon")
+        assertTrue(prompt.contains("1970s flat hand-drawn 2D"))
+        assertTrue(prompt.contains("single action frame"))
+        assertFalse(prompt.contains("Visual style: 3D"))
+        assertTrue(CartoonImagePrompt.wantsRetroTwoD(prompt))
+        assertTrue(CartoonImagePrompt.negativePrompt(true, prompt).contains("photographic realism"))
+    }
+
+    @Test fun explicitThreeDRequestIsStillAllowed() {
+        val prompt = CartoonImagePrompt.build("1970s cartoon heroes in 3D", "3D cartoon")
+        assertFalse(prompt.contains("Required look: authentic flat hand-drawn 2D"))
+    }
+
+    @Test fun cartoonModelPickerAcceptsAlternateApiKeysAndStringList() {
+        val alternatives = org.json.JSONArray("""[{"id":"realvisxl","name":"RealVis XL"},{"model_id":"retro_cel_2d","name":"Retro Cartoon 2D"}]""")
+        assertEquals("retro_cel_2d", CartoonModelSelector.chooseInstalled(alternatives, "70's hand drawn cartoon"))
+        val strings = org.json.JSONArray("""["realvisxl","pony_diffusion"]""")
+        assertEquals("pony_diffusion", CartoonModelSelector.chooseInstalled(strings, "1970s cartoon"))
+    }
 }

@@ -24,7 +24,13 @@ internal object CartoonImagePrompt {
         femaleClothing: String = "Auto"
     ): String {
         require(description.isNotBlank()) { "Describe the cartoon you want to create." }
-        val chosenStyle = style.trim().ifBlank { DEFAULT_STYLE }
+        val enteredStyle = style.trim().ifBlank { DEFAULT_STYLE }
+        // The new written prompt wins over an old saved UI style. For example,
+        // "70's Hanna-Barbera" must not render in 3D just because 3D was selected earlier.
+        val descriptionRequestsRetro = retroStyle.containsMatchIn(description) &&
+            !threeD.containsMatchIn(description)
+        val chosenStyle = if (descriptionRequestsRetro && threeD.containsMatchIn(enteredStyle))
+            "1970s flat hand-drawn 2D animation cels" else enteredStyle
         val retro2D = wantsRetroTwoD(description + " " + chosenStyle)
         val autoNude = nudeWords.containsMatchIn(description) && !noNudeWords.containsMatchIn(description)
         val effectiveMaleClothing = if (maleClothing == "Auto" && autoNude) "Nude" else maleClothing
@@ -35,7 +41,7 @@ internal object CartoonImagePrompt {
             "Create original, high-quality cartoon artwork. Respect the requested characters, composition, colors and details; do not force photographic realism."
         }
         val actionGuidance = if (action.containsMatchIn(description)) {
-            "Illustrate the described crime-fighting or other action actually happening. Characters interact in dynamic movement with a clear story. Do not substitute a static posed group portrait."
+            "Show a single action frame from the story, with visible movement and characters actively interacting: illustrate the described crime-fighting or other action actually happening. No static poses, studio portraits, character lineup, or costume showcase."
         } else ""
         val subjectGuidance = when (characters) {
             "Man" -> "For the human subject, preserve the described adult man's identity and anatomy."
@@ -85,20 +91,36 @@ internal object CartoonImagePrompt {
 }
 
 
-/** Choose only an installed drawing checkpoint; never download anything or change photo mode. */
+/** Choose a drawing checkpoint installed in Nightmare; do not download or change photo mode. */
 internal object CartoonModelSelector {
     fun chooseInstalled(models: org.json.JSONArray, prompt: String): String? {
         if (!CartoonImagePrompt.wantsRetroTwoD(prompt)) return null
         var best: String? = null
         var topScore = 0
         for (i in 0 until models.length()) {
-            val item = models.optJSONObject(i) ?: continue
-            val id = item.optString("id").trim()
+            val item = models.opt(i)
+            val id: String
+            val label: String
+            when (item) {
+                is org.json.JSONObject -> {
+                    id = listOf("id", "model_id", "model", "path", "filename", "name")
+                        .map { item.optString(it).trim() }.firstOrNull { it.isNotBlank() }.orEmpty()
+                    label = listOf(id, item.optString("name"), item.optString("title"),
+                        item.optString("family"), item.optString("type")).joinToString(" ").lowercase()
+                }
+                is String -> {
+                    id = item.trim()
+                    label = id.lowercase()
+                }
+                else -> continue
+            }
             if (id.isBlank()) continue
-            val label = (id + " " + item.optString("name") + " " + item.optString("family")).lowercase()
             if (Regex("""(inpaint|upscal|video|controlnet|vae|lora|flux|qwen|z.image)""").containsMatchIn(label)) continue
+            // A photo checkpoint is not a solution to a flat 1970s cel-animation request.
+            if (Regex("""(realvis|photoreal|photo.?real|realistic.?vision|cinematic.?photo)""").containsMatchIn(label)) continue
             val score = when {
-                Regex("""(cartoon|comic|toon|illustrat)""").containsMatchIn(label) -> 100
+                Regex("""(2d|cel.?anim|flat.?toon|hand.?drawn|saturday.?morning|retro.?cartoon)""").containsMatchIn(label) -> 140
+                Regex("""(cartoon|comic|toon|illustrat)""").containsMatchIn(label) -> 110
                 label.contains("dreamshaper") -> 85
                 label.contains("pony") -> 75
                 label.contains("illustrious") -> 65
