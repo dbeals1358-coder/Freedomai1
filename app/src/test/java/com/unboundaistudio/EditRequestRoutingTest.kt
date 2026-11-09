@@ -30,4 +30,14 @@ class EditRequestRoutingTest {
         assertTrue(s.startsWith("red bikini"))
         assertFalse(s.startsWith("Edit the supplied"))
     }
+
+    @Test fun ordinaryClothingEditKeepsOriginalFace() {
+        assertTrue(EditRequestRouting.shouldPreserveFace("turn the shirt blue"))
+    }
+
+    @Test fun requestedFaceAndEyeEditsAreNotUndone() {
+        assertFalse(EditRequestRouting.shouldPreserveFace("fix her eyes"))
+        assertFalse(EditRequestRouting.shouldPreserveFace("change hair color to brown"))
+        assertFalse(EditRequestRouting.shouldPreserveFace("make him smile"))
+    }
 }
