@@ -37,6 +37,12 @@ internal object VideoFrameContinuity {
         return Assessment(lost >= 3, lost, comparisons.size)
     }
 
+    /** Reject nearly identical frames: a valid MP4 is not proof of video motion. */
+    fun meanConsecutiveChange(frames: List<IntArray>): Double {
+        require(frames.size >= 5) { "Need at least five video frames" }
+        return frames.zipWithNext().map { (a, b) -> absoluteDifference(a, b) }.average()
+    }
+
     internal fun absoluteDifference(a: IntArray, b: IntArray): Double {
         require(a.size == b.size && a.isNotEmpty())
         var sum = 0L
