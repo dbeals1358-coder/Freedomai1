@@ -76,7 +76,7 @@ internal object NativeQwenEditor {
                 val percent = if (total > 0) ((done * 100.0) / total).toInt().coerceIn(0, 100) else 0
                 onProgress(name, percent)
             })
-            check(ready(context)) { "Download ended but some required Qwen edit files are still missing." }
+            check(editReady(context)) { "Download ended but required Qwen editing files are still missing." }
         } finally {
             activeDownloader = null
         }
