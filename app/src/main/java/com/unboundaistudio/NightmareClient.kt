@@ -95,7 +95,21 @@ internal object NightmareClient {
         } else EditRequestRouting.chooseFlow(editFlow, prompt)
         val payload = JSONObject().put("flow", actualFlow)
             .put("prompt", if (input == null) prompt else EditRequestRouting.promptFor(actualFlow, prompt))
-        if (cartoonMode) payload.put("negative", CartoonImagePrompt.negativePrompt(true))
+        if (cartoonMode) {
+            payload.put("negative", CartoonImagePrompt.negativePrompt(true, prompt))
+            // Switch only to a suitable ALREADY INSTALLED drawing checkpoint for 2D cartoons.
+            // If none exists, use the selected Nightmare model rather than forcing a download.
+            runCatching { CartoonModelSelector.chooseInstalled(installedModels(token), prompt) }
+                .onSuccess { model ->
+                    if (!model.isNullOrBlank()) {
+                        payload.put("model", model)
+                        android.util.Log.i("FreedomAI-Cartoon", "Using installed cartoon checkpoint: " + model)
+                    } else {
+                        android.util.Log.w("FreedomAI-Cartoon", "No installed cartoon checkpoint matched; selected Nightmare model may be photographic.")
+                    }
+                }
+                .onFailure { android.util.Log.w("FreedomAI-Cartoon", "Model lookup unavailable; using selected Nightmare checkpoint.") }
+        }
 
         if (input == null) {
             payload.put("steps", when (speed) { "FAST" -> 12; "MAX QUALITY" -> 35; else -> if (highQuality) 35 else 22 })

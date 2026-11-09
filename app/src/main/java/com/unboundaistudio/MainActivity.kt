@@ -906,7 +906,7 @@ class MainActivity : ComponentActivity() {
            }
           }
          }
-         Text("Auto follows your description; Nude and Clothed explicitly describe original adult characters only. The model may still have limitations.")
+         Text("Current selections: adult men — " + cartoonMaleClothing + "; adult women — " + cartoonFemaleClothing + ". Auto also follows explicit nudity in your description; the installed model may still have limitations.")
         }
         OutlinedTextField(value = prompt, onValueChange = { prompt = it },
          label = { Text(if (cartoonMode) "Describe your cartoon" else "Describe your image") },

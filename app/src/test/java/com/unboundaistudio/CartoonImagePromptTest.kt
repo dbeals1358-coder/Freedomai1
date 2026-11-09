@@ -83,4 +83,28 @@ class CartoonImagePromptTest {
             CartoonImagePrompt.build("   ", "2D")
         }
     }
+    @Test fun retroSeventiesCrimeFightingIsDrawnAsAction() {
+        val prompt = CartoonImagePrompt.build("70's Hanna Barbera cartoon characters fighting crime", "")
+        assertTrue(prompt.contains("flat hand-drawn 2D animation"))
+        assertTrue(prompt.contains("action actually happening"))
+        assertTrue(CartoonImagePrompt.negativePrompt(true, prompt).contains("photographic realism"))
+        assertTrue(CartoonImagePrompt.negativePrompt(true, prompt).contains("posed group photo"))
+    }
+
+    @Test fun nudeDescriptionSetsBothAutoSexesWithoutOverridingClothed() {
+        val prompt = CartoonImagePrompt.build("An adult man and woman naked in a cartoon", "2D", "Man and woman")
+        assertTrue(prompt.contains("Every original adult male character is fully unclothed"))
+        assertTrue(prompt.contains("Every original adult female character is fully unclothed"))
+        val oneClothed = CartoonImagePrompt.build("An adult man and woman naked in a cartoon", "2D", "Man and woman", "Clothed", "Auto")
+        assertTrue(oneClothed.contains("Every adult male character wears clothing"))
+        assertFalse(oneClothed.contains("Every original adult male character is fully unclothed"))
+    }
+
+    @Test fun selectsInstalledArtModelButNotRealvisOr3dFlow() {
+        val both = org.json.JSONArray("""[{"id":"realvisxl","name":"RealVis XL","family":"sdxl"},{"id":"pony_diffusion","name":"Pony Diffusion","family":"sdxl"}]""")
+        assertEquals("pony_diffusion", CartoonModelSelector.chooseInstalled(both, "1970s cartoon"))
+        assertEquals(null, CartoonModelSelector.chooseInstalled(org.json.JSONArray("""[{"id":"realvisxl"}]"""), "1970s cartoon"))
+        assertEquals(null, CartoonModelSelector.chooseInstalled(both, "3D cartoon"))
+    }
+
 }
