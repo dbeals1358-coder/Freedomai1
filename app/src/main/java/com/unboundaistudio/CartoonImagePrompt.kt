@@ -16,6 +16,15 @@ internal object CartoonImagePrompt {
     /** Never reuse a current or saved image workflow that might have a gallery photo attached. */
     fun generationFlow(): String = "txt2img"
 
+    /** Keep wide action/group scenes in-frame instead of cropping into a square portrait. */
+    fun canvasFor(description: String, requestedSide: Int): Pair<Int, Int> {
+        val side = (requestedSide.coerceIn(512, 1024) / 64) * 64
+        val wide = action.containsMatchIn(description) ||
+            Regex("""(?i)\b(group|couple|both|together|landscape|wide|panorama|crowd|several|team|two characters|three characters)\b""")
+                .containsMatchIn(description)
+        return if (wide) side to (side * 3 / 4 / 64 * 64) else side to side
+    }
+
     fun build(
         description: String,
         style: String,
@@ -45,14 +54,14 @@ internal object CartoonImagePrompt {
         val styleGuidance = if (referenceComic) {
             "Required look: vintage adult comic-book panel illustration, confident thick black ink contours, flat saturated colors, clean cel shading, exaggerated but coherent cartoon anatomy, expressive eyes and faces, detailed illustrated room or setting, dynamic interaction between characters. Polished hand-drawn 2D artwork, not a photograph, not a 3D render. Match this visual treatment consistently across the entire image."
         } else if (retro2D) {
-            "Required look: authentic flat hand-drawn 2D animation cels from a 1970s Saturday-morning adventure cartoon, thick clean ink outlines, simple shapes, flat painted colors, expressive faces, illustrated background, an actual frame of traditional television animation. For adult characters, retain any explicitly requested adult nudity and coherent anatomical detail instead of automatically covering bodies with clothing."
+            "Required look: an original flat hand-drawn 2D cel-animation frame in a 1970s Saturday-morning adventure-comedy aesthetic. Strong continuous ink contours, clean readable silhouettes, simplified geometric character designs, expressive faces, solid vibrant painted colors with minimal shading, coherent perspective and a painted animation background. Each person has a distinct consistent design and occupies the space described; show complete characters and their interaction, not a modern realistic render. For adult characters, retain any explicitly requested adult nudity and coherent anatomical detail instead of automatically covering bodies with clothing."
         } else if (requested3D) {
             "Required look: fully animated 3D cartoon characters and environments, deliberately stylized proportions and materials, expressive animation-film faces, not live-action photography."
         } else {
             "Required look: original 2D cartoon illustration with clear stylized outlines, drawn shapes and expressive faces. Respect the requested composition, colors and details; no photographic realism."
         }
         val actionGuidance = if (action.containsMatchIn(description)) {
-            "Show a single action frame from the story, with visible movement and characters actively interacting: illustrate the described crime-fighting or other action actually happening. No static poses, studio portraits, character lineup, or costume showcase."
+            "Show a wide single action frame from the story with the characters visibly interacting, doing the exact described action. Stage the scene so every named subject can be seen, with recognizable poses, expressions, silhouettes and their environmental context. No static poses, studio portraits, character lineup, or costume showcase."
         } else ""
         val subjectGuidance = when (characters) {
             "Man" -> "For the human subject, preserve the described adult man's identity and anatomy."
