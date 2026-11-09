@@ -7,6 +7,29 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CartoonImagePromptTest {
+    @Test fun generatedCartoonsRequestOnlyEnglishLettering() {
+        val description = "A fox says \"Run now!\" in a speech bubble"
+        val prompt = CartoonImagePrompt.build(description, "Comic book")
+        assertTrue(prompt.contains(description))
+        assertTrue(prompt.contains("ENGLISH ONLY"))
+        assertTrue(prompt.contains("speech bubbles"))
+        assertTrue(prompt.contains("correctly spelled"))
+        assertTrue(prompt.contains("Otherwise leave the illustration free of text"))
+        val negative = CartoonImagePrompt.negativePrompt(true, prompt)
+        assertTrue(negative.contains("non-English lettering"))
+        assertTrue(negative.contains("gibberish text"))
+    }
+
+    @Test fun editingCartoonsTranslatesExistingTextButPreservesArtwork() {
+        val prompt = CartoonImagePrompt.withEnglishTextForEditing("Change the background to green")
+        assertTrue(prompt.startsWith("Change the background to green"))
+        assertTrue(prompt.contains("speech bubbles"))
+        assertTrue(prompt.contains("English only"))
+        assertTrue(prompt.contains("Translate any existing non-English text"))
+        assertTrue(prompt.contains("Preserve the original bubble positions"))
+        assertTrue(prompt.contains("none was requested, keep it free of text"))
+    }
+
     @Test fun supportsFreelyWrittenCartoonStyle() {
         val prompt = CartoonImagePrompt.build("A dragon riding a bicycle", "Vintage comic strip in ink")
         assertTrue(prompt.contains("A dragon riding a bicycle"))

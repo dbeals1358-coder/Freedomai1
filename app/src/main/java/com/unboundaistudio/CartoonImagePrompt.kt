@@ -25,6 +25,17 @@ internal object CartoonImagePrompt {
         return if (wide) side to (side * 3 / 4 / 64 * 64) else side to side
     }
 
+    /** Apply English lettering guidance conditionally when the input is cartoon artwork. */
+    fun withEnglishTextForEditing(instruction: String): String =
+        instruction.trim() +
+            ". If the source image is a cartoon, comic panel, or illustration, " +
+            "all visible words in speech bubbles, thought bubbles, captions, signs, " +
+            "sound effects and labels must be legible, correctly spelled English only. " +
+            "Translate any existing non-English text into natural English while keeping its meaning. " +
+            "Preserve the original bubble positions, characters, setting and drawing style. " +
+            "Do not add extra dialogue, gibberish, fake letters or captions that were not requested. " +
+            "If the artwork contains no text and none was requested, keep it free of text."
+
     fun build(
         description: String,
         style: String,
@@ -84,7 +95,7 @@ internal object CartoonImagePrompt {
         return listOf(
             "${description.trim()}. Visual style: ${chosenStyle}.",
             styleGuidance,
-            "No speech bubbles, captions, labels or lettering unless the description explicitly asks for them. If lettering is requested, only render the exact quoted text; otherwise leave the illustration free of text.",
+            "No speech bubbles, thought bubbles, captions, labels or lettering unless the description explicitly asks for them. Whenever text is requested, every visible word in speech bubbles, thought bubbles, captions, signs, sound effects and labels must be legible, correctly spelled ENGLISH ONLY. Render exactly the English words and dialogue specified by the user, preserving spelling and punctuation. Translate non-English wording into natural English rather than printing foreign writing. Never invent unrelated text, pseudo-letters or gibberish. Otherwise leave the illustration free of text.",
             actionGuidance,
             subjectGuidance,
             "Treat the user description as the scene specification: include every explicitly named character, object, action, setting, and clothing detail. Do not substitute a generic character portrait, omit requested subjects, or invent unrelated characters. Compose a new scene rather than copying an existing gallery image.",
@@ -101,7 +112,7 @@ internal object CartoonImagePrompt {
             ", photograph, photographic realism, live action, 3D model, CGI render, realistic skin, plastic figures, modern 3D animation"
         } else ""
         val actionExclusions = if (action.containsMatchIn(prompt)) ", static portrait, posed group photo, standing in a row, police lineup" else ""
-        return base + exclusions + actionExclusions + ", gibberish text, illegible lettering, misspelled speech bubbles, unrelated subjects, missing characters, duplicate characters, generic headshot, wrong setting"
+        return base + exclusions + actionExclusions + ", non-English lettering, foreign-language text, pseudo-letters, gibberish text, illegible lettering, misspelled speech bubbles, unrelated subjects, missing characters, duplicate characters, generic headshot, wrong setting"
     }
 
     fun negativePrompt(cartoonMode: Boolean): String =

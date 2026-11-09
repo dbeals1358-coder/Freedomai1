@@ -636,18 +636,23 @@ class MainActivity : ComponentActivity() {
        } else nightmareImageFlow
        // Respect Auto: garment changes need auto-masked inpainting; forcing flux_edit
         // here incorrectly bypassed the selected editing workflow on every photo edit.
-        val editFlowForRun = if (faceDetailRun && nightmareMode) "flux_edit" else nightmareEditFlow
        val requestedPrompt = if (tab == 2 && fictionalAdultMode && input == null) {
         val age = characterAge.toIntOrNull()
         if (age == null || age < 18 || age > 100) { status = "Enter an adult age from 18 to 100"; return }
         FictionalAdultPrompt.build(age, characterSubject, appearance, bodyDescription, pose, setting, photoStyle, prompt, anatomyChoice, sceneCount)
        } else (promptOverride ?: prompt)
-       val requestedStrength = if (faceDetailRun) 0.45f else if (input != null) editStrength.coerceIn(0.10f, 0.80f) else editStrength
+       // Route using the original user instruction, before the English lettering rule
+         // can accidentally cause auto-routing to select img2img.
+         val editFlowForRun = if (faceDetailRun && nightmareMode) "flux_edit"
+          else if (input != null && nightmareEditFlow == "auto")
+           EditRequestRouting.chooseFlow("auto", requestedPrompt)
+          else nightmareEditFlow
+         val requestedStrength = if (faceDetailRun) 0.45f else if (input != null) editStrength.coerceIn(0.10f, 0.80f) else editStrength
        val requestedSpeed = if (faceDetailRun) "MAX QUALITY" else if (input != null) editSpeed else generationSpeed
        val requestedHighQuality = requestedSpeed == "MAX QUALITY"
        val requestedResolution = if (input == null && requestedSpeed == "FAST") 768 else resolution
        val editPrompt = if (input != null) {
-         if (faceDetailRun) requestedPrompt else "$requestedPrompt. Keep the same person, face, pose, camera and background."
+         if (faceDetailRun) requestedPrompt else CartoonImagePrompt.withEnglishTextForEditing("$requestedPrompt. Keep the same person, face, pose, camera and background.")
         } else if (cartoonMode && tab == 0) CartoonImagePrompt.build(
          requestedPrompt, cartoonStyle, cartoonCharacters, cartoonMaleClothing, cartoonFemaleClothing
         ) else FaceDetailEnhancement.generationPrompt(requestedPrompt)
@@ -876,6 +881,7 @@ class MainActivity : ComponentActivity() {
          Text("Nightmare cartoon generation", style = MaterialTheme.typography.titleSmall)
          Text("Uses Nightmare Text to image. No gallery photo is supplied; current or saved editing workflows cannot reuse an older photo.")
          Text("For drawn artwork, choose an installed cartoon-capable model in Nightmare. RealVis may produce photographic results.")
+          Text("Cartoon lettering, captions and speech bubbles: English only. Specify exact dialogue for best results.")
          OutlinedButton(onClick = { openNightmare() }, enabled = !busy) { Text("Choose Nightmare image model") }
          Text("Characters in cartoon")
          Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -930,6 +936,7 @@ class MainActivity : ComponentActivity() {
        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.weight(1f)) {
          Text("AI editing", style = MaterialTheme.typography.titleMedium)
+          Text("When editing cartoons, speech bubbles, captions and signs are requested in English.", style = MaterialTheme.typography.bodySmall)
          Text(if (nightmareMode) "Nightmare installed Qwen (no extra download)" else if (onlineQwen) "Online Qwen" else if (nativeQwen) "Offline Qwen" else "Automatic", style = MaterialTheme.typography.bodySmall)
         }
         TextButton(onClick = { showAdvancedEditing = !showAdvancedEditing }) {
