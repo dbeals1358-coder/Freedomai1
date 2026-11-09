@@ -20,6 +20,19 @@ internal object EditRequestRouting {
     )
     fun clothingRequested(prompt: String): Boolean = clothing.containsMatchIn(prompt)
 
+    /** Allow an intentional face edit instead of always pasting the old face back. */
+    fun shouldPreserveFace(prompt: String): Boolean {
+        val faceParts = Regex(
+            """\b(face|facial|eyes?|eyebrows?|eyelashes?|nose|mouth|lips?|smil(?:e|ing)|hair|beard|wrinkles?|skin|expression|head)\b""",
+            RegexOption.IGNORE_CASE
+        )
+        val intendedChange = Regex(
+            """\b(change|edit|fix|retouch|enhance|improve|replace|remove|add|alter|sharpen|recolor|red|blue|green|brown|blonde|black|smile|make)\b""",
+            RegexOption.IGNORE_CASE
+        )
+        return !(faceParts.containsMatchIn(prompt) && intendedChange.containsMatchIn(prompt))
+    }
+
     /**
      * 'auto' defaults to Clothes auto-masked inpainting for garment modifications,
      * and flux_edit for all other instructions. Only a PURE style / quality request
