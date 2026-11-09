@@ -626,6 +626,10 @@ class MainActivity : ComponentActivity() {
        prefs.edit().putString("url", address).apply()
        val useLocal = localMode
        val useNightmare = nightmareMode && !useOnlineEdit && !useNativeEdit
+       if (cartoonMode && tab == 0 && input == null && !useNightmare) {
+        status = "Cartoon creation requires Nightmare text-to-image. Select Nightmare in Connection settings; the photo/edit engines cannot create a fresh cartoon here."
+        return
+       }
        val tokenForRun = nightmareToken
        val imageFlowForRun = if (cartoonMode && tab == 0 && input == null) {
         CartoonImagePrompt.generationFlow()
