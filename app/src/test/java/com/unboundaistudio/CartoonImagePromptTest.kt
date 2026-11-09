@@ -150,4 +150,13 @@ class CartoonImagePromptTest {
         assertEquals("pony_diffusion", choice.modelId)
         assertEquals("pony_diffusion", choice.label)
     }
+
+    @Test fun actionCartoonsUseWiderCanvasForFullScene() {
+        assertEquals(Pair(1024, 768), CartoonImagePrompt.canvasFor("two heroes fighting crime", 1024))
+        assertEquals(Pair(768, 576), CartoonImagePrompt.canvasFor("a team rescuing a cat", 768))
+    }
+
+    @Test fun simpleSoloCartoonsCanStaySquare() {
+        assertEquals(Pair(1024, 1024), CartoonImagePrompt.canvasFor("one cartoon cat portrait", 1024))
+    }
 }
