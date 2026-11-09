@@ -612,7 +612,14 @@ class MainActivity : ComponentActivity() {
         Text("Last Qwen run stopped unexpectedly (possibly low RAM): $qwenLastCrash. Select FAST and retry.", color = UiColor(0xFFFFD6A0))
        }
        if (qwenReady) {
-        Text("✓ Built-in Qwen image AI ready — no Nightmare needed.")
+        Text("✓ Built-in Qwen image generation ready — no Nightmare needed.")
+        if (!runCatching { NativeQwenEditor.editReady(this@MainActivity) }.getOrDefault(false)) {
+         Text("Qwen image editing needs additional vision model files.")
+         if (!qwenDownloading) {
+          Button(onClick = { installBuiltInQwenModels() }, enabled = !busy,
+           modifier = Modifier.fillMaxWidth()) { Text("Install Qwen Editing Files") }
+         }
+        }
        } else {
         Text("Install Qwen Image 2.1 MNN once (~11 GB), or import existing compatible MNN files. Nightmare's private model folder is not accessible here.")
         if (qwenDownloading) {
@@ -720,11 +727,14 @@ class MainActivity : ComponentActivity() {
          return
         }
         if (useNativeEdit || useBuiltInGenerate) {
-         val readyCheck = runCatching { NativeQwenEditor.ready(this@MainActivity) }
+         val readyCheck = runCatching {
+           if (useNativeEdit) NativeQwenEditor.editReady(this@MainActivity)
+           else NativeQwenEditor.ready(this@MainActivity)
+          }
          qwenReady = readyCheck.getOrDefault(false)
          if (!qwenReady) {
           status = if (readyCheck.isFailure) "Built-in Qwen runtime failed: ${readyCheck.exceptionOrNull()?.message}. Tap Check Qwen / Show Error."
-           else "Built-in Qwen MNN files missing. Tap Check Qwen / Show Error or import compatible MNN files."
+           else "Built-in Qwen MNN ${if (useNativeEdit) "editing" else "generation"} files missing. Tap Check Qwen / Show Error, install missing models, or import compatible MNN files."
           return
          }
         }
