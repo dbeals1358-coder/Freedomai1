@@ -119,6 +119,7 @@ internal object NightmareClient {
             }
         }
 
+        var editFrame: NightmareEditGeometry.Frame? = null
         if (input == null) {
             payload.put("steps", when (speed) { "FAST" -> 12; "MAX QUALITY" -> 35; else -> if (highQuality) 35 else 22 })
                 .put("cfg", 6.0).put("width", resolution).put("height", resolution)
@@ -126,22 +127,14 @@ internal object NightmareClient {
             // Edit at model-friendly resolution; retain full source for framing/compositing in the UI.
             // Fast photo edits run at 512px in Nightmare, avoiding the much slower 1024px
             // diffusion pass. Preserve aspect with letterboxing and keep source untouched.
-            val maxEditEdge = when (speed) { "FAST" -> 512; "MAX QUALITY" -> 2048; else -> 1024 }
-            val scale = minOf(1.0, maxEditEdge.toDouble() / input.width, maxEditEdge.toDouble() / input.height)
-            val editWidth = ((input.width * scale).toInt().coerceAtLeast(1)).coerceAtLeast(512)
-            val editHeight = ((input.height * scale).toInt().coerceAtLeast(1)).coerceAtLeast(512)
-            val scaledWidth = (input.width * scale).toInt().coerceAtLeast(1)
-            val scaledHeight = (input.height * scale).toInt().coerceAtLeast(1)
-            // Scale directly into the final edit bitmap to avoid an intermediate allocation.
-            val editBitmap = if (scaledWidth == input.width && scaledHeight == input.height &&
-                editWidth == input.width && editHeight == input.height) input
-                else android.graphics.Bitmap.createBitmap(editWidth, editHeight, android.graphics.Bitmap.Config.ARGB_8888).also {
-                    val left = (editWidth - scaledWidth) / 2
-                    val top = (editHeight - scaledHeight) / 2
-                    val destination = android.graphics.Rect(left, top, left + scaledWidth, top + scaledHeight)
-                    android.graphics.Canvas(it).drawBitmap(input, null, destination,
-                        android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG))
-                }
+            val maxEditEdge = when (speed) { "FAST" -> 512; "MAX QUALITY" -> 1536; else -> 1024 }
+            val frame = NightmareEditGeometry.plan(input.width, input.height, maxEditEdge)
+            editFrame = frame
+            val editWidth = frame.width
+            val editHeight = frame.height
+            // Record exact source rectangle. A diffusion result may include padding;
+            // restoreOutput crops it instead of leaving a horizontal or vertical band.
+            val editBitmap = frame.encodeSource(input)
             val stream = java.io.ByteArrayOutputStream()
             // JPEG dramatically reduces local API upload size for photographic inputs.
             // Use PNG for images with transparency to avoid destroying alpha masks.
@@ -184,9 +177,10 @@ internal object NightmareClient {
                     }
                     // Respect the requested edit resolution instead of forcing 512 px.
                     // Higher sizes require more memory in Nightmare; report backend errors rather than silently downgrading.
-                    val editSize = minOf(resolution.coerceIn(512, 1024), if (speed == "FAST") 512 else 1024) / 64 * 64
+                    // Match the aspect-preserving source frame; a forced square
+                    // stretches faces and introduces apparent bands on wide photos.
                     payload.put("model", model).put("cfg", 1.0).put("denoise", 1.0)
-                        .put("width", editSize).put("height", editSize)
+                        .put("width", editWidth).put("height", editHeight)
                 }
                 else -> {
                     // Explicit saved/current/img2img flows remain available for custom workflows.
@@ -281,8 +275,8 @@ internal object NightmareClient {
             val bitmap = download.inputStream.buffered(64 * 1024).use { android.graphics.BitmapFactory.decodeStream(it) }
             android.util.Log.i("FreedomAI-Timing", "Nightmare download=${android.os.SystemClock.elapsedRealtime() - downloadStarted}ms")
             android.util.Log.i("FreedomAI-Timing", "Nightmare total=${android.os.SystemClock.elapsedRealtime() - requestStarted}ms")
-            return bitmap
-                ?: error("Nightmare returned an unreadable image")
+            val decoded = bitmap ?: error("Nightmare returned an unreadable image")
+            return editFrame?.restoreOutput(decoded) ?: decoded
         } finally {
             download.disconnect()
         }
