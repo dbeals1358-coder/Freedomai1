@@ -29,16 +29,24 @@ internal object CartoonImagePrompt {
         // "70's Hanna-Barbera" must not render in 3D just because 3D was selected earlier.
         val descriptionRequestsRetro = retroStyle.containsMatchIn(description) &&
             !threeD.containsMatchIn(description)
-        val chosenStyle = if (descriptionRequestsRetro && threeD.containsMatchIn(enteredStyle))
-            "1970s flat hand-drawn 2D animation cels" else enteredStyle
+        val descriptionRequests3D = threeD.containsMatchIn(description) &&
+            !retroStyle.containsMatchIn(description)
+        val chosenStyle = when {
+            descriptionRequestsRetro && threeD.containsMatchIn(enteredStyle) -> "1970s flat hand-drawn 2D animation cels"
+            descriptionRequests3D && retroStyle.containsMatchIn(enteredStyle) -> "3D animated cartoon render"
+            else -> enteredStyle
+        }
         val retro2D = wantsRetroTwoD(description + " " + chosenStyle)
+        val requested3D = threeD.containsMatchIn(description + " " + chosenStyle) && !retro2D
         val autoNude = nudeWords.containsMatchIn(description) && !noNudeWords.containsMatchIn(description)
         val effectiveMaleClothing = if (maleClothing == "Auto" && autoNude) "Nude" else maleClothing
         val effectiveFemaleClothing = if (femaleClothing == "Auto" && autoNude) "Nude" else femaleClothing
         val styleGuidance = if (retro2D) {
             "Required look: authentic flat hand-drawn 2D animation cels from a 1970s Saturday-morning adventure cartoon, thick clean ink outlines, simple shapes, flat painted colors, expressive faces, illustrated background, an actual frame of traditional television animation."
+        } else if (requested3D) {
+            "Required look: fully animated 3D cartoon characters and environments, deliberately stylized proportions and materials, expressive animation-film faces, not live-action photography."
         } else {
-            "Create original, high-quality cartoon artwork. Respect the requested characters, composition, colors and details; do not force photographic realism."
+            "Required look: original 2D cartoon illustration with clear stylized outlines, drawn shapes and expressive faces. Respect the requested composition, colors and details; no photographic realism."
         }
         val actionGuidance = if (action.containsMatchIn(description)) {
             "Show a single action frame from the story, with visible movement and characters actively interacting: illustrate the described crime-fighting or other action actually happening. No static poses, studio portraits, character lineup, or costume showcase."
@@ -80,7 +88,7 @@ internal object CartoonImagePrompt {
             ", photograph, photographic realism, live action, 3D model, CGI render, realistic skin, plastic figures, modern 3D animation"
         } else ""
         val actionExclusions = if (action.containsMatchIn(prompt)) ", static portrait, posed group photo, standing in a row, police lineup" else ""
-        return base + exclusions + actionExclusions
+        return base + exclusions + actionExclusions + ", unrelated subjects, missing characters, duplicate characters, generic headshot, wrong setting"
     }
 
     fun negativePrompt(cartoonMode: Boolean): String =
@@ -133,14 +141,14 @@ internal object CartoonModelSelector {
             val score = when {
                 requested3d && Regex("""(3d|cgi|render|toon)""").containsMatchIn(label) -> 150
                 requested3d -> 0
-                !retro && Regex("""(cartoon|comic|toon|illustrat|anime)""").containsMatchIn(label) -> 140
-                Regex("""(2d|cel.?anim|flat.?toon|hand.?drawn|saturday.?morning|retro.?cartoon)""").containsMatchIn(label) -> 140
-                Regex("""(cartoon|comic|toon|illustrat)""").containsMatchIn(label) -> 110
-                label.contains("dreamshaper") -> 85
-                label.contains("pony") -> 75
-                label.contains("illustrious") -> 65
-                label.contains("anything") -> 60
-                label.contains("animagine") -> 55
+                !retro && !requested3d && Regex("""(cartoon|comic|toon|illustrat|anime)""").containsMatchIn(label) -> 140
+                !requested3d && Regex("""(2d|cel.?anim|flat.?toon|hand.?drawn|saturday.?morning|retro.?cartoon)""").containsMatchIn(label) -> 140
+                !requested3d && Regex("""(cartoon|comic|toon|illustrat)""").containsMatchIn(label) -> 110
+                !requested3d && label.contains("dreamshaper") -> 85
+                !requested3d && label.contains("pony") -> 75
+                !requested3d && label.contains("illustrious") -> 65
+                !requested3d && label.contains("anything") -> 60
+                !requested3d && label.contains("animagine") -> 55
                 else -> 0
             }
             if (score > topScore) { topScore = score; best = id }
