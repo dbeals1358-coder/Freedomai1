@@ -4,6 +4,34 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class EditRequestRoutingTest {
+    @Test fun autoMaskFailureRetriesInstalledInstructionEdit() {
+        assertTrue(EditRequestRouting.shouldRetryMissingClothingMask(
+            "auto", "inpaint", 500, "Clothes parser missing"))
+        assertTrue(EditRequestRouting.shouldRetryMissingClothingMask(
+            "auto", "inpaint", 400, "cannot automatically mask the image"))
+        assertTrue(EditRequestRouting.shouldRetryMissingClothingMask(
+            "auto", "inpaint", 422, "auto-mask unavailable"))
+    }
+
+    @Test fun explicitInpaintAndUnrelatedFailuresNeverRetry() {
+        assertFalse(EditRequestRouting.shouldRetryMissingClothingMask(
+            "inpaint", "inpaint", 500, "Clothes parser missing"))
+        assertFalse(EditRequestRouting.shouldRetryMissingClothingMask(
+            "auto", "flux_edit", 500, "parser missing"))
+        assertFalse(EditRequestRouting.shouldRetryMissingClothingMask(
+            "auto", "inpaint", 200, "parser missing"))
+        assertFalse(EditRequestRouting.shouldRetryMissingClothingMask(
+            "auto", "inpaint", 500, "out of memory"))
+    }
+
+    @Test fun autoCanRouteOnOriginalPromptWithoutEnglishHint() {
+        val original = "change the jacket color"
+        val appended = CartoonImagePrompt.withEnglishTextForEditing(original)
+        assertEquals("inpaint", EditRequestRouting.chooseFlow("auto", original))
+        assertTrue(appended.contains("cartoon"))
+        assertEquals("flux_edit", EditRequestRouting.chooseFlow("auto", "replace the sky"))
+    }
+
     @Test fun autoSendsClothesToAutoMaskedInpaint() {
         assertEquals("inpaint", EditRequestRouting.chooseFlow("auto", "make her swimsuit red"))
         assertEquals("inpaint", EditRequestRouting.chooseFlow("auto", "make the bikini top smaller"))

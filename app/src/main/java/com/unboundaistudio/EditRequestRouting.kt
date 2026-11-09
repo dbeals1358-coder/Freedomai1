@@ -20,6 +20,15 @@ internal object EditRequestRouting {
     )
     fun clothingRequested(prompt: String): Boolean = clothing.containsMatchIn(prompt)
 
+    /** Only retry a missing auto-mask, never arbitrary HTTP failures or explicit inpaint. */
+    fun shouldRetryMissingClothingMask(
+        selectedFlow: String, actualFlow: String, statusCode: Int, response: String
+    ): Boolean {
+        if (selectedFlow != "auto" || actualFlow != "inpaint" || statusCode in 200..299) return false
+        return listOf("parser", "picked by name", "auto mask", "auto-mask",
+            "cannot automatically mask").any { response.contains(it, ignoreCase = true) }
+    }
+
     /** Preserve identity for ordinary edits, even when the prompt says 'keep face same'. */
     fun shouldPreserveFace(prompt: String): Boolean {
         val instruction = prompt.replace(

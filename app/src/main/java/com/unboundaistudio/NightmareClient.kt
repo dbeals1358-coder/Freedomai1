@@ -77,7 +77,7 @@ internal object NightmareClient {
         return Pair(w.coerceAtLeast(512), h.coerceAtLeast(512))
     }
 
-    fun generate(prompt: String, token: String, input: android.graphics.Bitmap?, strength: Float, highQuality: Boolean, resolution: Int = 1024, editFlow: String = "auto", speed: String = "BALANCED", generationFlow: String = "saved:FreedomAI RealVis", disableControlNet: Boolean = false, cartoonMode: Boolean = false): android.graphics.Bitmap {
+    fun generate(prompt: String, token: String, input: android.graphics.Bitmap?, strength: Float, highQuality: Boolean, resolution: Int = 1024, editFlow: String = "auto", speed: String = "BALANCED", generationFlow: String = "saved:FreedomAI RealVis", disableControlNet: Boolean = false, cartoonMode: Boolean = false, routingPrompt: String? = null): android.graphics.Bitmap {
         require(token.isNotBlank()) { "Enter your Nightmare API token in Connection settings" }
         require(!token.contains('\n') && !token.contains('\r')) { "Invalid Nightmare API token" }
         // Skip the redundant authenticated /info round trip on every generation.
@@ -96,7 +96,7 @@ internal object NightmareClient {
                 "Choose a valid Nightmare image workflow: txt2img, current or saved:Your Workflow Name."
             }
             generationFlow
-        } else EditRequestRouting.chooseFlow(editFlow, prompt)
+        } else EditRequestRouting.chooseFlow(editFlow, routingPrompt ?: prompt)
         val payload = JSONObject().put("flow", actualFlow)
             .put("prompt", if (input == null) prompt else EditRequestRouting.promptFor(actualFlow, prompt))
         if (cartoonMode) {
@@ -220,20 +220,24 @@ internal object NightmareClient {
             if (code == 500 && body.contains("backend did not start", ignoreCase = true)) {
                 error("Nightmare could not start the processing backend for flow '${payload.optString("flow")}'. This is a Nightmare model/runtime startup failure, not a button or image-upload failure. Open that exact flow in Nightmare and run a simple image-to-image edit; check model loading, available RAM and Nightmare logs. Run ID: ${runCatching { JSONObject(body).optString("run") }.getOrDefault("unknown")}")
             }
+            if (EditRequestRouting.shouldRetryMissingClothingMask(editFlow, actualFlow, code, body)) {
+                // Auto edit can recover without downloading or painting a mask.
+                // Only a genuine auto-mask failure permits this one-time retry.
+                val fallback = runCatching {
+                    generate(prompt, token, input, strength, highQuality, resolution,
+                        "flux_edit", speed, routingPrompt = routingPrompt)
+                }
+                fallback.getOrNull()?.let { return it }
+                error("Nightmare clothing auto-mask unavailable. Installed Qwen/FLUX instruction-edit fallback also failed: ${fallback.exceptionOrNull()?.message?.take(230)}. Original photo preserved.")
+            }
             if (code !in 200..299 && actualFlow == "inpaint" &&
                 (body.contains("parser", true) || body.contains("picked by name", true) ||
-                 body.contains("auto mask", true))) {
+                 body.contains("auto mask", true) || body.contains("auto-mask", true) ||
+                 body.contains("cannot automatically mask", true))) {
                 // A missing clothes parser should not strand users who already have a
                 // compatible instruction-following editor installed in Nightmare.
                 // Never silently fall back to SDXL img2img: it can replace the person.
-                if (editFlow == "auto") {
-                    val fallback = runCatching {
-                        generate(prompt, token, input, strength, highQuality, resolution, "flux_edit", speed)
-                    }
-                    fallback.getOrNull()?.let { return it }
-                    error("Nightmare clothing auto-mask is unavailable, and no working instruction-edit fallback completed. Original photo preserved. Install Clothes Auto Mask in Nightmare or a supported Qwen/FLUX image-edit model. Fallback: ${fallback.exceptionOrNull()?.message?.take(180)}")
-                }
-                error("Nightmare clothing auto-mask is unavailable. Original photo preserved. Install or enable Clothes Auto Mask in Nightmare.")
+                error("Nightmare clothing auto-mask is unavailable for the explicitly selected inpaint workflow. Original photo preserved. Switch Nightmare edit workflow to Auto to use an installed Qwen/FLUX editor, or enable Clothes Auto Mask.")
             }
             if (code !in 200..299 && input == null && !disableControlNet &&
                 NightmareControlNetRecovery.isControlNetNpuFailure(body)) {
@@ -244,7 +248,7 @@ internal object NightmareClient {
                 connection.disconnect()
                 return try {
                     generate(prompt, token, input, strength, highQuality, resolution,
-                        editFlow, speed, generationFlow, disableControlNet = true, cartoonMode = cartoonMode)
+                        editFlow, speed, generationFlow, disableControlNet = true, cartoonMode = cartoonMode, routingPrompt = routingPrompt)
                 } catch (retryError: Exception) {
                     error("Nightmare could not create the image without ControlNet. Open Nightmare, select the current flow, tap the image Generate node, and set ControlNet to None. Your models were not removed. Retry: ${retryError.message?.take(180)}")
                 }

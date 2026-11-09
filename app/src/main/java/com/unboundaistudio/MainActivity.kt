@@ -641,12 +641,10 @@ class MainActivity : ComponentActivity() {
         if (age == null || age < 18 || age > 100) { status = "Enter an adult age from 18 to 100"; return }
         FictionalAdultPrompt.build(age, characterSubject, appearance, bodyDescription, pose, setting, photoStyle, prompt, anatomyChoice, sceneCount)
        } else (promptOverride ?: prompt)
-       // Route using the original user instruction, before the English lettering rule
-         // can accidentally cause auto-routing to select img2img.
-         val editFlowForRun = if (faceDetailRun && nightmareMode) "flux_edit"
-          else if (input != null && nightmareEditFlow == "auto")
-           EditRequestRouting.chooseFlow("auto", requestedPrompt)
-          else nightmareEditFlow
+       // Keep "auto" intact so NightmareClient can recover from missing inpaint
+       // auto-mask support. The original user instruction is passed separately
+       // for routing, so the English comic-text hint cannot switch to img2img.
+       val editFlowForRun = if (faceDetailRun && nightmareMode) "flux_edit" else nightmareEditFlow
          val requestedStrength = if (faceDetailRun) 0.45f else if (input != null) editStrength.coerceIn(0.10f, 0.80f) else editStrength
        val requestedSpeed = if (faceDetailRun) "MAX QUALITY" else if (input != null) editSpeed else generationSpeed
        val requestedHighQuality = requestedSpeed == "MAX QUALITY"
@@ -711,7 +709,7 @@ class MainActivity : ComponentActivity() {
            if (faceDetailRun) compositeRefinedFaces(input, generated) ?: error("No faces could be located for face-only refinement.") else if (mask != null) compositeMaskedEdit(input, generated, mask) else generated
           } else if (useNightmare) {
            val generated = try {
-            NightmareClient.generate(editPrompt, tokenForRun, input, requestedStrength, requestedHighQuality, requestedResolution, editFlowForRun, requestedSpeed, imageFlowForRun, cartoonMode = cartoonMode && tab == 0 && input == null)
+            NightmareClient.generate(editPrompt, tokenForRun, input, requestedStrength, requestedHighQuality, requestedResolution, editFlowForRun, requestedSpeed, imageFlowForRun, cartoonMode = cartoonMode && tab == 0 && input == null, routingPrompt = requestedPrompt)
            } catch (nightmareError: Exception) {
             val maskFailure = nightmareError.message.orEmpty()
              val maskUnavailable = input != null &&
@@ -724,9 +722,9 @@ class MainActivity : ComponentActivity() {
               com.scsonic.qwenimage21.QwenImage21.Size.Tier.valueOf(if (faceDetailRun) "STANDARD" else qwenTier)
              ) { percentage -> runOnUiThread { generationPercent = percentage } }
             } else if (maskUnavailable) {
-             // Do not launch a second expensive Nightmare run after a missing-mask failure.
-             // That fallback cannot guarantee a localized clothing edit and can appear frozen at 80%.
-             error("Nightmare cannot automatically mask the requested clothing. Original photo preserved. Install/enable Clothes Auto Mask in Nightmare, use Paint area to change, or install the Qwen editor in FreedomAI.")
+             // NightmareClient has already tried the installed instruction-edit
+             // fallback when the original workflow was Auto. Do not repeat it.
+             error("Nightmare could not complete the edit: ${maskFailure.take(330)}. Original photo preserved. Check the installed Qwen/FLUX editor in Nightmare, or enable Clothes Auto Mask.")
             } else throw nightmareError
            }
            check(!isNearlyWhiteImage(generated)) { "The AI returned a blank white image. Try a different flow or restart the model." }
@@ -937,7 +935,7 @@ class MainActivity : ComponentActivity() {
         Column(Modifier.weight(1f)) {
          Text("AI editing", style = MaterialTheme.typography.titleMedium)
           Text("When editing cartoons, speech bubbles, captions and signs are requested in English.", style = MaterialTheme.typography.bodySmall)
-         Text(if (nightmareMode) "Nightmare installed Qwen (no extra download)" else if (onlineQwen) "Online Qwen" else if (nativeQwen) "Offline Qwen" else "Automatic", style = MaterialTheme.typography.bodySmall)
+         Text(if (nightmareMode) "Nightmare Auto Edit (uses installed models when available)" else if (onlineQwen) "Online Qwen" else if (nativeQwen) "Offline Qwen" else "Automatic", style = MaterialTheme.typography.bodySmall)
         }
         TextButton(onClick = { showAdvancedEditing = !showAdvancedEditing }) {
          Text(if (showAdvancedEditing) "Hide settings" else "Advanced")
