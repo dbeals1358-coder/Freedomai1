@@ -213,11 +213,7 @@ class MainActivity : ComponentActivity() {
       ?.takeIf { it in listOf("From description", "Man", "Woman", "Man and woman") }
       ?: "From description"
     ) }
-    // Cartoon flow is independent of the saved RealVis workflow used for ordinary photos.
-    // Current means the actual image workflow selected in Nightmare, not the last saved flow.
-    var cartoonCurrentNightmareFlow by remember {
-     mutableStateOf(prefs.getBoolean("cartoon_current_nightmare_flow", true))
-    }
+    // Cartoons use a fresh text-to-image render; no gallery-image workflow is reused.
     var cartoonMaleClothing by remember {
      mutableStateOf(prefs.getString("cartoon_male_clothing", "Auto")?.takeIf {
       it in listOf("Auto", "Clothed", "Nude")
@@ -466,7 +462,10 @@ class MainActivity : ComponentActivity() {
           prompt = ""
           cartoonStyle = CartoonImagePrompt.DEFAULT_STYLE
           result = null
-          status = "Describe any cartoon you want. Customize the art style or leave the default."
+          original = null
+          resultGeneratedHere = false
+          originalGeneratedHere = false
+          status = "Cartoon mode: a new image from your description, not a phone photo."
          }, enabled = !busy, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("Create Cartoon Image") }
         OutlinedButton(onClick = { tab = 1 }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("Edit Photo") }
         OutlinedButton(onClick = {
@@ -629,7 +628,7 @@ class MainActivity : ComponentActivity() {
        val useNightmare = nightmareMode && !useOnlineEdit && !useNativeEdit
        val tokenForRun = nightmareToken
        val imageFlowForRun = if (cartoonMode && tab == 0 && input == null) {
-        CartoonImagePrompt.generationFlow(cartoonCurrentNightmareFlow, nightmareImageFlow)
+        CartoonImagePrompt.generationFlow()
        } else nightmareImageFlow
        // Respect Auto: garment changes need auto-masked inpainting; forcing flux_edit
         // here incorrectly bypassed the selected editing workflow on every photo edit.
@@ -703,7 +702,7 @@ class MainActivity : ComponentActivity() {
            if (faceDetailRun) compositeRefinedFaces(input, generated) ?: error("No faces could be located for face-only refinement.") else if (mask != null) compositeMaskedEdit(input, generated, mask) else generated
           } else if (useNightmare) {
            val generated = try {
-            NightmareClient.generate(editPrompt, tokenForRun, input, requestedStrength, requestedHighQuality, requestedResolution, editFlowForRun, requestedSpeed, imageFlowForRun)
+            NightmareClient.generate(editPrompt, tokenForRun, input, requestedStrength, requestedHighQuality, requestedResolution, editFlowForRun, requestedSpeed, imageFlowForRun, cartoonMode = cartoonMode && tab == 0 && input == null)
            } catch (nightmareError: Exception) {
             val maskFailure = nightmareError.message.orEmpty()
              val maskUnavailable = input != null &&
@@ -866,18 +865,10 @@ class MainActivity : ComponentActivity() {
           label = { Text("Cartoon style — type anything") },
           placeholder = { Text("e.g. 2D, comic, anime, 3D, hand-drawn") },
           modifier = Modifier.fillMaxWidth())
-         Text("Nightmare cartoon workflow", style = MaterialTheme.typography.titleSmall)
-         Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-          Text("Use currently selected Nightmare workflow", modifier = Modifier.weight(1f))
-          Switch(checked = cartoonCurrentNightmareFlow, enabled = !busy, onCheckedChange = { checked ->
-           cartoonCurrentNightmareFlow = checked
-           prefs.edit().putBoolean("cartoon_current_nightmare_flow", checked).apply()
-          })
-         }
-         Text(if (cartoonCurrentNightmareFlow)
-          "Using current Nightmare workflow. Open Nightmare and select a cartoon-capable image model; RealVis saved workflow is not forced."
-         else "Using saved workflow: $nightmareImageFlow. Change it under Nightmare advanced settings.")
-         OutlinedButton(onClick = { openNightmare() }, enabled = !busy) { Text("Open Nightmare to select model") }
+         Text("Nightmare cartoon generation", style = MaterialTheme.typography.titleSmall)
+         Text("Uses Nightmare Text to image. No gallery photo is supplied; current or saved editing workflows cannot reuse an older photo.")
+         Text("For drawn artwork, choose an installed cartoon-capable model in Nightmare. RealVis may produce photographic results.")
+         OutlinedButton(onClick = { openNightmare() }, enabled = !busy) { Text("Choose Nightmare image model") }
          Text("Characters in cartoon")
          Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
           listOf(listOf("From description", "Man"), listOf("Woman", "Man and woman")).forEach { choices ->
@@ -923,7 +914,7 @@ class MainActivity : ComponentActivity() {
          modifier = Modifier.fillMaxWidth().height(170.dp))
        OutlinedButton(onClick = { listenForPrompt() }, enabled = !busy) { Text("🎤 Speak prompt") }
        Button(onClick = { requestImage(null) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text(if (busy) "Creating…" else if (cartoonMode) "Create Cartoon" else "Create Image") }
-       if (cartoonMode) Text("Cartoons use the Nightmare workflow selected above. The saved RealVis workflow can produce inconsistent anatomy; a different compatible model may be needed for some details.")
+       if (cartoonMode) Text("Cartoons start a new text-to-image render. An installed model in Nightmare determines how cartoon-like they look.")
 
       } else if (!videoMode && (tab == 1 || (tab == 2 && adultConfirmed && !fictionalAdultMode))) {
        if (tab == 2) Text("Private editing: adjust brightness and saturation, then save to app-private storage. AI edits may send your photo to the selected model/server. Only use images you have permission to edit.")

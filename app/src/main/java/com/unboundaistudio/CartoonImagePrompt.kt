@@ -4,9 +4,8 @@ package com.unboundaistudio
 internal object CartoonImagePrompt {
     const val DEFAULT_STYLE = "Cartoon illustration"
 
-    /** Select the actual Nightmare workflow instead of silently forcing saved RealVis. */
-    fun generationFlow(useCurrentNightmareFlow: Boolean, savedImageFlow: String): String =
-        if (useCurrentNightmareFlow) "current" else savedImageFlow.trim()
+    /** Never reuse a current or saved image workflow that might have a gallery photo attached. */
+    fun generationFlow(): String = "txt2img"
 
     fun build(
         description: String,

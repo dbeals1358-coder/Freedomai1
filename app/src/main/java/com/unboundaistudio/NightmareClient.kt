@@ -73,7 +73,7 @@ internal object NightmareClient {
         return Pair(w.coerceAtLeast(512), h.coerceAtLeast(512))
     }
 
-    fun generate(prompt: String, token: String, input: android.graphics.Bitmap?, strength: Float, highQuality: Boolean, resolution: Int = 1024, editFlow: String = "auto", speed: String = "BALANCED", generationFlow: String = "saved:FreedomAI RealVis", disableControlNet: Boolean = false): android.graphics.Bitmap {
+    fun generate(prompt: String, token: String, input: android.graphics.Bitmap?, strength: Float, highQuality: Boolean, resolution: Int = 1024, editFlow: String = "auto", speed: String = "BALANCED", generationFlow: String = "saved:FreedomAI RealVis", disableControlNet: Boolean = false, cartoonMode: Boolean = false): android.graphics.Bitmap {
         require(token.isNotBlank()) { "Enter your Nightmare API token in Connection settings" }
         require(!token.contains('\n') && !token.contains('\r')) { "Invalid Nightmare API token" }
         // Skip the redundant authenticated /info round trip on every generation.
@@ -83,14 +83,19 @@ internal object NightmareClient {
             "Invalid Nightmare edit workflow: $editFlow"
         }
         val requestStarted = android.os.SystemClock.elapsedRealtime()
+        if (cartoonMode) require(input == null && generationFlow == "txt2img") {
+            "Cartoon creation needs Nightmare Text to image, without an input photo."
+        }
         val actualFlow = if (input == null) {
-            require(generationFlow == "current" || (generationFlow.startsWith("saved:") && generationFlow.length > 6)) {
-                "Choose a valid installed Nightmare image workflow: current or saved:Your Workflow Name."
+            require(generationFlow == "txt2img" || generationFlow == "current" ||
+                (generationFlow.startsWith("saved:") && generationFlow.length > 6)) {
+                "Choose a valid Nightmare image workflow: txt2img, current or saved:Your Workflow Name."
             }
             generationFlow
         } else EditRequestRouting.chooseFlow(editFlow, prompt)
         val payload = JSONObject().put("flow", actualFlow)
             .put("prompt", if (input == null) prompt else EditRequestRouting.promptFor(actualFlow, prompt))
+        if (cartoonMode) payload.put("negative", CartoonImagePrompt.negativePrompt(true))
 
         if (input == null) {
             payload.put("steps", when (speed) { "FAST" -> 12; "MAX QUALITY" -> 35; else -> if (highQuality) 35 else 22 })
@@ -215,7 +220,7 @@ internal object NightmareClient {
                 connection.disconnect()
                 return try {
                     generate(prompt, token, input, strength, highQuality, resolution,
-                        editFlow, speed, generationFlow, disableControlNet = true)
+                        editFlow, speed, generationFlow, disableControlNet = true, cartoonMode = cartoonMode)
                 } catch (retryError: Exception) {
                     error("Nightmare could not create the image without ControlNet. Open Nightmare, select the current flow, tap the image Generate node, and set ControlNet to None. Your models were not removed. Retry: ${retryError.message?.take(180)}")
                 }
@@ -238,6 +243,12 @@ internal object NightmareClient {
             ?: error("Nightmare did not return a PNG image: ${reply.toString().take(350)}")
         val resultPath = result.getString("url")
         require(resultPath.startsWith("/results/")) { "Unexpected Nightmare result path" }
+        if (cartoonMode) {
+            val runId = reply.optString("run")
+            check(runId.isNotBlank() && resultPath.startsWith("/results/$runId/")) {
+                "Nightmare did not return an image from this cartoon run; no old photo will be shown."
+            }
+        }
         val downloadStarted = android.os.SystemClock.elapsedRealtime()
         val download = URL("$BASE_URL$resultPath").openConnection() as HttpURLConnection
         try {

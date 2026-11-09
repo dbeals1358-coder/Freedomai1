@@ -34,9 +34,10 @@ class CartoonImagePromptTest {
         assertFalse(prompt.contains("as separate characters"))
     }
 
-    @Test fun cartoonUsesCurrentlySelectedNightmareFlowInsteadOfSavedRealVis() {
-        assertEquals("current", CartoonImagePrompt.generationFlow(true, "saved:FreedomAI RealVis"))
-        assertEquals("saved:FreedomAI RealVis", CartoonImagePrompt.generationFlow(false, "saved:FreedomAI RealVis"))
+    @Test fun cartoonAlwaysUsesFreshTextToImageNotCurrentOrSavedPhotoWorkflow() {
+        assertEquals("txt2img", CartoonImagePrompt.generationFlow())
+        assertFalse(CartoonImagePrompt.generationFlow().startsWith("saved:"))
+        assertFalse(CartoonImagePrompt.generationFlow() == "current")
     }
 
     @Test fun explicitlySelectedMaleAndFemaleCoverageIsNotMixedUp() {
