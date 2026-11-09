@@ -73,7 +73,7 @@ internal object NightmareClient {
         return Pair(w.coerceAtLeast(512), h.coerceAtLeast(512))
     }
 
-    fun generate(prompt: String, token: String, input: android.graphics.Bitmap?, strength: Float, highQuality: Boolean, resolution: Int = 1024, editFlow: String = "auto", speed: String = "BALANCED", generationFlow: String = "saved:FreedomAI RealVis"): android.graphics.Bitmap {
+    fun generate(prompt: String, token: String, input: android.graphics.Bitmap?, strength: Float, highQuality: Boolean, resolution: Int = 1024, editFlow: String = "auto", speed: String = "BALANCED", generationFlow: String = "saved:FreedomAI RealVis", disableControlNet: Boolean = false): android.graphics.Bitmap {
         require(token.isNotBlank()) { "Enter your Nightmare API token in Connection settings" }
         require(!token.contains('\n') && !token.contains('\r')) { "Invalid Nightmare API token" }
         // Skip the redundant authenticated /info round trip on every generation.
@@ -169,6 +169,11 @@ internal object NightmareClient {
                 }
             }
         }
+        // Keep this specific to the memory-recovery retry. Ordinary custom flows
+        // are left untouched; Nightmare rejects params for nodes that do not have them.
+        if (input == null && disableControlNet) {
+            NightmareControlNetRecovery.disableControlNet(payload)
+        }
         val preparationMs = android.os.SystemClock.elapsedRealtime() - requestStarted
         val connection = URL("$BASE_URL/run").openConnection() as HttpURLConnection
         val reply = try {
@@ -200,6 +205,24 @@ internal object NightmareClient {
                     error("Nightmare clothing auto-mask is unavailable, and no working instruction-edit fallback completed. Original photo preserved. Install Clothes Auto Mask in Nightmare or a supported Qwen/FLUX image-edit model. Fallback: ${fallback.exceptionOrNull()?.message?.take(180)}")
                 }
                 error("Nightmare clothing auto-mask is unavailable. Original photo preserved. Install or enable Clothes Auto Mask in Nightmare.")
+            }
+            if (code !in 200..299 && input == null && !disableControlNet &&
+                NightmareControlNetRecovery.isControlNetNpuFailure(body)) {
+                // Retry only once, keeping the same image checkpoint, prompt, size,
+                // steps and workflow. This is a per-request override, not a saved-flow edit.
+                // The 500 came from insufficient NPU memory for the second QNN model.
+                android.util.Log.w("FreedomAI-Nightmare", "ControlNet NPU memory failure; retrying without ControlNet")
+                connection.disconnect()
+                return try {
+                    generate(prompt, token, input, strength, highQuality, resolution,
+                        editFlow, speed, generationFlow, disableControlNet = true)
+                } catch (retryError: Exception) {
+                    error("Nightmare could not create the image without ControlNet. Open Nightmare, select the current flow, tap the image Generate node, and set ControlNet to None. Your models were not removed. Retry: ${retryError.message?.take(180)}")
+                }
+            }
+            if (code !in 200..299 && input == null && disableControlNet &&
+                NightmareControlNetRecovery.isControlNetNpuFailure(body)) {
+                error("Nightmare still reports insufficient NPU memory for ControlNet. In Nightmare, set the current flow\u0027s Generate → ControlNet to None and retry.")
             }
             check(code in 200..299) { "Nightmare HTTP $code (flow: $actualFlow): ${body.take(350)}" }
             check(body.isNotBlank()) { "Nightmare returned an empty response" }
