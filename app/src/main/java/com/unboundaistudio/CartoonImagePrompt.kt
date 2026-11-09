@@ -2,7 +2,7 @@ package com.unboundaistudio
 
 /** Cartoon generation has its own prompt and negative prompt so photo defaults do not fight it. */
 internal object CartoonImagePrompt {
-    const val DEFAULT_STYLE = "Vintage 2D adult comic-book illustration"
+    const val DEFAULT_STYLE = "1970s Hanna-Barbera style hand-drawn 2D animation"
 
     private val retroStyle = Regex("""(?i)(hanna[\s-]?barbera|1970'?s|70'?s|seventies|retro|vintage|hand[\s-]?drawn|classic animation|saturday morning|2d|cel[\s-]?animation)""")
     private val threeD = Regex("""(?i)\b(3d|cgi|photorealistic|three[\s-]?dimensional)\b""")
@@ -45,7 +45,7 @@ internal object CartoonImagePrompt {
         val styleGuidance = if (referenceComic) {
             "Required look: vintage adult comic-book panel illustration, confident thick black ink contours, flat saturated colors, clean cel shading, exaggerated but coherent cartoon anatomy, expressive eyes and faces, detailed illustrated room or setting, dynamic interaction between characters. Polished hand-drawn 2D artwork, not a photograph, not a 3D render. Match this visual treatment consistently across the entire image."
         } else if (retro2D) {
-            "Required look: authentic flat hand-drawn 2D animation cels from a 1970s Saturday-morning adventure cartoon, thick clean ink outlines, simple shapes, flat painted colors, expressive faces, illustrated background, an actual frame of traditional television animation."
+            "Required look: authentic flat hand-drawn 2D animation cels from a 1970s Saturday-morning adventure cartoon, thick clean ink outlines, simple shapes, flat painted colors, expressive faces, illustrated background, an actual frame of traditional television animation. For adult characters, retain any explicitly requested adult nudity and coherent anatomical detail instead of automatically covering bodies with clothing."
         } else if (requested3D) {
             "Required look: fully animated 3D cartoon characters and environments, deliberately stylized proportions and materials, expressive animation-film faces, not live-action photography."
         } else {
