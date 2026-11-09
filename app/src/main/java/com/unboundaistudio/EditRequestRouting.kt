@@ -20,17 +20,15 @@ internal object EditRequestRouting {
     )
     fun clothingRequested(prompt: String): Boolean = clothing.containsMatchIn(prompt)
 
-    /** Allow an intentional face edit instead of always pasting the old face back. */
+    /** Preserve identity for ordinary edits, even when the prompt says 'keep face same'. */
     fun shouldPreserveFace(prompt: String): Boolean {
-        val faceParts = Regex(
-            """\b(face|facial|eyes?|eyebrows?|eyelashes?|nose|mouth|lips?|smil(?:e|ing)|hair|beard|wrinkles?|skin|expression|head)\b""",
-            RegexOption.IGNORE_CASE
+        val actionToFace = Regex(
+            """(?i)\b(change|edit|fix|retouch|enhance|improve|replace|remove|add|alter|sharpen|recolor|make|give)\b.{0,28}\b(face|facial|eyes?|eyebrows?|eyelashes?|nose|mouth|lips?|smil(?:e|ing)|hair|beard|wrinkles?|expression)\b"""
         )
-        val intendedChange = Regex(
-            """\b(change|edit|fix|retouch|enhance|improve|replace|remove|add|alter|sharpen|recolor|red|blue|green|brown|blonde|black|smile|make)\b""",
-            RegexOption.IGNORE_CASE
+        val faceToAction = Regex(
+            """(?i)\b(face|eyes?|eyebrows?|eyelashes?|nose|mouth|lips?|hair|beard|expression)\b.{0,28}\b(blue|green|brown|red|blonde|black|smaller|larger|different|color|colour|smiling|smile|change|fix)\b"""
         )
-        return !(faceParts.containsMatchIn(prompt) && intendedChange.containsMatchIn(prompt))
+        return !actionToFace.containsMatchIn(prompt) && !faceToAction.containsMatchIn(prompt)
     }
 
     /**
