@@ -11,8 +11,8 @@ android {
         minSdk = 29
         targetSdk = 35
         ndk { abiFilters += "arm64-v8a" }
-        versionCode = 44
-        versionName = "3.2"
+        versionCode = 45
+        versionName = "3.3"
     }
     // The build injects this into the APK; it can be extracted from the APK.
     val hfToken = System.getenv("HF_ACCESS_TOKEN").orEmpty()
@@ -38,7 +38,6 @@ dependencies {
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.20.0")
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))
     implementation("androidx.activity:activity-compose:1.10.0")
-    implementation("androidx.documentfile:documentfile:1.0.1")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.material3:material3")

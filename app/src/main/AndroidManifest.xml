@@ -1,7 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
  <uses-permission android:name="android.permission.INTERNET"/>
  <queries><package android:name="io.github.xororz.localdream"/><package android:name="com.abrah.nightmare"/></queries>
- <application android:usesCleartextTraffic="false" android:networkSecurityConfig="@xml/network_security_config" android:allowBackup="true" android:fullBackupContent="@xml/backup_rules" android:dataExtractionRules="@xml/data_extraction_rules" android:label="Boob&#39;s V-3.2" android:icon="@drawable/boobs_launcher" android:roundIcon="@drawable/boobs_launcher" android:theme="@android:style/Theme.Material.Light.NoActionBar">
+ <application android:usesCleartextTraffic="false" android:networkSecurityConfig="@xml/network_security_config" android:allowBackup="true" android:fullBackupContent="@xml/backup_rules" android:dataExtractionRules="@xml/data_extraction_rules" android:label="Boobs V3-3" android:icon="@drawable/boobs_launcher" android:roundIcon="@drawable/boobs_launcher" android:theme="@android:style/Theme.Material.Light.NoActionBar">
   <activity android:name=".MainActivity" android:exported="true" android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden">
    <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
   </activity>
