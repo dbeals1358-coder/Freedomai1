@@ -2,7 +2,7 @@ package com.unboundaistudio
 
 /** Cartoon generation has its own prompt and negative prompt so photo defaults do not fight it. */
 internal object CartoonImagePrompt {
-    const val DEFAULT_STYLE = "Cartoon illustration"
+    const val DEFAULT_STYLE = "Vintage 2D adult comic-book illustration"
 
     private val retroStyle = Regex("""(?i)(hanna[\s-]?barbera|1970'?s|70'?s|seventies|retro|vintage|hand[\s-]?drawn|classic animation|saturday morning|2d|cel[\s-]?animation)""")
     private val threeD = Regex("""(?i)\b(3d|cgi|photorealistic|three[\s-]?dimensional)\b""")
@@ -37,11 +37,14 @@ internal object CartoonImagePrompt {
             else -> enteredStyle
         }
         val retro2D = wantsRetroTwoD(description + " " + chosenStyle)
+        val referenceComic = chosenStyle.contains("comic-book", ignoreCase = true) && !descriptionRequestsRetro && !descriptionRequests3D
         val requested3D = threeD.containsMatchIn(description + " " + chosenStyle) && !retro2D
         val autoNude = nudeWords.containsMatchIn(description) && !noNudeWords.containsMatchIn(description)
         val effectiveMaleClothing = if (maleClothing == "Auto" && autoNude) "Nude" else maleClothing
         val effectiveFemaleClothing = if (femaleClothing == "Auto" && autoNude) "Nude" else femaleClothing
-        val styleGuidance = if (retro2D) {
+        val styleGuidance = if (referenceComic) {
+            "Required look: vintage adult comic-book panel illustration, confident thick black ink contours, flat saturated colors, clean cel shading, exaggerated but coherent cartoon anatomy, expressive eyes and faces, detailed illustrated room or setting, dynamic interaction between characters. Polished hand-drawn 2D artwork, not a photograph, not a 3D render. Match this visual treatment consistently across the entire image."
+        } else if (retro2D) {
             "Required look: authentic flat hand-drawn 2D animation cels from a 1970s Saturday-morning adventure cartoon, thick clean ink outlines, simple shapes, flat painted colors, expressive faces, illustrated background, an actual frame of traditional television animation."
         } else if (requested3D) {
             "Required look: fully animated 3D cartoon characters and environments, deliberately stylized proportions and materials, expressive animation-film faces, not live-action photography."
@@ -72,6 +75,7 @@ internal object CartoonImagePrompt {
         return listOf(
             "${description.trim()}. Visual style: ${chosenStyle}.",
             styleGuidance,
+            "No speech bubbles, captions, labels or lettering unless the description explicitly asks for them. If lettering is requested, only render the exact quoted text; otherwise leave the illustration free of text.",
             actionGuidance,
             subjectGuidance,
             "Treat the user description as the scene specification: include every explicitly named character, object, action, setting, and clothing detail. Do not substitute a generic character portrait, omit requested subjects, or invent unrelated characters. Compose a new scene rather than copying an existing gallery image.",
@@ -88,7 +92,7 @@ internal object CartoonImagePrompt {
             ", photograph, photographic realism, live action, 3D model, CGI render, realistic skin, plastic figures, modern 3D animation"
         } else ""
         val actionExclusions = if (action.containsMatchIn(prompt)) ", static portrait, posed group photo, standing in a row, police lineup" else ""
-        return base + exclusions + actionExclusions + ", unrelated subjects, missing characters, duplicate characters, generic headshot, wrong setting"
+        return base + exclusions + actionExclusions + ", gibberish text, illegible lettering, misspelled speech bubbles, unrelated subjects, missing characters, duplicate characters, generic headshot, wrong setting"
     }
 
     fun negativePrompt(cartoonMode: Boolean): String =
