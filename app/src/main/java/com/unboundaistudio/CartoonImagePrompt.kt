@@ -106,7 +106,7 @@ internal object CartoonModelSelector {
 
     fun chooseInstalled(models: org.json.JSONArray, prompt: String): String? {
         val retro = CartoonImagePrompt.wantsRetroTwoD(prompt)
-        val requested3d = Regex("""(?i)\b(3d|cgi|three[\\s-]?dimensional)\b""").containsMatchIn(prompt) && !retro
+        val requested3d = Regex("""(?i)\b(3d|cgi|three[\s-]?dimensional)\b""").containsMatchIn(prompt) && !retro
         var best: String? = null
         var topScore = 0
         for (i in 0 until models.length()) {
