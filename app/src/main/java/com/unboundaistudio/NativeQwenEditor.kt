@@ -23,24 +23,33 @@ internal object NativeQwenEditor {
     fun directory(context: Context): File =
         File(context.getExternalFilesDir(null) ?: context.filesDir, "qwen_image21").apply { mkdirs() }
 
+    private fun hasTurbo(dir: File): Boolean = QwenImage21.missingTurboDitFiles(dir) == null
+    private fun hasStandard(dir: File): Boolean = QwenImage21.missingStandardDitFiles(dir) == null
+
+    /** Generating an image does not require the optional vision/image-edit model files. */
     fun ready(context: Context): Boolean {
         val dir = directory(context)
-        return QwenImage21.missingTurboDitFiles(dir) == null &&
-            QwenImage21.missingTinyVaeFiles(dir) == null &&
-            QwenImage21.missingEditFiles(dir) == null
+        return (hasTurbo(dir) || hasStandard(dir)) &&
+            QwenImage21.missingTinyVaeFiles(dir) == null
     }
+
+    fun editReady(context: Context): Boolean =
+        ready(context) && QwenImage21.missingEditFiles(directory(context)) == null
 
     fun status(context: Context): String {
         val dir = directory(context)
+        val turbo = hasTurbo(dir)
+        val standard = hasStandard(dir)
+        val missingCore = if (turbo || standard) null else QwenImage21.missingTurboDitFiles(dir)
         val missing = listOfNotNull(
-            QwenImage21.missingTurboDitFiles(dir),
+            missingCore,
             QwenImage21.missingTinyVaeFiles(dir),
             QwenImage21.missingEditFiles(dir)
         )
-        return if (missing.isEmpty()) {
-            "Native Qwen Turbo models detected. Ready for an offline image edit."
-        } else {
-            "Native Qwen models not installed (${missing.joinToString(", ").take(160)}). Download models below (~11 GB)."
+        return when {
+            editReady(context) -> "Qwen ${if (turbo) "Turbo" else "Standard"} generation and editing files detected."
+            ready(context) -> "Qwen ${if (turbo) "Turbo" else "Standard"} generation files detected. Editing needs: ${QwenImage21.missingEditFiles(dir)}"
+            else -> "Missing Qwen Image 2.1 MNN files: ${missing.joinToString(", ").take(240)}. Only converted MNN models work."
         }
     }
 
@@ -97,7 +106,7 @@ internal object NativeQwenEditor {
         val output = File(context.cacheDir, "qwen-generate-${UUID.randomUUID()}.png")
         try {
             val settings = QwenImage21.Options().apply {
-                turbo = true  // the installed six-step Turbo model
+                turbo = hasTurbo(directory(context))  // use the 6-step Turbo if available; else existing 20-step Standard
                 tinyVae = true
                 useGpu = true
                 textEncoderOnCpu = true
@@ -105,7 +114,7 @@ internal object NativeQwenEditor {
                 crashMarkerFile = File(context.filesDir, "qwen-generation-in-progress.txt")
             }
             return QwenImage21(directory(context), settings).use { engine ->
-                engine.generate(prompt, size, 6, System.currentTimeMillis().toInt(), output,
+                engine.generate(prompt, size, if (settings.turbo) 6 else 20, System.currentTimeMillis().toInt(), output,
                     QwenImage21.ProgressListener { value ->
                         onProgress(value.coerceIn(0, 100))
                     })
@@ -136,7 +145,7 @@ internal object NativeQwenEditor {
         onProgress: (Int) -> Unit
     ): Bitmap {
         require(instruction.isNotBlank()) { "Enter an editing instruction." }
-        check(ready(context)) { "Install the native Qwen Turbo editing models first." }
+        check(editReady(context)) { "Qwen image-edit files are missing. Install or import the vision files first." }
         val input = File(context.cacheDir, "qwen-source-${UUID.randomUUID()}.png")
         val output = File(context.cacheDir, "qwen-edit-${UUID.randomUUID()}.png")
         try {
@@ -146,7 +155,7 @@ internal object NativeQwenEditor {
                 }
             }
             val settings = QwenImage21.Options().apply {
-                turbo = true
+                turbo = hasTurbo(directory(context))
                 tinyVae = true
                 useGpu = true
                 textEncoderOnCpu = true
@@ -154,7 +163,7 @@ internal object NativeQwenEditor {
                 crashMarkerFile = File(context.filesDir, "qwen-generation-in-progress.txt")
             }
             val result = QwenImage21(directory(context), settings).use { engine ->
-                engine.edit(instruction, input, tier, 6, 42, output,
+                engine.edit(instruction, input, tier, if (settings.turbo) 6 else 20, 42, output,
                     QwenImage21.ProgressListener { percent ->
                         onProgress(percent.coerceIn(0, 100))
                     })
