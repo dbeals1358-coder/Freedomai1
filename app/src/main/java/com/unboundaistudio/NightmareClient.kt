@@ -121,8 +121,16 @@ internal object NightmareClient {
 
         var editFrame: NightmareEditGeometry.Frame? = null
         if (input == null) {
-            payload.put("steps", when (speed) { "FAST" -> 12; "MAX QUALITY" -> 35; else -> if (highQuality) 35 else 22 })
-                .put("cfg", 6.0).put("width", resolution).put("height", resolution)
+            val (width, height) = if (cartoonMode) CartoonImagePrompt.canvasFor(prompt, resolution)
+                else resolution to resolution
+            val steps = if (cartoonMode) when (speed) {
+                "FAST" -> 16; "MAX QUALITY" -> 38; else -> 28
+            } else when (speed) {
+                "FAST" -> 12; "MAX QUALITY" -> 35; else -> if (highQuality) 35 else 22
+            }
+            payload.put("steps", steps)
+                .put("cfg", if (cartoonMode) 7.0 else 6.0)
+                .put("width", width).put("height", height)
         } else {
             // Edit at model-friendly resolution; retain full source for framing/compositing in the UI.
             // Fast photo edits run at 512px in Nightmare, avoiding the much slower 1024px
