@@ -728,7 +728,11 @@ class MainActivity : ComponentActivity() {
            if (input != null && isSameImage(input, generated)) error("Nightmare returned the original image unchanged; verify the img2img flow and its image input.")
            if (mask != null && input != null) compositeMaskedEdit(input, generated, mask) else if (faceDetailRun && input != null) {
              compositeRefinedFaces(input, generated) ?: error("No faces could be automatically located for face-only refinement. Original photo preserved.")
-            } else if (input != null) preserveDetectedFace(input, preserveFraming(input, generated)) else generated
+            } else if (input != null) {
+              val framed = preserveFraming(input, generated)
+              if (EditRequestRouting.shouldPreserveFace(requestedPrompt))
+               preserveDetectedFace(input, framed) else framed
+             } else generated
           } else if (useLocal) {
            val encoded = input?.let { bitmap ->
             ByteArrayOutputStream().use { stream -> bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream); Base64.encodeToString(stream.toByteArray(), Base64.NO_WRAP) }
@@ -1314,6 +1318,11 @@ class MainActivity : ComponentActivity() {
             }
            }
            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+           if (useMobileI2V) withContext(Dispatchers.IO) {
+            // Experimental MP4 must pass the same corruption and motion gate.
+            // A pan/zoom substitute or still clip must not be called AI action.
+            NightmareVideoQualityGate.requireUsable(this@MainActivity, video.bytes)
+           }
            val values = ContentValues().apply {
             put(MediaStore.Video.Media.DISPLAY_NAME, "FreedomAI_Motion_${System.currentTimeMillis()}.mp4")
             put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
@@ -1589,12 +1598,16 @@ private fun preserveDetectedFace(original: Bitmap, generated: Bitmap): Bitmap {
  return runCatching {
   val width = original.width
   val height = original.height
-  val evenWidth = if (width % 2 == 0) width else width - 1
-  if (evenWidth < 2 || height < 2) return@runCatching generated
-  val detectorInput = Bitmap.createBitmap(evenWidth, height, Bitmap.Config.RGB_565)
-  android.graphics.Canvas(detectorInput).drawBitmap(original, 0f, 0f, null)
+  // FaceDetector on a full-size 4K bitmap can exhaust phone memory.
+  val scale = minOf(1f, 1024f / maxOf(width, height))
+  val detectorW = (((width * scale).toInt().coerceAtLeast(2) / 2) * 2)
+  val detectorH = (height * scale).toInt().coerceAtLeast(2)
+  val detectorInput = Bitmap.createBitmap(detectorW, detectorH, Bitmap.Config.RGB_565)
+  android.graphics.Canvas(detectorInput).drawBitmap(original, null,
+   android.graphics.Rect(0, 0, detectorW, detectorH),
+   android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG))
   val faces = arrayOfNulls<android.media.FaceDetector.Face>(5)
-  val count = android.media.FaceDetector(evenWidth, height, faces.size).findFaces(detectorInput, faces)
+  val count = android.media.FaceDetector(detectorW, detectorH, faces.size).findFaces(detectorInput, faces)
   detectorInput.recycle()
   if (count != 1) return@runCatching generated
   val face = faces[0] ?: return@runCatching generated
@@ -1602,10 +1615,12 @@ private fun preserveDetectedFace(original: Bitmap, generated: Bitmap): Bitmap {
   face.getMidPoint(midpoint)
   val eyeDistance = face.eyesDistance()
   if (eyeDistance <= 1f) return@runCatching generated
-  val cx = midpoint.x
-  val cy = midpoint.y + eyeDistance * 0.55f
-  val rx = eyeDistance * 1.75f
-  val ry = eyeDistance * 2.25f
+  val sx = width.toFloat() / detectorW
+  val sy = height.toFloat() / detectorH
+  val cx = midpoint.x * sx
+  val cy = (midpoint.y + eyeDistance * 0.55f) * sy
+  val rx = eyeDistance * 1.75f * sx
+  val ry = eyeDistance * 2.25f * sy
   val result = generated.copy(Bitmap.Config.ARGB_8888, true)
   val canvas = android.graphics.Canvas(result)
   val layer = canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), null)
