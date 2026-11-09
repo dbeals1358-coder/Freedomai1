@@ -101,30 +101,21 @@ internal object NightmareClient {
             .put("prompt", if (input == null) prompt else EditRequestRouting.promptFor(actualFlow, prompt))
         if (cartoonMode) {
             payload.put("negative", CartoonImagePrompt.negativePrompt(true, prompt))
-            val retro2D = CartoonImagePrompt.wantsRetroTwoD(prompt)
-            // Never silently run a photography checkpoint for a required 2D cel look.
-            val installed = try {
-                installedModels(token)
-            } catch (error: Exception) {
-                if (retro2D) throw IllegalStateException(
-                    "Cannot verify a 2D drawing model in Nightmare: ${error.message}. " +
-                        "No image was created. Check the Nightmare connection and installed models.", error)
-                android.util.Log.w("FreedomAI-Cartoon", "Model lookup unavailable; using selected Nightmare checkpoint.")
-                null
-            }
-            val model = installed?.let { CartoonModelSelector.chooseInstalled(it, prompt) }
-            if (!model.isNullOrBlank()) {
-                payload.put("model", model)
-                lastCartoonModelLabel = model
-                android.util.Log.i("FreedomAI-Cartoon", "Using installed cartoon checkpoint: " + model)
-            } else if (retro2D) {
-                throw IllegalStateException(
-                    "No compatible 2D cartoon model was found in Nightmare. " +
-                        "The current photo model cannot reliably make a 1970s hand-drawn animation frame. " +
-                        "Select an already-installed cartoon, Pony or illustration model in Nightmare; " +
-                        "no model was deleted or downloaded.")
+            // A missing/incomplete model list must never block text-to-image generation.
+            // Prefer an installed drawing model; otherwise use Nightmare's current model.
+            val installed = runCatching { installedModels(token) }
+                .onFailure {
+                    android.util.Log.w("FreedomAI-Cartoon",
+                        "Cannot list models; using the selected Nightmare model.")
+                }.getOrNull()
+            val selection = CartoonModelSelector.chooseOrCurrent(installed, prompt)
+            selection.modelId?.let { payload.put("model", it) }
+            lastCartoonModelLabel = selection.label
+            if (selection.modelId == null) {
+                android.util.Log.w("FreedomAI-Cartoon",
+                    "No recognized drawing model. Rendering with current Nightmare model; style may vary.")
             } else {
-                lastCartoonModelLabel = "current Nightmare checkpoint"
+                android.util.Log.i("FreedomAI-Cartoon", "Using installed drawing model: " + selection.modelId)
             }
         }
 

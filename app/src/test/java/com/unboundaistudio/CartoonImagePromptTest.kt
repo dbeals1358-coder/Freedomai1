@@ -129,4 +129,25 @@ class CartoonImagePromptTest {
         val strings = org.json.JSONArray("""["realvisxl","pony_diffusion"]""")
         assertEquals("pony_diffusion", CartoonModelSelector.chooseInstalled(strings, "1970s cartoon"))
     }
+
+    @Test fun onlyRealvisInstalledDoesNotBlockCartoonGeneration() {
+        val realvisOnly = org.json.JSONArray("""[{"id":"realvisxl","name":"RealVis XL"}]""")
+        val choice = CartoonModelSelector.chooseOrCurrent(realvisOnly, "70's Hanna Barbera fighting crime")
+        assertEquals(null, choice.modelId)
+        assertTrue(choice.label.contains("current Nightmare model"))
+        assertEquals("txt2img", CartoonImagePrompt.generationFlow())
+    }
+
+    @Test fun missingModelsListStillUsesCurrentNightmareCheckpoint() {
+        val choice = CartoonModelSelector.chooseOrCurrent(null, "1970s hand-drawn cartoon")
+        assertEquals(null, choice.modelId)
+        assertTrue(choice.label.contains("style may vary"))
+    }
+
+    @Test fun installedDrawingModelStillGetsPreferred() {
+        val choices = org.json.JSONArray("""[{"id":"realvisxl"},{"id":"pony_diffusion"}]""")
+        val choice = CartoonModelSelector.chooseOrCurrent(choices, "70's cartoon")
+        assertEquals("pony_diffusion", choice.modelId)
+        assertEquals("pony_diffusion", choice.label)
+    }
 }

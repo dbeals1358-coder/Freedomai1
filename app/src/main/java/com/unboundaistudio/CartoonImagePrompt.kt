@@ -93,6 +93,16 @@ internal object CartoonImagePrompt {
 
 /** Choose a drawing checkpoint installed in Nightmare; do not download or change photo mode. */
 internal object CartoonModelSelector {
+    data class Selection(val modelId: String?, val label: String)
+
+    /** A suitable art model improves quality but is never required to generate. */
+    fun chooseOrCurrent(models: org.json.JSONArray?, prompt: String): Selection {
+        val match = models?.let { chooseInstalled(it, prompt) }
+        return if (match.isNullOrBlank()) {
+            Selection(null, "current Nightmare model (cartoon style may vary)")
+        } else Selection(match, match)
+    }
+
     fun chooseInstalled(models: org.json.JSONArray, prompt: String): String? {
         if (!CartoonImagePrompt.wantsRetroTwoD(prompt)) return null
         var best: String? = null
