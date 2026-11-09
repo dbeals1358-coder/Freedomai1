@@ -80,7 +80,7 @@ internal object NightmareVideoClient {
   operation.check()
   onStatus("Preparing source photo for AI video…")
 
-  val scale = minOf(1f, 480f / maxOf(image.width, image.height))
+  val scale = minOf(1f, 512f / maxOf(image.width, image.height))
   val resized = if (scale < 1f) Bitmap.createScaledBitmap(
    image, maxOf(2, (image.width * scale).toInt()),
    maxOf(2, (image.height * scale).toInt()), true
@@ -93,12 +93,12 @@ internal object NightmareVideoClient {
   } finally { if (resized !== image) resized.recycle() }
   val base64Image = Base64.encodeToString(png, Base64.NO_WRAP)
 
-  var plan = NightmareVideoFlowPlanner.plan(schema, seconds, targetSide = 480, sourceWidth = image.width, sourceHeight = image.height)
+  var plan = NightmareVideoFlowPlanner.plan(schema, seconds, targetSide = 512, sourceWidth = image.width, sourceHeight = image.height)
   var reduced = false
   operation.check()
   onStatus("Generating AI motion in Nightmare (no live percentage)…")
   val response = try {
-   run(token, selected, prompt, base64Image, plan, operation)
+   run(token, selected, VideoMotionPrompt.build(prompt), base64Image, plan, operation)
   } catch (e: Exception) {
    if (!memoryError(e.message.orEmpty()) || plan.width <= 384 && plan.height <= 384) throw e
    // A smaller video node and shorter clip substantially reduce NPU memory pressure.
@@ -108,7 +108,7 @@ internal object NightmareVideoClient {
    plan = NightmareVideoFlowPlanner.plan(schema, seconds, targetSide = 384, sourceWidth = image.width, sourceHeight = image.height)
    reduced = true
    try {
-    run(token, selected, prompt, base64Image, plan, operation)
+    run(token, selected, VideoMotionPrompt.build(prompt), base64Image, plan, operation)
    } catch (retry: Exception) {
     error("Nightmare ran out of video model memory even at ${plan.width}x${plan.height} / ${seconds}s. Use a smaller Nightmare video model. ${retry.message}")
    }
