@@ -447,8 +447,10 @@ class MainActivity : ComponentActivity() {
      }
     }) { inset ->
      Column(Modifier.padding(inset).fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-      Text("FreedomAI", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary)
-      Text(if (videoMode) "Create video from a photo" else if (tab == -1) "What will you create?" else if (tab == 0) "Turn your ideas into images" else if (tab == 3) "Your conversational AI" else if (tab == 2) "Private 18+ studio" else "Give your photos a fresh look", style = MaterialTheme.typography.titleLarge)
+      if (tab != -1) {
+       Text("FreedomAI", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+       Text(if (videoMode) "Create Video" else if (tab == 0 && cartoonMode) "Create Cartoon" else if (tab == 0) "Create Image" else if (tab == 3) "AI Assistant" else if (tab == 2) "Private Studio" else "Edit Photo", style = MaterialTheme.typography.titleLarge)
+      }
       if (tab == 3) {
        AssistantScreen(
          onCreateImage = { request -> prompt = request; cartoonMode = false; videoMode = false; tab = 0; pendingAssistantImage = request; status = "Assistant is starting image generation…" },
@@ -458,9 +460,8 @@ class MainActivity : ComponentActivity() {
       }
       if (tab == -1) {
        Column(Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(UiColor(0xFF164A3C), UiColor(0xFF192F49))), RoundedCornerShape(28.dp)).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text("✦", style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.primary)
-        Text("Build it, Dream it, Crank it!", style = MaterialTheme.typography.headlineLarge)
-        Text("Your AI Studio — create or edit photos and videos.", color = UiColor(0xFFD3D0E3))
+        Text("Dream It. Build It. Crank It.", style = MaterialTheme.typography.headlineMedium)
+        Text("Choose what you want to create.", color = UiColor(0xFFD3D0E3))
         Button(onClick = { cartoonMode = false; videoMode = false; tab = 0 }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("Create Image") }
          OutlinedButton(onClick = {
           cartoonMode = true
@@ -493,6 +494,8 @@ class MainActivity : ComponentActivity() {
         }, enabled = !busy, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("Create Similar Image") }
 
         OutlinedButton(onClick = { videoMode = true; tab = 1; result = null; status = "" }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("Create Video") }
+        HorizontalDivider()
+        Text("More tools", style = MaterialTheme.typography.titleMedium)
         OutlinedButton(onClick = { showAdultConfirm = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("18+ Private Studio") }
         OutlinedButton(onClick = { tab = 3 }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("AI Assistant") }
         OutlinedButton(onClick = {
@@ -567,6 +570,9 @@ class MainActivity : ComponentActivity() {
       }
       }
       if (tab == 1 || tab == 2) {
+       var showEditSpeed by remember { mutableStateOf(false) }
+       TextButton(onClick = { showEditSpeed = !showEditSpeed }) { Text(if (showEditSpeed) "Hide edit quality ↑" else "Edit quality: $editSpeed ↓") }
+       if (showEditSpeed) {
        Text("AI edit speed")
        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         listOf("FAST", "BALANCED", "MAX QUALITY").forEach { speed ->
@@ -577,8 +583,12 @@ class MainActivity : ComponentActivity() {
         }
        }
        Text("FAST: 512px edits and an already-installed FLUX Klein model when available in Nightmare. BALANCED / MAX QUALITY can use slower, more detailed Qwen editing.")
+       }
       }
       if (tab == 0 || tab == 2) {
+       var showImageSettings by remember { mutableStateOf(false) }
+       TextButton(onClick = { showImageSettings = !showImageSettings }) { Text(if (showImageSettings) "Hide image settings ↑" else "Image settings • $generationSpeed • ${resolution}px ↓") }
+       if (showImageSettings) {
        Text("Generation speed")
        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         listOf("FAST", "BALANCED", "MAX QUALITY").forEach { speed ->
@@ -591,6 +601,7 @@ class MainActivity : ComponentActivity() {
         listOf(512, 768, 1024).forEach { size ->
          OutlinedButton(onClick = { resolution = size; prefs.edit().putInt("resolution", size).apply() }) { Text(if (resolution == size) "✓ $size" else "$size") }
         }
+       }
        }
       }
       if (busy) {
@@ -875,8 +886,11 @@ class MainActivity : ComponentActivity() {
       }
       if (tab == 0) {
         if (cartoonMode) {
-         Text("Cartoon image creator", style = MaterialTheme.typography.titleMedium)
-         Text("You choose the subject and style. Try 2D, anime, comic book, 3D, watercolor, or describe any other cartoon style.")
+         var showCartoonOptions by remember { mutableStateOf(false) }
+         Text("Classic 2D cartoons", style = MaterialTheme.typography.titleMedium)
+         Text("Bold outlines • bright colors • hand-drawn look", style = MaterialTheme.typography.bodySmall)
+         TextButton(onClick = { showCartoonOptions = !showCartoonOptions }) { Text(if (showCartoonOptions) "Hide cartoon options ↑" else "Cartoon options ↓") }
+         if (showCartoonOptions) {
          OutlinedTextField(value = cartoonStyle, onValueChange = { cartoonStyle = it },
           label = { Text("Cartoon style — type anything") },
           placeholder = { Text("e.g. 2D, comic, anime, 3D, hand-drawn") },
@@ -937,7 +951,8 @@ class MainActivity : ComponentActivity() {
            status = "Cartoon clothing now follows your written description."
           }, enabled = !busy, modifier = Modifier.weight(1f)) { Text("Follow prompt") }
          }
-         Text("Current selections: adult men — " + cartoonMaleClothing + "; adult women — " + cartoonFemaleClothing + ". Explicit clothing in the new prompt takes precedence. A model may still ignore coverage instructions.")
+         Text("Your written prompt takes priority over these options.", style = MaterialTheme.typography.bodySmall)
+         }
         }
         OutlinedTextField(value = prompt, onValueChange = { prompt = it },
          label = { Text(if (cartoonMode) "Describe your cartoon" else "Describe your image") },
@@ -945,7 +960,6 @@ class MainActivity : ComponentActivity() {
          modifier = Modifier.fillMaxWidth().height(170.dp))
        OutlinedButton(onClick = { listenForPrompt() }, enabled = !busy) { Text("🎤 Speak prompt") }
        Button(onClick = { requestImage(null) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text(if (busy) "Creating…" else if (cartoonMode) "Create Cartoon" else "Create Image") }
-       if (cartoonMode) Text("Cartoons start a new text-to-image render. An installed model in Nightmare determines how cartoon-like they look.")
 
       } else if (!videoMode && (tab == 1 || (tab == 2 && adultConfirmed && !fictionalAdultMode))) {
        if (tab == 2) Text("Private editing: adjust brightness and saturation, then save to app-private storage. AI edits may send your photo to the selected model/server. Only use images you have permission to edit.")
@@ -1053,6 +1067,9 @@ class MainActivity : ComponentActivity() {
         }
         Button(onClick = { prompt = "remove clothing naked nude show tits show pussy realistic"; status = "Prompt entered. Tap AI Edit when ready." }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Nude") }
         Button(onClick = { status = "Starting AI photo edit…"; requestImage(result ?: bitmap) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("AI Edit") }
+         var showExtraEditTools by remember { mutableStateOf(false) }
+         TextButton(onClick = { showExtraEditTools = !showExtraEditTools }) { Text(if (showExtraEditTools) "Hide extra edit tools ↑" else "Extra edit tools ↓") }
+         if (showExtraEditTools) {
         Text("Quick clothing edits", style = MaterialTheme.typography.titleMedium)
         listOf(
          "nude naked",
@@ -1083,6 +1100,7 @@ class MainActivity : ComponentActivity() {
         Slider(value = brightness, onValueChange = { brightness = it }, valueRange = -0.5f..0.5f)
         Text("Saturation")
         Slider(value = saturation, onValueChange = { saturation = it }, valueRange = 0f..2f)
+         }
         Button(onClick = { if (tab == 2) this@MainActivity.savePrivate(bitmap) else this@MainActivity.save(bitmap) }, modifier = Modifier.fillMaxWidth()) { Text(if (tab == 2) "Save Privately" else "Save Photo") }
         OutlinedButton(onClick = { brightness = 0f; saturation = 1f }) { Text("Reset") }
        } ?: Text("Pick a photo to edit its brightness and color saturation.")
@@ -1267,7 +1285,6 @@ class MainActivity : ComponentActivity() {
          LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
          Text("Elapsed: ${videoElapsedSeconds}s. Nightmare does not report a reliable live completion percentage.")
         }
-        OutlinedButton(onClick = { cancelGeneration() }, modifier = Modifier.fillMaxWidth()) { Text("Cancel video generation") }
        }
        Button(enabled = !busy, onClick = {
         if (!useMobileI2V && motionPrompt.isBlank()) status = "Describe the desired movement"
