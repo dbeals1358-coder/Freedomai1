@@ -68,7 +68,6 @@ class MainActivity : ComponentActivity() {
     .putBoolean("nightmare", true)
     .putBoolean("local", false)
     .putBoolean("native_qwen", false)
-    .putBoolean("online_qwen", false)
     .putBoolean("video_mobilei2v_experimental", false)
     .putBoolean("stable_rollback_v33_applied", true)
     .apply()
@@ -135,10 +134,6 @@ class MainActivity : ComponentActivity() {
    var generationJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
    // Native Qwen editor is fully on-device. Image generation still uses the selected backend.
    var nativeQwen by remember { mutableStateOf(prefs.getBoolean("native_qwen", true)) }
-   var onlineQwen by remember { mutableStateOf(prefs.getBoolean("online_qwen", false)) }
-   var onlineQwenUrl by remember { mutableStateOf(prefs.getString("online_qwen_url", "") ?: "") }
-   var onlineQwenModel by remember { mutableStateOf(prefs.getString("online_qwen_model", "qwen-image-2.1-turbo") ?: "qwen-image-2.1-turbo") }
-   var onlineQwenKey by remember { mutableStateOf(prefs.getString("online_qwen_key", "") ?: "") }
    var qwenTier by remember { mutableStateOf(prefs.getString("qwen_tier", "FAST") ?: "FAST") }
    var qwenReady by remember { mutableStateOf(runCatching { NativeQwenEditor.ready(this@MainActivity) }.getOrDefault(false)) }
    var qwenDownloading by remember { mutableStateOf(false) }
@@ -613,14 +608,10 @@ class MainActivity : ComponentActivity() {
        if ((promptOverride ?: prompt).isBlank() && !(tab == 2 && fictionalAdultMode && input == null)) { status = "Describe the image first"; return }
        // FAST: a conservative, color-only bikini recolor can use source pixels
        // without AI inference. If fabric recognition fails, use the selected editor.
-       val useOnlineEdit = input != null && onlineQwen && !nightmareMode
+       val useOnlineEdit = false
        val useNativeEdit = input != null && nativeQwen && !useOnlineEdit && !nightmareMode
        val autoColorRequest = if (input != null && editSpeed == "FAST" &&
          !maskMode && !precisionEdit) AutomaticClothingEdit.parse(promptOverride ?: prompt) else null
-       if (useOnlineEdit && (onlineQwenUrl.isBlank() || onlineQwenModel.isBlank() || onlineQwenKey.isBlank())) {
-         status = "Online Qwen needs an HTTPS image-edit endpoint, model name, and API key. Configure these in Edit settings; no edit was sent to Nightmare."
-         return
-        }
         if (useNativeEdit && !qwenReady) {
         status = "Download Qwen Turbo models in the Edit tab before using built-in AI Edit (~11 GB)."
         return
@@ -697,10 +688,6 @@ class MainActivity : ComponentActivity() {
           if (fastLocalColor != null) {
            usedFastLocalEdit = true
            fastLocalColor
-          } else if (useOnlineEdit && input != null) {
-            val generated = OnlineQwenEditor.edit(input, editPrompt, onlineQwenUrl, onlineQwenModel, onlineQwenKey)
-            check(!isNearlyWhiteImage(generated)) { "Online editor returned a blank image." }
-            if (faceDetailRun) compositeRefinedFaces(input, generated) ?: error("No faces could be located for face-only refinement.") else if (mask != null) compositeMaskedEdit(input, generated, mask) else generated
            } else if (useNativeEdit && input != null) {
            val generated = NativeQwenEditor.edit(
             this@MainActivity, input, editPrompt,
@@ -955,7 +942,7 @@ class MainActivity : ComponentActivity() {
         Column(Modifier.weight(1f)) {
          Text("AI editing", style = MaterialTheme.typography.titleMedium)
           Text("When editing cartoons, speech bubbles, captions and signs are requested in English.", style = MaterialTheme.typography.bodySmall)
-         Text(if (nightmareMode) "Nightmare Auto Edit (uses installed models when available)" else if (onlineQwen) "Online Qwen" else if (nativeQwen) "Offline Qwen" else "Automatic", style = MaterialTheme.typography.bodySmall)
+         Text(if (nightmareMode) "Nightmare Auto Edit (uses installed models when available)" else if (nativeQwen) "Offline Qwen" else "Automatic", style = MaterialTheme.typography.bodySmall)
         }
         TextButton(onClick = { showAdvancedEditing = !showAdvancedEditing }) {
          Text(if (showAdvancedEditing) "Hide settings" else "Advanced")
@@ -965,30 +952,6 @@ class MainActivity : ComponentActivity() {
        Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
          Text("Editing options", style = MaterialTheme.typography.titleMedium)
-          Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-           Text("Use online Qwen for AI Edit", modifier = Modifier.weight(1f))
-           Switch(checked = onlineQwen, enabled = !busy, onCheckedChange = {
-            onlineQwen = it; prefs.edit().putBoolean("online_qwen", it).apply()
-           })
-          }
-          if (onlineQwen) {
-           Text("Online editing uploads the selected photo to your chosen provider. Alibaba Model Studio supports Qwen 2.1 Turbo. Free introductory quotas, when available, are limited; usage may be billed.")
-           OutlinedButton(onClick = {
-            onlineQwenModel = "qwen-image-2.1-turbo"
-            prefs.edit().putString("online_qwen_model", onlineQwenModel).apply()
-           }, enabled = !busy) { Text("Use Alibaba Qwen 2.1 Turbo") }
-           Text("Alibaba setup: paste your Model Studio HTTPS multimodal-generation endpoint (including your Workspace ID) and API key. Other providers can use compatible multipart /images/edits endpoints.")
-           OutlinedTextField(value = onlineQwenUrl, onValueChange = {
-            onlineQwenUrl = it; prefs.edit().putString("online_qwen_url", it.trim()).apply()
-           }, label = { Text("Alibaba or other image-edit API endpoint (HTTPS)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-           OutlinedTextField(value = onlineQwenModel, onValueChange = {
-            onlineQwenModel = it; prefs.edit().putString("online_qwen_model", it.trim()).apply()
-           }, label = { Text("Online model (default: qwen-image-2.1-turbo)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-           OutlinedTextField(value = onlineQwenKey, onValueChange = {
-            onlineQwenKey = it; prefs.edit().putString("online_qwen_key", it).apply()
-           }, label = { Text("Provider API key (required)") }, modifier = Modifier.fillMaxWidth(), singleLine = true,
-            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation())
-          }
           Text("Offline Qwen (optional)")
          Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
           Text("Use Qwen for AI Edit (offline)", modifier = Modifier.weight(1f))
