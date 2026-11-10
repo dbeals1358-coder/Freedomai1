@@ -7,6 +7,13 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CartoonImagePromptTest {
+    @Test fun retroStyleDetectionIgnoresNegativeCgiLanguage() {
+        val prompt = CartoonImagePrompt.build("A 1970s hand-drawn hero rescuing a kitten", "")
+        assertTrue(prompt.contains("not CGI"))
+        assertTrue(CartoonImagePrompt.wantsRetroTwoD(prompt))
+        assertTrue(CartoonImagePrompt.negativePrompt(true, prompt).contains("photographic realism"))
+    }
+
 
     @Test fun sceneAnimeStyleOverridesDefaultRetroStyle() {
         val prompt = CartoonImagePrompt.build("An anime fox flying over Tokyo", CartoonImagePrompt.DEFAULT_STYLE)
