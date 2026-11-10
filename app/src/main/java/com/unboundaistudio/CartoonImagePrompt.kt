@@ -130,8 +130,11 @@ internal object CartoonImagePrompt {
         val actionGuidance = if (action.containsMatchIn(scene)) {
             "Depict a single action frame with the described action actually happening; show interacting characters, not a static portrait."
         } else ""
-        val textGuidance = if (letteringRequested(scene)) {
-            "Any requested speech bubbles, thought bubbles, captions, signs or labels must use correctly spelled ENGLISH ONLY. Copy the exact dialogue and words from the description; no invented writing. Otherwise leave the illustration free of text."
+        val exactDialogue = CartoonDialogue.extract(scene)
+        val textGuidance = if (exactDialogue.isNotEmpty()) {
+            "Speech bubbles must be ENGLISH ONLY. Leave the top quarter of the cartoon free for speech balloons. Do not draw ANY letters, captions, glyphs, fake text or other writing anywhere; the app prints the correctly spelled English dialogue from the user's quoted words after generation. Otherwise leave the illustration free of text."
+        } else if (letteringRequested(scene)) {
+            "Speech balloons must be ENGLISH ONLY. Draw no letters, captions, pseudo-writing, glyphs or fake text in any speech bubbles, signs or labels; the user must type exact words in double quotes for the app to place them. Otherwise leave the illustration free of text."
         } else {
             "No speech bubbles, captions, labels or lettering. Otherwise leave the illustration free of text."
         }
@@ -150,8 +153,9 @@ internal object CartoonImagePrompt {
     fun negativePrompt(cartoonMode: Boolean, prompt: String, originalDescription: String = prompt): String {
         // Do not negatively prompt away letters when the user requested dialogue.
         val rawScene = originalDescription.substringBefore(". Visual style: ")
-        val base = if (cartoonMode && letteringRequested(rawScene))
-            negativePrompt(cartoonMode).replace("unwanted text, ", "") else negativePrompt(cartoonMode)
+        // Image models draw unreliable lettering. Always suppress AI-drawn
+        // letters; exact requested English words are overlaid by Android.
+        val base = negativePrompt(cartoonMode)
         if (!cartoonMode) return base
         val exclusions = if (wantsRetroTwoD(prompt)) {
             ", photograph, photographic realism, live action, 3D model, CGI render, realistic skin, plastic figures, modern 3D animation"

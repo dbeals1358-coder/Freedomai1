@@ -768,7 +768,7 @@ class MainActivity : ComponentActivity() {
          } else {
           generationPercent = 100
            resultGeneratedHere = if (input == null) true else originalGeneratedHere
-           status = if (usedFastLocalEdit) "Fast local recolor complete. Only detected fabric pixels were changed; no AI render was needed." else if (useOnlineEdit) "Online Qwen edit complete. Check the result against the original." else if (useNativeEdit) "Qwen Turbo edit complete. Compare the face, pose and background with the original." else if (input != null && useNightmare) "Nightmare local edit complete (requested flow: ${EditRequestRouting.chooseFlow(editFlowForRun, requestedPrompt)}). Actual model must be confirmed in Nightmare run details." else if (input != null) "AI returned an edit — compare it with your requested change below" else if (cartoonMode && tab == 0 && input == null && useNightmare) "Cartoon generated with ${NightmareClient.lastCartoonModelLabel}. Compare the style and action to your prompt." else "Image ready"
+           status = if (usedFastLocalEdit) "Fast local recolor complete. Only detected fabric pixels were changed; no AI render was needed." else if (useOnlineEdit) "Online Qwen edit complete. Check the result against the original." else if (useNativeEdit) "Qwen Turbo edit complete. Compare the face, pose and background with the original." else if (input != null && useNightmare) "Nightmare local edit complete (requested flow: ${EditRequestRouting.chooseFlow(editFlowForRun, requestedPrompt)}). Actual model must be confirmed in Nightmare run details." else if (input != null) "AI returned an edit — compare it with your requested change below" else if (cartoonMode && tab == 0 && input == null && useNightmare) "Cartoon generated with ${NightmareClient.lastCartoonModelLabel}. ${if (NightmareClient.lastCartoonLetteringApplied) "Exact English dialogue added to speech bubbles." else "For correctly spelled speech bubbles, put the words in double quotes."} Compare the result to your prompt." else "Image ready"
          }
          val totalSeconds = (android.os.SystemClock.elapsedRealtime() - editStartedAt) / 1000
          val engineSeconds = (inferenceFinishedAt - editStartedAt) / 1000
@@ -885,7 +885,7 @@ class MainActivity : ComponentActivity() {
          Text("Nightmare cartoon generation", style = MaterialTheme.typography.titleSmall)
          Text("Uses Nightmare Text to image. No gallery photo is supplied; current or saved editing workflows cannot reuse an older photo.")
          Text("Your written scene and style take priority. If only a photo model is installed in Nightmare, it may not follow cartoon prompts accurately.")
-          Text("Cartoon lettering, captions and speech bubbles: English only. Specify exact dialogue for best results.")
+          Text("English speech bubbles: type the exact words in double quotes, for example: A fox says \"Watch out!\". The app adds those English words after the picture is drawn. Unquoted text may be omitted.")
          OutlinedButton(onClick = { openNightmare() }, enabled = !busy) { Text("Choose Nightmare image model") }
          Text("Characters in cartoon")
          Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {

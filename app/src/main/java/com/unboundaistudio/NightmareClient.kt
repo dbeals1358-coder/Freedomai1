@@ -15,6 +15,8 @@ internal object NightmareClient {
     private var cachedModelsAt: Long = 0L
     @Volatile var lastCartoonModelLabel: String = "Not selected"
         private set
+    @Volatile var lastCartoonLetteringApplied: Boolean = false
+        private set
 
     @Synchronized private fun installedModels(token: String): org.json.JSONArray {
         val now = android.os.SystemClock.elapsedRealtime()
@@ -87,6 +89,7 @@ internal object NightmareClient {
             "Invalid Nightmare edit workflow: $editFlow"
         }
         val requestStarted = android.os.SystemClock.elapsedRealtime()
+        if (cartoonMode) lastCartoonLetteringApplied = false
         if (cartoonMode) require(input == null && generationFlow == "txt2img") {
             "Cartoon creation needs Nightmare Text to image, without an input photo."
         }
@@ -288,7 +291,12 @@ internal object NightmareClient {
             android.util.Log.i("FreedomAI-Timing", "Nightmare download=${android.os.SystemClock.elapsedRealtime() - downloadStarted}ms")
             android.util.Log.i("FreedomAI-Timing", "Nightmare total=${android.os.SystemClock.elapsedRealtime() - requestStarted}ms")
             val decoded = bitmap ?: error("Nightmare returned an unreadable image")
-            return editFrame?.restoreOutput(decoded) ?: decoded
+            val restored = editFrame?.restoreOutput(decoded) ?: decoded
+            if (!cartoonMode) return restored
+            val exactWords = CartoonDialogue.extract(routingPrompt ?: prompt)
+            val lettered = CartoonLetteringOverlay.render(restored, exactWords)
+            lastCartoonLetteringApplied = lettered !== restored
+            return lettered
         } finally {
             download.disconnect()
         }

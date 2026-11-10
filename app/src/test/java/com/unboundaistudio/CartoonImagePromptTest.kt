@@ -7,6 +7,14 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CartoonImagePromptTest {
+    @Test fun userQuotedWordsAreInsertedByAppNotGeneratedAsGibberish() {
+        val description = "A fox says \"Run now!\" in a speech bubble"
+        val prompt = CartoonImagePrompt.build(description, "Comic book")
+        assertTrue(prompt.contains("app prints the correctly spelled English dialogue"))
+        assertTrue(prompt.contains("Do not draw ANY letters"))
+        assertTrue(CartoonImagePrompt.negativePrompt(true, prompt, description).contains("unwanted text"))
+    }
+
 
     @Test fun heroGroupNudityKeepsEveryAdultUnclothedWithoutCostumes() {
         val scene = "All adult cartoon heroes are nude in a city street"
@@ -70,9 +78,9 @@ class CartoonImagePromptTest {
         val scene = "A cartoon fox says \"Run!\" in a speech bubble"
         val prompt = CartoonImagePrompt.build(scene, "Comic book")
         val negative = CartoonImagePrompt.negativePrompt(true, prompt, scene)
-        assertFalse(negative.contains("unwanted text"))
+        assertTrue(negative.contains("unwanted text"))
         assertTrue(prompt.contains("correctly spelled ENGLISH ONLY"))
-        assertTrue(prompt.contains("Copy the exact dialogue"))
+        assertTrue(prompt.contains("correctly spelled English dialogue"))
         val without = CartoonImagePrompt.build("A cartoon fox running in a forest", "")
         assertTrue(CartoonImagePrompt.negativePrompt(true, without).contains("unwanted text"))
     }
