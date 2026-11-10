@@ -32,11 +32,11 @@ internal object CartoonImagePrompt {
         requestedLettering.containsMatchIn(description) && !noLettering.containsMatchIn(description)
 
     private fun explicitNude(description: String, gender: String): Boolean =
-        Regex("""(?i)\b(nude|naked|unclothed)\s+(?:adult\s+)?$gender\b|\b$gender\b\s+(?:is\s+)?(nude|naked|unclothed)\b""")
+        Regex("""(?i)\b(nude|naked|unclothed)\s+(?:adult\s+)?(?:$gender)\b|\b(?:$gender)\b\s+(?:is\s+)?(nude|naked|unclothed)\b""")
             .containsMatchIn(description)
 
     private fun explicitClothed(description: String, gender: String): Boolean =
-        Regex("""(?i)\b(clothed|dressed)\s+(?:adult\s+)?$gender\b|\b$gender\b\s+(?:is\s+)?(clothed|dressed|wearing)\b""")
+        Regex("""(?i)\b(clothed|dressed)\s+(?:adult\s+)?(?:$gender)\b|\b(?:$gender)\b\s+(?:is\s+)?(clothed|dressed|wearing)\b""")
             .containsMatchIn(description)
 
     fun wantsRetroTwoD(text: String): Boolean =
@@ -122,7 +122,7 @@ internal object CartoonImagePrompt {
             "Depict a single action frame with the described action actually happening; show interacting characters, not a static portrait."
         } else ""
         val textGuidance = if (letteringRequested(scene)) {
-            "Any requested speech bubbles, thought bubbles, captions, signs or labels must use correctly spelled ENGLISH ONLY. Copy the exact dialogue and words from the description; no invented writing."
+            "Any requested speech bubbles, thought bubbles, captions, signs or labels must use correctly spelled ENGLISH ONLY. Copy the exact dialogue and words from the description; no invented writing. Otherwise leave the illustration free of text."
         } else {
             "No speech bubbles, captions, labels or lettering. Otherwise leave the illustration free of text."
         }
