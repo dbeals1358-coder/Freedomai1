@@ -114,4 +114,4 @@ jobs:
         with:
           if-no-files-found: error
           name: Boobs-V4.6-CartoonPrompt-APK
-          path: app/build/outputs/apk/debug/Boobs-V4.6-Stable-debug.apk
+          path: app/build/outputs/apk/debug/Boobs-V4.6-CartoonPrompt-debug.apk
