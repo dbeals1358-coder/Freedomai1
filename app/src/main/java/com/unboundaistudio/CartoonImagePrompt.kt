@@ -2,7 +2,7 @@ package com.unboundaistudio
 
 /** Cartoon generation has its own prompt and negative prompt so photo defaults do not fight it. */
 internal object CartoonImagePrompt {
-    const val DEFAULT_STYLE = "1970s Hanna-Barbera style hand-drawn 2D animation"
+    const val DEFAULT_STYLE = "classic 1960s–1980s Hanna-Barbera-inspired Saturday-morning TV cartoon, traditional hand-inked 2D cel animation, bold clean black outlines, bright flat solid colors, minimal shading, expressive simplified faces and proportions"
 
     private val retroStyle = Regex("""(?i)(hanna[\s-]?barbera|1970'?s|70'?s|seventies|retro|vintage|classic animation|saturday morning)""")
     private val threeD = Regex("""(?i)\b(3d|cgi|photorealistic|three[\s-]?dimensional)\b""")
@@ -107,7 +107,7 @@ internal object CartoonImagePrompt {
         }
         val styleGuidance = when {
             referenceComic -> "Required look: bold ink outlines, flat colored 2D comic-book illustration, distinct expressive cartoon faces; not a photograph."
-            retro2D -> "Required look: original flat hand-drawn 2D animation cels, strong ink outlines, simple expressive shapes, painted 1970s Saturday-morning background; not CGI."
+            retro2D -> "Required look: classic Hanna-Barbera-inspired 1960s–1980s Saturday-morning television animation, original flat hand-inked 2D cels, thick clean black contour lines, bright flat solid colors, minimal shadows, simplified expressive faces and proportions, hand-painted simple backgrounds. No CGI, gradients, realistic textures, or 3D."
             requested3D -> "Required look: stylized 3D animated cartoon, not live-action photography."
             else -> "Required look: clear, original illustrated cartoon art matching the visual style above, not a photograph."
         }
