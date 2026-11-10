@@ -191,13 +191,15 @@ class CartoonImagePromptTest {
         assertTrue(CartoonImagePrompt.negativePrompt(true, prompt).contains("posed group photo"))
     }
 
-    @Test fun nudeDescriptionSetsBothAutoSexesWithoutOverridingClothed() {
+    @Test fun nudeDescriptionSetsBothAutoSexesAndOverridesStaleClothingChoices() {
         val prompt = CartoonImagePrompt.build("An adult man and woman naked in a cartoon", "2D", "Man and woman")
         assertTrue(prompt.contains("Every original adult male character is fully unclothed"))
         assertTrue(prompt.contains("Every original adult female character is fully unclothed"))
+        // A stale Clothed selector from a previous picture must not contradict
+        // a new description that explicitly requests both adults unclothed.
         val oneClothed = CartoonImagePrompt.build("An adult man and woman naked in a cartoon", "2D", "Man and woman", "Clothed", "Auto")
-        assertTrue(oneClothed.contains("Every adult male character wears clothing"))
-        assertFalse(oneClothed.contains("Every original adult male character is fully unclothed"))
+        assertTrue(oneClothed.contains("Every original adult male character is fully unclothed"))
+        assertFalse(oneClothed.contains("Every adult male character wears clothing"))
     }
 
     @Test fun selectsInstalledArtModelButNotRealvisOr3dFlow() {
