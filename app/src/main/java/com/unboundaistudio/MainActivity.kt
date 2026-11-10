@@ -21,6 +21,7 @@ import androidx.compose.ui.graphics.Color as UiColor
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.geometry.Offset
@@ -407,9 +408,20 @@ class MainActivity : ComponentActivity() {
       var zoom by remember(enlarged) { mutableFloatStateOf(1f) }
       var pan by remember(enlarged) { mutableStateOf(Offset.Zero) }
       Box(Modifier.fillMaxSize().background(UiColor.Black)) {
-       Image(enlarged.asImageBitmap(), contentDescription = "Expanded photo; pinch to zoom and drag to pan",
+       Image(enlarged.asImageBitmap(), contentDescription = "Expanded photo; double tap to zoom, pinch to zoom and drag to pan",
         contentScale = ContentScale.Fit,
         modifier = Modifier.fillMaxSize()
+         .pointerInput(enlarged) {
+          detectTapGestures(onDoubleTap = { tap ->
+           if (zoom > 1f) {
+            zoom = 1f
+            pan = Offset.Zero
+           } else {
+            zoom = 2f
+            pan = Offset(size.width / 2f - tap.x, size.height / 2f - tap.y)
+           }
+          })
+         }
          .pointerInput(enlarged) {
           detectTransformGestures { _, drag, scale, _ ->
            zoom = (zoom * scale).coerceIn(1f, 8f)
