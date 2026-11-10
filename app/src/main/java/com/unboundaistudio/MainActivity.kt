@@ -461,6 +461,10 @@ class MainActivity : ComponentActivity() {
           tab = 0
           prompt = ""
           cartoonStyle = CartoonImagePrompt.DEFAULT_STYLE
+          // A previous cartoon's character/coverage settings must not change this prompt.
+          cartoonCharacters = "From description"
+          cartoonMaleClothing = "Auto"
+          cartoonFemaleClothing = "Auto"
           result = null
           original = null
           resultGeneratedHere = false
@@ -878,7 +882,7 @@ class MainActivity : ComponentActivity() {
           modifier = Modifier.fillMaxWidth())
          Text("Nightmare cartoon generation", style = MaterialTheme.typography.titleSmall)
          Text("Uses Nightmare Text to image. No gallery photo is supplied; current or saved editing workflows cannot reuse an older photo.")
-         Text("For drawn artwork, choose an installed cartoon-capable model in Nightmare. RealVis may produce photographic results.")
+         Text("Your written scene and style take priority. If only a photo model is installed in Nightmare, it may not follow cartoon prompts accurately.")
           Text("Cartoon lettering, captions and speech bubbles: English only. Specify exact dialogue for best results.")
          OutlinedButton(onClick = { openNightmare() }, enabled = !busy) { Text("Choose Nightmare image model") }
          Text("Characters in cartoon")

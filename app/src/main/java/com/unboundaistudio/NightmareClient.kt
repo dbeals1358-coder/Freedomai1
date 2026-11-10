@@ -100,7 +100,7 @@ internal object NightmareClient {
         val payload = JSONObject().put("flow", actualFlow)
             .put("prompt", if (input == null) prompt else EditRequestRouting.promptFor(actualFlow, prompt))
         if (cartoonMode) {
-            payload.put("negative", CartoonImagePrompt.negativePrompt(true, prompt))
+            payload.put("negative", CartoonImagePrompt.negativePrompt(true, prompt, routingPrompt ?: prompt))
             // A missing/incomplete model list must never block text-to-image generation.
             // Prefer an installed drawing model; otherwise use Nightmare's current model.
             val installed = runCatching { installedModels(token) }

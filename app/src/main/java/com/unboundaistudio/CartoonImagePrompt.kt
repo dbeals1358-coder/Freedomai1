@@ -4,11 +4,40 @@ package com.unboundaistudio
 internal object CartoonImagePrompt {
     const val DEFAULT_STYLE = "1970s Hanna-Barbera style hand-drawn 2D animation"
 
-    private val retroStyle = Regex("""(?i)(hanna[\s-]?barbera|1970'?s|70'?s|seventies|retro|vintage|hand[\s-]?drawn|classic animation|saturday morning|2d|cel[\s-]?animation)""")
+    private val retroStyle = Regex("""(?i)(hanna[\s-]?barbera|1970'?s|70'?s|seventies|retro|vintage|classic animation|saturday morning)""")
     private val threeD = Regex("""(?i)\b(3d|cgi|photorealistic|three[\s-]?dimensional)\b""")
     private val action = Regex("""(?i)\b(fighting|fight|chasing|chase|rescuing|rescue|battling|battle|running|jumping|flying|escaping|pursuing|saving)\b""")
     private val nudeWords = Regex("""(?i)\b(nude|naked|unclothed|undressed)\b|remove (all )?cloth(?:es|ing)|without (any )?cloth(?:es|ing)""")
     private val noNudeWords = Regex("""(?i)\b(no|not|never)\s+(nude|naked|nudity|undressed)\b""")
+
+
+    // A style explicitly typed in the scene takes priority over the default
+    // 1970s style in the separate style field. "2D" does not mean "retro".
+    private fun styleInDescription(description: String): String? = when {
+        threeD.containsMatchIn(description) -> "3D animated cartoon render"
+        retroStyle.containsMatchIn(description) -> "1970s Hanna-Barbera style hand-drawn 2D animation"
+        Regex("""(?i)\b(anime|manga)\b""").containsMatchIn(description) -> "2D anime / manga drawing"
+        Regex("""(?i)\b(comic[- ]book|comic strip|graphic novel)\b""").containsMatchIn(description) -> "hand-inked 2D comic-book illustration"
+        Regex("""(?i)\b(watercolou?r)\b""").containsMatchIn(description) -> "watercolor cartoon painting"
+        Regex("""(?i)\b(pixel art|pixelated)\b""").containsMatchIn(description) -> "pixel-art cartoon"
+        Regex("""(?i)\b(claymation|stop[- ]motion)\b""").containsMatchIn(description) -> "clay stop-motion cartoon"
+        Regex("""(?i)\b(pencil|sketch|charcoal)\b""").containsMatchIn(description) -> "hand-drawn pencil cartoon"
+        Regex("""(?i)\b(2d|cel[- ]animation|hand[- ]drawn)\b""").containsMatchIn(description) -> "flat hand-drawn 2D animation"
+        else -> null
+    }
+
+    private val requestedLettering = Regex("""(?i)\b(says?|speech bubbles?|thought bubbles?|captions?|dialogue|dialog|sign reads|text reads|lettering|labels?|words?|title reads)\b""")
+    private val noLettering = Regex("""(?i)\b(no|without|never|not)\s+(?:any\s+)?(text|words?|lettering|speech bubbles?|captions?|labels?|dialogue)\b""")
+    fun letteringRequested(description: String): Boolean =
+        requestedLettering.containsMatchIn(description) && !noLettering.containsMatchIn(description)
+
+    private fun explicitNude(description: String, gender: String): Boolean =
+        Regex("""(?i)\b(nude|naked|unclothed)\s+(?:adult\s+)?$gender\b|\b$gender\b\s+(?:is\s+)?(nude|naked|unclothed)\b""")
+            .containsMatchIn(description)
+
+    private fun explicitClothed(description: String, gender: String): Boolean =
+        Regex("""(?i)\b(clothed|dressed)\s+(?:adult\s+)?$gender\b|\b$gender\b\s+(?:is\s+)?(clothed|dressed|wearing)\b""")
+            .containsMatchIn(description)
 
     fun wantsRetroTwoD(text: String): Boolean =
         retroStyle.containsMatchIn(text) && !threeD.containsMatchIn(text)
@@ -44,69 +73,76 @@ internal object CartoonImagePrompt {
         femaleClothing: String = "Auto"
     ): String {
         require(description.isNotBlank()) { "Describe the cartoon you want to create." }
-        val enteredStyle = style.trim().ifBlank { DEFAULT_STYLE }
-        // The new written prompt wins over an old saved UI style. For example,
-        // "70's Hanna-Barbera" must not render in 3D just because 3D was selected earlier.
-        val descriptionRequestsRetro = retroStyle.containsMatchIn(description) &&
-            !threeD.containsMatchIn(description)
-        val descriptionRequests3D = threeD.containsMatchIn(description) &&
-            !retroStyle.containsMatchIn(description)
-        val chosenStyle = when {
-            descriptionRequestsRetro && threeD.containsMatchIn(enteredStyle) -> "1970s flat hand-drawn 2D animation cels"
-            descriptionRequests3D && retroStyle.containsMatchIn(enteredStyle) -> "3D animated cartoon render"
-            else -> enteredStyle
+        // Put the complete user specification FIRST. Diffusion checkpoints often
+        // emphasize the first part of a prompt; long boilerplate used to bury it.
+        val scene = description.trim()
+        val chosenStyle = styleInDescription(scene) ?: style.trim().ifBlank { DEFAULT_STYLE }
+        val retro2D = wantsRetroTwoD(chosenStyle)
+        val requested3D = threeD.containsMatchIn(chosenStyle) && !retro2D
+        val referenceComic = chosenStyle.contains("comic-book", ignoreCase = true)
+        val autoNude = nudeWords.containsMatchIn(scene) && !noNudeWords.containsMatchIn(scene)
+        val maleNude = explicitNude(scene, "man|male")
+        val femaleNude = explicitNude(scene, "woman|female")
+        val bothNude = Regex("""(?i)\b(man|male)\s+(and|&)\s+(woman|female)\s+(are\s+|both\s+)?(nude|naked|unclothed)\b|\bboth\s+(are\s+)?(nude|naked|unclothed)\b""")
+            .containsMatchIn(scene)
+        // "nude man beside a clothed woman" must NOT undress both people.
+        val effectiveMaleClothing = if (maleClothing != "Auto") maleClothing else when {
+            explicitClothed(scene, "man|male") -> "Clothed"
+            autoNude && (bothNude || maleNude || !femaleNude) -> "Nude"
+            else -> "Auto"
         }
-        val retro2D = wantsRetroTwoD(description + " " + chosenStyle)
-        val referenceComic = chosenStyle.contains("comic-book", ignoreCase = true) && !descriptionRequestsRetro && !descriptionRequests3D
-        val requested3D = threeD.containsMatchIn(description + " " + chosenStyle) && !retro2D
-        val autoNude = nudeWords.containsMatchIn(description) && !noNudeWords.containsMatchIn(description)
-        val effectiveMaleClothing = if (maleClothing == "Auto" && autoNude) "Nude" else maleClothing
-        val effectiveFemaleClothing = if (femaleClothing == "Auto" && autoNude) "Nude" else femaleClothing
-        val styleGuidance = if (referenceComic) {
-            "Required look: vintage adult comic-book panel illustration, confident thick black ink contours, flat saturated colors, clean cel shading, exaggerated but coherent cartoon anatomy, expressive eyes and faces, detailed illustrated room or setting, dynamic interaction between characters. Polished hand-drawn 2D artwork, not a photograph, not a 3D render. Match this visual treatment consistently across the entire image."
-        } else if (retro2D) {
-            "Required look: an original flat hand-drawn 2D animation cel frame in a 1970s Saturday-morning adventure-comedy aesthetic. Strong continuous ink contours, clean readable silhouettes, simplified geometric character designs, expressive faces, solid vibrant painted colors with minimal shading, coherent perspective and a painted animation background. Each person has a distinct consistent design and occupies the space described; show complete characters and their interaction, not a modern realistic render. For adult characters, retain any explicitly requested adult nudity and coherent anatomical detail instead of automatically covering bodies with clothing."
-        } else if (requested3D) {
-            "Required look: fully animated 3D cartoon characters and environments, deliberately stylized proportions and materials, expressive animation-film faces, not live-action photography."
-        } else {
-            "Required look: original 2D cartoon illustration with clear stylized outlines, drawn shapes and expressive faces. Respect the requested composition, colors and details; no photographic realism."
+        val effectiveFemaleClothing = if (femaleClothing != "Auto") femaleClothing else when {
+            explicitClothed(scene, "woman|female") -> "Clothed"
+            autoNude && (bothNude || femaleNude || !maleNude) -> "Nude"
+            else -> "Auto"
         }
-        val actionGuidance = if (action.containsMatchIn(description)) {
-            "Show a wide single action frame from the story with the characters visibly interacting, the described action actually happening. Stage the scene so every named subject can be seen, with recognizable poses, expressions, silhouettes and their environmental context. No static poses, studio portraits, character lineup, or costume showcase."
-        } else ""
+        val styleGuidance = when {
+            referenceComic -> "Required look: bold ink outlines, flat colored 2D comic-book illustration, distinct expressive cartoon faces; not a photograph."
+            retro2D -> "Required look: original flat hand-drawn 2D animation cels, strong ink outlines, simple expressive shapes, painted 1970s Saturday-morning background; not CGI."
+            requested3D -> "Required look: stylized 3D animated cartoon, not live-action photography."
+            else -> "Required look: clear, original illustrated cartoon art matching the visual style above, not a photograph."
+        }
         val subjectGuidance = when (characters) {
-            "Man" -> "For the human subject, preserve the described adult man's identity and anatomy."
-            "Woman" -> "For the human subject, preserve the described adult woman's identity and anatomy."
-            "Man and woman" -> "Show the described adult man and adult woman as separate characters; preserve each character's distinct anatomy and appearance."
+            "Man" -> "Include the described adult man with consistent anatomy."
+            "Woman" -> "Include the described adult woman with consistent anatomy."
+            "Man and woman" -> "Include the described adult man and adult woman as separate characters, each with their own appearance."
             else -> "Follow the character identities and anatomy stated in the description."
         }
-        // Apply clothing state separately. The saved RealVis model may still ignore instructions;
-        // these directives make the request explicit, not a post-processing promise.
         val maleDirective = when (effectiveMaleClothing) {
-            "Nude" -> "Every original adult male character is fully unclothed, with visible anatomically male external body features, without shorts, pants, underwear, or other clothing."
-            "Clothed" -> "Every adult male character wears clothing as described and has no accidental nudity."
+            "Nude" -> "Every original adult male character is fully unclothed, with anatomically male features, without shorts, pants, underwear or other garments."
+            "Clothed" -> "Every adult male character wears clothing as described."
             else -> ""
         }
         val femaleDirective = when (effectiveFemaleClothing) {
-            "Nude" -> "Every original adult female character is fully unclothed, with anatomically female body features, without dresses, underwear, or other clothing."
-            "Clothed" -> "Every adult female character wears clothing as described and has no accidental nudity."
+            "Nude" -> "Every original adult female character is fully unclothed, with anatomically female features and no garments."
+            "Clothed" -> "Every adult female character wears clothing as described."
             else -> ""
         }
+        val actionGuidance = if (action.containsMatchIn(scene)) {
+            "Depict a single action frame with the described action actually happening; show interacting characters, not a static portrait."
+        } else ""
+        val textGuidance = if (letteringRequested(scene)) {
+            "Any requested speech bubbles, thought bubbles, captions, signs or labels must use correctly spelled ENGLISH ONLY. Copy the exact dialogue and words from the description; no invented writing."
+        } else {
+            "No speech bubbles, captions, labels or lettering. Otherwise leave the illustration free of text."
+        }
         return listOf(
-            "${description.trim()}. Visual style: ${chosenStyle}.",
-            styleGuidance,
-            "No speech bubbles, thought bubbles, captions, labels or lettering unless the description explicitly asks for them. Whenever text is requested, every visible word in speech bubbles, thought bubbles, captions, signs, sound effects and labels must be legible, correctly spelled ENGLISH ONLY. Render exactly the English words and dialogue specified by the user, preserving spelling and punctuation. Translate non-English wording into natural English rather than printing foreign writing. Never invent unrelated text, pseudo-letters or gibberish. Otherwise leave the illustration free of text.",
-            actionGuidance,
+            "$scene. Visual style: $chosenStyle.",
             subjectGuidance,
-            "Treat the user description as the scene specification: include every explicitly named character, object, action, setting, and clothing detail. Do not substitute a generic character portrait, omit requested subjects, or invent unrelated characters. Compose a new scene rather than copying an existing gallery image.",
             maleDirective,
             femaleDirective,
-            "Keep clothing and body-coverage details consistent for each person, without adding unwanted garments or swapping features between characters."
+            actionGuidance,
+            styleGuidance,
+            "Include all named characters, setting, actions and objects. Keep clothing and body-coverage details consistent, without adding unwanted garments or swapping features between characters.",
+            textGuidance
         ).filter { it.isNotBlank() }.joinToString(" ")
     }
 
-    fun negativePrompt(cartoonMode: Boolean, prompt: String): String {
-        val base = negativePrompt(cartoonMode)
+    fun negativePrompt(cartoonMode: Boolean, prompt: String, originalDescription: String = prompt): String {
+        // Do not negatively prompt away letters when the user requested dialogue.
+        val rawScene = originalDescription.substringBefore(". Visual style: ")
+        val base = if (cartoonMode && letteringRequested(rawScene))
+            negativePrompt(cartoonMode).replace("unwanted text, ", "") else negativePrompt(cartoonMode)
         if (!cartoonMode) return base
         val exclusions = if (wantsRetroTwoD(prompt)) {
             ", photograph, photographic realism, live action, 3D model, CGI render, realistic skin, plastic figures, modern 3D animation"

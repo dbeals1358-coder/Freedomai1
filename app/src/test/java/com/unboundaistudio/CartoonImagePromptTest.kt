@@ -7,6 +7,39 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CartoonImagePromptTest {
+
+    @Test fun sceneAnimeStyleOverridesDefaultRetroStyle() {
+        val prompt = CartoonImagePrompt.build("An anime fox flying over Tokyo", CartoonImagePrompt.DEFAULT_STYLE)
+        assertTrue(prompt.startsWith("An anime fox flying over Tokyo"))
+        assertTrue(prompt.contains("Visual style: 2D anime"))
+        assertFalse(prompt.contains("Visual style: 1970s"))
+        assertFalse(CartoonImagePrompt.wantsRetroTwoD(prompt))
+    }
+
+    @Test fun explicitTwoDDoesNotForceRetro() {
+        val prompt = CartoonImagePrompt.build("A simple 2D watercolor cartoon of a whale", CartoonImagePrompt.DEFAULT_STYLE)
+        assertTrue(prompt.contains("Visual style: watercolor"))
+        assertFalse(prompt.contains("Visual style: 1970s"))
+    }
+
+    @Test fun exactDialogueIsNotNegativelyPromptedAway() {
+        val scene = "A cartoon fox says \"Run!\" in a speech bubble"
+        val prompt = CartoonImagePrompt.build(scene, "Comic book")
+        val negative = CartoonImagePrompt.negativePrompt(true, prompt, scene)
+        assertFalse(negative.contains("unwanted text"))
+        assertTrue(prompt.contains("correctly spelled ENGLISH ONLY"))
+        assertTrue(prompt.contains("Copy the exact dialogue"))
+        val without = CartoonImagePrompt.build("A cartoon fox running in a forest", "")
+        assertTrue(CartoonImagePrompt.negativePrompt(true, without).contains("unwanted text"))
+    }
+
+    @Test fun mixedClothingInTextDoesNotUndressBothPeople() {
+        val prompt = CartoonImagePrompt.build("A nude man beside a clothed woman on the beach", "comic book", "Man and woman")
+        assertTrue(prompt.contains("Every original adult male character is fully unclothed"))
+        assertTrue(prompt.contains("Every adult female character wears clothing as described"))
+        assertFalse(prompt.contains("Every original adult female character is fully unclothed"))
+    }
+
     @Test fun generatedCartoonsRequestOnlyEnglishLettering() {
         val description = "A fox says \"Run now!\" in a speech bubble"
         val prompt = CartoonImagePrompt.build(description, "Comic book")
