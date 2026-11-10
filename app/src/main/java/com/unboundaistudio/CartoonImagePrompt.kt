@@ -107,7 +107,7 @@ internal object CartoonImagePrompt {
         }
         val styleGuidance = when {
             referenceComic -> "Required look: bold ink outlines, flat colored 2D comic-book illustration, distinct expressive cartoon faces; not a photograph."
-            retro2D -> "Required look: classic Hanna-Barbera-inspired 1960s–1980s Saturday-morning television animation, original flat hand-inked 2D cels, thick clean black contour lines, bright flat solid colors, minimal shadows, simplified expressive faces and proportions, hand-painted simple backgrounds. No CGI, gradients, realistic textures, or 3D."
+            retro2D -> "Required look: classic Hanna-Barbera-inspired 1960s–1980s Saturday-morning television animation, original flat hand-inked 2D cels, thick clean black contour lines, bright flat solid colors, minimal shadows, simplified expressive faces and proportions, hand-painted simple backgrounds. Flat hand-drawn 2D animation, not CGI, not 3D, no gradients or realistic textures."
             requested3D -> "Required look: stylized 3D animated cartoon, not live-action photography."
             else -> "Required look: clear, original illustrated cartoon art matching the visual style above, not a photograph."
         }
