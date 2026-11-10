@@ -231,7 +231,7 @@ internal object NightmareClient {
                         "flux_edit", speed, routingPrompt = routingPrompt)
                 }
                 fallback.getOrNull()?.let { return it }
-                error("Nightmare clothing auto-mask unavailable. Installed Qwen/FLUX instruction-edit fallback also failed: ${fallback.exceptionOrNull()?.message?.take(230)}. Original photo preserved.")
+                error("Nightmare clothing auto-mask unavailable; instruction-edit fallback failed too. Check that the installed Qwen/FLUX edit model runs successfully inside Nightmare. Original photo preserved. Details: ${fallback.exceptionOrNull()?.message?.substringBefore(":{")?.take(110)}")
             }
             if (code !in 200..299 && actualFlow == "inpaint" &&
                 (body.contains("parser", true) || body.contains("picked by name", true) ||
