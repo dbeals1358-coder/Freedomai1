@@ -7,6 +7,43 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CartoonImagePromptTest {
+
+    @Test fun heroGroupNudityKeepsEveryAdultUnclothedWithoutCostumes() {
+        val scene = "All adult cartoon heroes are nude in a city street"
+        val prompt = CartoonImagePrompt.build(scene, "1970s cartoon", "From description")
+        assertTrue(prompt.contains("Every original adult male character is fully unclothed"))
+        assertTrue(prompt.contains("Every original adult female character is fully unclothed"))
+        assertTrue(CartoonImagePrompt.negativePrompt(true, prompt, scene).contains("superhero uniforms"))
+    }
+
+    @Test fun mixedCoverageDoesNotExcludeRequestedClothing() {
+        val scene = "A nude man and a clothed woman as comic heroes"
+        val prompt = CartoonImagePrompt.build(scene, "comic book", "Man and woman")
+        assertTrue(prompt.contains("Every original adult male character is fully unclothed"))
+        assertTrue(prompt.contains("Every adult female character wears clothing"))
+        assertFalse(CartoonImagePrompt.negativePrompt(true, prompt, scene).contains("superhero uniforms"))
+    }
+
+    @Test fun promptOverridesPreviousClothedSelectionWhenItRequestsNude() {
+        val prompt = CartoonImagePrompt.build("Both adult heroes are naked", "comic", "Man and woman",
+            maleClothing = "Clothed", femaleClothing = "Clothed")
+        assertTrue(prompt.contains("Every original adult male character is fully unclothed"))
+        assertTrue(prompt.contains("Every original adult female character is fully unclothed"))
+        assertFalse(prompt.contains("wears clothing as described"))
+    }
+
+    @Test fun individualNegationDoesNotBlockOtherPersonsNudity() {
+        val prompt = CartoonImagePrompt.build("The adult man is nude and the woman is not nude", "2D", "Man and woman")
+        assertTrue(prompt.contains("Every original adult male character is fully unclothed"))
+        assertTrue(prompt.contains("Every adult female character wears clothing"))
+    }
+
+    @Test fun pluralGenderRequestsKeepBothGroupsSeparate() {
+        val prompt = CartoonImagePrompt.build("The men are nude and the women are clothed", "2D")
+        assertTrue(prompt.contains("Every original adult male character is fully unclothed"))
+        assertTrue(prompt.contains("Every adult female character wears clothing"))
+    }
+
     @Test fun retroStyleDetectionIgnoresNegativeCgiLanguage() {
         val prompt = CartoonImagePrompt.build("A 1970s hand-drawn hero rescuing a kitten", "")
         assertTrue(prompt.contains("not CGI"))

@@ -8,7 +8,7 @@ internal object CartoonImagePrompt {
     private val threeD = Regex("""(?i)\b(3d|cgi|photorealistic|three[\s-]?dimensional)\b""")
     private val action = Regex("""(?i)\b(fighting|fight|chasing|chase|rescuing|rescue|battling|battle|running|jumping|flying|escaping|pursuing|saving)\b""")
     private val nudeWords = Regex("""(?i)\b(nude|naked|unclothed|undressed)\b|remove (all )?cloth(?:es|ing)|without (any )?cloth(?:es|ing)""")
-    private val noNudeWords = Regex("""(?i)\b(no|not|never)\s+(nude|naked|nudity|undressed)\b""")
+    private val noNudeWords = Regex("""(?i)\b(?:no|without)\s+(?:any\s+)?(?:nudity|nude|naked|unclothed)\b|\b(?:everyone|everybody|all\s+characters?)\s+(?:must\s+be\s+)?(?:clothed|dressed)\b""")
 
 
     // A style explicitly typed in the scene takes priority over the default
@@ -36,7 +36,7 @@ internal object CartoonImagePrompt {
             .containsMatchIn(description)
 
     private fun explicitClothed(description: String, gender: String): Boolean =
-        Regex("""(?i)\b(clothed|dressed)\s+(?:adult\s+)?(?:$gender)\b|\b(?:$gender)\b\s+(?:is\s+)?(clothed|dressed|wearing)\b""")
+        Regex("""(?i)\b(clothed|dressed)\s+(?:adult\s+)?(?:$gender)\b|\b(?:$gender)\b\s+(?:is\s+)?(?:clothed|dressed|wearing|not\s+(?:nude|naked|unclothed))\b""")
             .containsMatchIn(description)
 
     fun wantsRetroTwoD(text: String): Boolean {
@@ -87,20 +87,23 @@ internal object CartoonImagePrompt {
         val requested3D = threeD.containsMatchIn(chosenStyle) && !retro2D
         val referenceComic = chosenStyle.contains("comic-book", ignoreCase = true)
         val autoNude = nudeWords.containsMatchIn(scene) && !noNudeWords.containsMatchIn(scene)
-        val maleNude = explicitNude(scene, "man|male")
-        val femaleNude = explicitNude(scene, "woman|female")
-        val bothNude = Regex("""(?i)\b(man|male)\s+(and|&)\s+(woman|female)\s+(are\s+|both\s+)?(nude|naked|unclothed)\b|\bboth\s+(are\s+)?(nude|naked|unclothed)\b""")
+        val maleNude = explicitNude(scene, "man|men|male|males")
+        val femaleNude = explicitNude(scene, "woman|women|female|females")
+        val maleClothed = explicitClothed(scene, "man|men|male|males")
+        val femaleClothed = explicitClothed(scene, "woman|women|female|females")
+        val bothNude = Regex("""(?i)\b(?:man|men|male|males)\s+(?:and|&)\s+(?:woman|women|female|females)\s+(?:are\s+|both\s+)?(?:nude|naked|unclothed)\b|\b(?:woman|women|female|females)\s+(?:and|&)\s+(?:man|men|male|males)\s+(?:are\s+|both\s+)?(?:nude|naked|unclothed)\b|\b(?:everyone|everybody|both|all\s+(?:\d+\s+)?(?:characters?|adults?|people|heroes))\s+(?:are\s+|is\s+)?(?:nude|naked|unclothed)\b""")
             .containsMatchIn(scene)
-        // "nude man beside a clothed woman" must NOT undress both people.
-        val effectiveMaleClothing = if (maleClothing != "Auto") maleClothing else when {
-            explicitClothed(scene, "man|male") -> "Clothed"
-            autoNude && (bothNude || maleNude || !femaleNude) -> "Nude"
-            else -> "Auto"
+        // Explicit scene text wins over a stale clothing selector. A request
+        // for one nude person must not undress a differently described person.
+        val effectiveMaleClothing = when {
+            maleClothed -> "Clothed"
+            maleNude || (autoNude && (bothNude || !femaleNude)) -> "Nude"
+            else -> maleClothing
         }
-        val effectiveFemaleClothing = if (femaleClothing != "Auto") femaleClothing else when {
-            explicitClothed(scene, "woman|female") -> "Clothed"
-            autoNude && (bothNude || femaleNude || !maleNude) -> "Nude"
-            else -> "Auto"
+        val effectiveFemaleClothing = when {
+            femaleClothed -> "Clothed"
+            femaleNude || (autoNude && (bothNude || !maleNude)) -> "Nude"
+            else -> femaleClothing
         }
         val styleGuidance = when {
             referenceComic -> "Required look: bold ink outlines, flat colored 2D comic-book illustration, distinct expressive cartoon faces; not a photograph."
@@ -134,9 +137,9 @@ internal object CartoonImagePrompt {
         }
         return listOf(
             "$scene. Visual style: $chosenStyle.",
-            subjectGuidance,
             maleDirective,
             femaleDirective,
+            subjectGuidance,
             actionGuidance,
             styleGuidance,
             "Include all named characters, setting, actions and objects. Keep clothing and body-coverage details consistent, without adding unwanted garments or swapping features between characters.",
@@ -154,7 +157,16 @@ internal object CartoonImagePrompt {
             ", photograph, photographic realism, live action, 3D model, CGI render, realistic skin, plastic figures, modern 3D animation"
         } else ""
         val actionExclusions = if (action.containsMatchIn(prompt)) ", static portrait, posed group photo, standing in a row, police lineup" else ""
-        return base + exclusions + actionExclusions + ", non-English lettering, foreign-language text, pseudo-letters, gibberish text, illegible lettering, misspelled speech bubbles, unrelated subjects, missing characters, duplicate characters, generic headshot, wrong setting"
+        // Costume-associated character names can make models draw uniforms even
+        // when ALL described adults should be unclothed. This negative applies
+        // only when both adult coverage groups are explicitly nude: it must not
+        // suppress requested clothing on a different character.
+        val allAdultsNude = prompt.contains("Every original adult male character is fully unclothed") &&
+            prompt.contains("Every original adult female character is fully unclothed")
+        val clothingExclusions = if (allAdultsNude) {
+            ", clothing, superhero uniforms, bodysuits, costumes, boots, gloves, shorts, underwear, fabric coverings, censorship bars"
+        } else ""
+        return base + exclusions + actionExclusions + clothingExclusions + ", non-English lettering, foreign-language text, pseudo-letters, gibberish text, illegible lettering, misspelled speech bubbles, unrelated subjects, missing characters, duplicate characters, generic headshot, wrong setting"
     }
 
     fun negativePrompt(cartoonMode: Boolean): String =

@@ -463,8 +463,10 @@ class MainActivity : ComponentActivity() {
           cartoonStyle = CartoonImagePrompt.DEFAULT_STYLE
           // A previous cartoon's character/coverage settings must not change this prompt.
           cartoonCharacters = "From description"
-          cartoonMaleClothing = "Auto"
-          cartoonFemaleClothing = "Auto"
+          // Restore the user's explicit selection instead of silently
+          // discarding it each time they open the cartoon creator.
+          cartoonMaleClothing = prefs.getString("cartoon_male_clothing", "Auto") ?: "Auto"
+          cartoonFemaleClothing = prefs.getString("cartoon_female_clothing", "Auto") ?: "Auto"
           result = null
           original = null
           resultGeneratedHere = false
@@ -922,7 +924,21 @@ class MainActivity : ComponentActivity() {
            }
           }
          }
-         Text("Current selections: adult men — " + cartoonMaleClothing + "; adult women — " + cartoonFemaleClothing + ". Auto also follows explicit nudity in your description; the installed model may still have limitations.")
+         Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+          OutlinedButton(onClick = {
+           cartoonMaleClothing = "Nude"
+           cartoonFemaleClothing = "Nude"
+           prefs.edit().putString("cartoon_male_clothing", "Nude").putString("cartoon_female_clothing", "Nude").apply()
+           status = "Cartoon clothing set to Nude for all adult men and women. Nightmares model may still not follow every detail."
+          }, enabled = !busy, modifier = Modifier.weight(1f)) { Text("All adults nude") }
+          OutlinedButton(onClick = {
+           cartoonMaleClothing = "Auto"
+           cartoonFemaleClothing = "Auto"
+           prefs.edit().putString("cartoon_male_clothing", "Auto").putString("cartoon_female_clothing", "Auto").apply()
+           status = "Cartoon clothing now follows your written description."
+          }, enabled = !busy, modifier = Modifier.weight(1f)) { Text("Follow prompt") }
+         }
+         Text("Current selections: adult men — " + cartoonMaleClothing + "; adult women — " + cartoonFemaleClothing + ". Explicit clothing in the new prompt takes precedence. A model may still ignore coverage instructions.")
         }
         OutlinedTextField(value = prompt, onValueChange = { prompt = it },
          label = { Text(if (cartoonMode) "Describe your cartoon" else "Describe your image") },
