@@ -101,7 +101,7 @@ internal object NightmareClient {
             generationFlow
         } else EditRequestRouting.chooseFlow(editFlow, routingPrompt ?: prompt)
         val payload = JSONObject().put("flow", actualFlow)
-            .put("prompt", if (input == null) prompt else EditRequestRouting.promptFor(actualFlow, prompt))
+            .put("prompt", if (input == null && !cartoonMode) PhotoCompositionPrompt.prepare(prompt) else if (input == null) prompt else EditRequestRouting.promptFor(actualFlow, prompt))
         if (cartoonMode) {
             payload.put("negative", CartoonImagePrompt.negativePrompt(true, prompt, routingPrompt ?: prompt))
             // A missing/incomplete model list must never block text-to-image generation.
