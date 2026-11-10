@@ -15,7 +15,7 @@ internal object CartoonImagePrompt {
     // 1970s style in the separate style field. "2D" does not mean "retro".
     private fun styleInDescription(description: String): String? = when {
         threeD.containsMatchIn(description) -> "3D animated cartoon render"
-        retroStyle.containsMatchIn(description) -> "1970s Hanna-Barbera style hand-drawn 2D animation"
+        retroStyle.containsMatchIn(description) -> "1970s flat hand-drawn 2D animation cels in a Hanna-Barbera-inspired style"
         Regex("""(?i)\b(anime|manga)\b""").containsMatchIn(description) -> "2D anime / manga drawing"
         Regex("""(?i)\b(comic[- ]book|comic strip|graphic novel)\b""").containsMatchIn(description) -> "hand-inked 2D comic-book illustration"
         Regex("""(?i)\b(watercolou?r)\b""").containsMatchIn(description) -> "watercolor cartoon painting"
@@ -39,8 +39,14 @@ internal object CartoonImagePrompt {
         Regex("""(?i)\b(clothed|dressed)\s+(?:adult\s+)?(?:$gender)\b|\b(?:$gender)\b\s+(?:is\s+)?(clothed|dressed|wearing)\b""")
             .containsMatchIn(description)
 
-    fun wantsRetroTwoD(text: String): Boolean =
-        retroStyle.containsMatchIn(text) && !threeD.containsMatchIn(text)
+    fun wantsRetroTwoD(text: String): Boolean {
+        // Evaluate the selected visual style, not later negative language
+        // such as "not CGI" that must not turn the 2D cartoon style off.
+        val visualStyle = if (text.contains("Visual style: ")) {
+            text.substringAfter("Visual style: ").substringBefore(". ")
+        } else text
+        return retroStyle.containsMatchIn(visualStyle) && !threeD.containsMatchIn(visualStyle)
+    }
 
     /** Never reuse a current or saved image workflow that might have a gallery photo attached. */
     fun generationFlow(): String = "txt2img"
