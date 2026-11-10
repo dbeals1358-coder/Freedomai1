@@ -5,8 +5,8 @@ package com.unboundaistudio
  * describing scenes with multiple subjects. Never modify edit or cartoon prompts.
  */
 internal object PhotoCompositionPrompt {
-    private val portrait = Regex("""(?i)\\b(close[ -]?up|headshot|portrait|face[ -]?only|macro|tight crop)\\b""")
-    private val scene = Regex("""(?i)\\b(with|beside|next to|together|couple|group|two people|three people|standing|sitting|walking|full body|full length)\\b""")
+    private val portrait = Regex("""(?i)\b(close[ -]?up|headshot|portrait|face[ -]?only|macro|tight crop)\b""")
+    private val scene = Regex("""(?i)\b(with|beside|next to|together|couple|group|two people|three people|standing|sitting|walking|full body|full length)\b""")
 
     fun prepare(raw: String): String {
         val prompt = raw.trim()
