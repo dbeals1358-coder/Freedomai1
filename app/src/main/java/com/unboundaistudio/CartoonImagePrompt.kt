@@ -32,11 +32,11 @@ internal object CartoonImagePrompt {
         requestedLettering.containsMatchIn(description) && !noLettering.containsMatchIn(description)
 
     private fun explicitNude(description: String, gender: String): Boolean =
-        Regex("""(?i)\b(nude|naked|unclothed)\s+(?:adult\s+)?(?:$gender)\b|\b(?:$gender)\b\s+(?:is\s+)?(nude|naked|unclothed)\b""")
+        Regex("""(?i)\b(nude|naked|unclothed)\s+(?:adult\s+)?(?:$gender)\b|\b(?:$gender)\b\s+(?:(?:is|are)\s+)?(nude|naked|unclothed)\b""")
             .containsMatchIn(description)
 
     private fun explicitClothed(description: String, gender: String): Boolean =
-        Regex("""(?i)\b(clothed|dressed)\s+(?:adult\s+)?(?:$gender)\b|\b(?:$gender)\b\s+(?:is\s+)?(?:clothed|dressed|wearing|not\s+(?:nude|naked|unclothed))\b""")
+        Regex("""(?i)\b(clothed|dressed)\s+(?:adult\s+)?(?:$gender)\b|\b(?:$gender)\b\s+(?:(?:is|are)\s+)?(?:clothed|dressed|wearing|not\s+(?:nude|naked|unclothed))\b""")
             .containsMatchIn(description)
 
     fun wantsRetroTwoD(text: String): Boolean {
