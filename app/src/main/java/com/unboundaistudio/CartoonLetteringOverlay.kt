@@ -66,8 +66,7 @@ internal object CartoonLetteringOverlay {
             do {
                 ink.textSize = size
                 layout = StaticLayout.Builder.obtain(phrases[i], 0, phrases[i].length, ink, availWidth)
-                    .setAlignment(Layout.Alignment.ALIGN_CENTER).setIncludePad(false)
-                    .setBreakStrategy(Layout.BREAK_STRATEGY_HIGH_QUALITY).build()
+                    .setAlignment(Layout.Alignment.ALIGN_CENTER).setIncludePad(false).build()
                 if (layout.height <= availHeight || size <= 11f) break
                 size -= 1.5f
             } while (true)
