@@ -200,6 +200,18 @@ class MainActivity : ComponentActivity() {
    var photoStyle by remember { mutableStateOf("Photorealistic natural lighting") }
    var highQuality by remember { mutableStateOf(true) }
    var showConnection by remember { mutableStateOf(false) }
+   // Nightmare-inspired controls are optional. Simple keeps existing one-tap creation.
+   var studioMode by remember {
+    mutableStateOf(prefs.getString("studio_mode_v5", "Simple")?.takeIf { it == "Advanced" } ?: "Simple")
+   }
+   var nightmareCatalogBusy by remember { mutableStateOf(false) }
+   var nightmareCatalogMessage by remember { mutableStateOf("") }
+   var availableNightmareModels by remember { mutableStateOf(emptyList<NightmareCatalog.Model>()) }
+   var availableNightmareFlows by remember { mutableStateOf(emptyList<String>()) }
+   var nightmareSelectedModel by remember { mutableStateOf(prefs.getString("nightmare_model_v5", "") ?: "") }
+   var nightmareSelectedFlow by remember { mutableStateOf("") }
+   var showNightmareModelMenu by remember { mutableStateOf(false) }
+   var showNightmareFlowMenu by remember { mutableStateOf(false) }
    var showAdvancedConnection by remember { mutableStateOf(false) }
    var prompt by remember { mutableStateOf("") }
     var cartoonMode by remember { mutableStateOf(false) }
@@ -511,6 +523,147 @@ class MainActivity : ComponentActivity() {
        }
       }
       if (showAdultConfirm) AlertDialog(onDismissRequest = { showAdultConfirm = false }, title = { Text("18+ private editor") }, text = { Text("Only continue if you are 18 or older and have permission to use the images. Imported photos remain on this device unless you choose an online AI server. This is an age confirmation, not identity verification.") }, confirmButton = { TextButton(onClick = { adultConfirmed = true; showAdultConfirm = false; tab = 2; fictionalAdultMode = false; result = null }) { Text("I am 18 or older") } }, dismissButton = { TextButton(onClick = { showAdultConfirm = false }) { Text("Cancel") } })
+      if (tab == 0 || tab == 1) {
+       Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        Text("Studio", style = MaterialTheme.typography.titleSmall)
+        FilterChip(selected = studioMode == "Simple", onClick = {
+         studioMode = "Simple"
+         prefs.edit().putString("studio_mode_v5", studioMode).apply()
+        }, label = { Text("Simple") })
+        FilterChip(selected = studioMode == "Advanced", onClick = {
+         studioMode = "Advanced"
+         prefs.edit().putString("studio_mode_v5", studioMode).apply()
+        }, label = { Text("Advanced") })
+       }
+       if (studioMode == "Advanced") {
+        Card(Modifier.fillMaxWidth()) {
+         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+          Text("Nightmare Studio", style = MaterialTheme.typography.titleLarge)
+          Text("PROMPT  →  MODEL  →  WORKFLOW  →  RESULT",
+           color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelSmall)
+          Text("Your installed Nightmare models and saved workflows — running locally on this phone.",
+           style = MaterialTheme.typography.bodySmall)
+          if (!nightmareMode) {
+           Text("Nightmare is disabled. Enable it to use these controls.")
+           Button(onClick = {
+            nightmareMode = true
+            localMode = false
+            prefs.edit().putBoolean("nightmare", true).putBoolean("local", false).apply()
+           }, enabled = !busy) { Text("Use Nightmare") }
+          }
+          Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+           OutlinedButton(onClick = { checkNightmareConnection() },
+            enabled = !busy && !nightmareCatalogBusy, modifier = Modifier.weight(1f)) { Text("Check connection") }
+           OutlinedButton(onClick = { openNightmare() }, modifier = Modifier.weight(1f)) { Text("Open Nightmare") }
+          }
+          Button(onClick = {
+           nightmareCatalogBusy = true
+           nightmareCatalogMessage = "Reading installed models and workflows…"
+           val accessToken = nightmareToken
+           scope.launch {
+            try {
+             val catalog = withContext(Dispatchers.IO) {
+              val models = runCatching {
+               NightmareCatalog.models(NightmareClient.authenticatedGet("/models", accessToken))
+              }
+              val flows = runCatching {
+               NightmareCatalog.flows(NightmareClient.authenticatedGet("/flows", accessToken))
+              }
+              Pair(models, flows)
+             }
+             catalog.first.onSuccess { availableNightmareModels = it }
+             catalog.second.onSuccess { availableNightmareFlows = it }
+             nightmareCatalogMessage = when {
+              catalog.first.isSuccess && catalog.second.isSuccess ->
+               "Found ${availableNightmareModels.size} installed models and ${availableNightmareFlows.size} workflows."
+              else -> "Some Nightmare lists could not be loaded. Check connection and API token; existing selections are unchanged."
+             }
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e
+            } catch (e: Exception) {
+             nightmareCatalogMessage = "Could not read Nightmare catalog: ${e.message}"
+            } finally { nightmareCatalogBusy = false }
+           }
+          }, enabled = nightmareMode && !busy && !nightmareCatalogBusy,
+           modifier = Modifier.fillMaxWidth()) {
+           Text(if (nightmareCatalogBusy) "Loading Nightmare…" else "Refresh Models & Workflows")
+          }
+          if (nightmareCatalogMessage.isNotBlank()) {
+           Text(nightmareCatalogMessage, style = MaterialTheme.typography.bodySmall)
+          }
+          Text("Image model", style = MaterialTheme.typography.titleMedium)
+          Box {
+           OutlinedButton(onClick = { showNightmareModelMenu = true },
+            enabled = !busy, modifier = Modifier.fillMaxWidth()) {
+            Text(if (nightmareSelectedModel.isBlank()) "Automatic model ▾" else
+             (availableNightmareModels.firstOrNull { it.id == nightmareSelectedModel }?.label
+              ?: nightmareSelectedModel).take(45) + " ▾")
+           }
+           DropdownMenu(expanded = showNightmareModelMenu, onDismissRequest = { showNightmareModelMenu = false }) {
+            DropdownMenuItem(text = { Text("Automatic (Nightmare decides)") }, onClick = {
+             nightmareSelectedModel = ""
+             prefs.edit().putString("nightmare_model_v5", "").apply()
+             showNightmareModelMenu = false
+            })
+            availableNightmareModels.forEach { model ->
+             DropdownMenuItem(text = { Text(model.label.take(50)) }, onClick = {
+              nightmareSelectedModel = model.id
+              prefs.edit().putString("nightmare_model_v5", model.id).apply()
+              showNightmareModelMenu = false
+             })
+            }
+           }
+          }
+          Text("Model selection applies to new images and cartoons when the chosen Nightmare flow supports it.",
+           style = MaterialTheme.typography.bodySmall)
+          Text("Saved workflow", style = MaterialTheme.typography.titleMedium)
+          Box {
+           OutlinedButton(onClick = { showNightmareFlowMenu = true },
+            enabled = !busy && availableNightmareFlows.isNotEmpty(),
+            modifier = Modifier.fillMaxWidth()) {
+            Text(if (nightmareSelectedFlow.isBlank()) "Choose a saved workflow ▾" else nightmareSelectedFlow.take(45) + " ▾")
+           }
+           DropdownMenu(expanded = showNightmareFlowMenu, onDismissRequest = { showNightmareFlowMenu = false }) {
+            availableNightmareFlows.forEach { name ->
+             DropdownMenuItem(text = { Text(name.take(55)) }, onClick = {
+              nightmareSelectedFlow = name
+              showNightmareFlowMenu = false
+             })
+            }
+           }
+          }
+          Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+           val activeFlow = when {
+            nightmareSelectedFlow == "current" -> "current"
+            nightmareSelectedFlow == "txt2img" -> "txt2img"
+            nightmareSelectedFlow.startsWith("saved:") -> nightmareSelectedFlow
+            nightmareSelectedFlow.isNotBlank() -> "saved:$nightmareSelectedFlow"
+            else -> ""
+           }
+           OutlinedButton(onClick = {
+            nightmareImageFlow = activeFlow
+            prefs.edit().putString("nightmare_image_flow", activeFlow).apply()
+            nightmareCatalogMessage = "Image workflow set to $activeFlow."
+           }, enabled = !busy && activeFlow.isNotBlank(), modifier = Modifier.weight(1f)) { Text("Image") }
+           OutlinedButton(onClick = {
+            nightmareEditFlow = if (activeFlow == "txt2img") "auto" else activeFlow
+            prefs.edit().putString("nightmare_edit_flow", nightmareEditFlow).apply()
+            nightmareCatalogMessage = "Edit workflow set to $nightmareEditFlow."
+           }, enabled = !busy && activeFlow.isNotBlank() && activeFlow != "txt2img", modifier = Modifier.weight(1f)) { Text("Edit") }
+           OutlinedButton(onClick = {
+            nightmareVideoFlow = if (activeFlow == "txt2img") "auto" else activeFlow
+            prefs.edit().putString("nightmare_video_flow", nightmareVideoFlow).apply()
+            nightmareCatalogMessage = "Video workflow set to $nightmareVideoFlow."
+           }, enabled = !busy && activeFlow.isNotBlank() && activeFlow != "txt2img", modifier = Modifier.weight(1f)) { Text("Video") }
+          }
+          Text("Current: image ${nightmareImageFlow.take(30)} • edit ${nightmareEditFlow.take(30)} • video ${nightmareVideoFlow.take(30)}",
+           style = MaterialTheme.typography.bodySmall)
+          Text("Select only compatible workflows. Advanced controls launch Nightmare jobs; node-graph editing remains inside Nightmare.",
+           style = MaterialTheme.typography.bodySmall)
+         }
+        }
+       }
+      }
       if (tab != -1) TextButton(onClick = { showConnection = !showConnection }) { Text(if (showConnection) "Hide connections ↑" else "Connections & settings ↓") }
       if (showConnection) {
       Card(Modifier.fillMaxWidth()) {
@@ -725,7 +878,7 @@ class MainActivity : ComponentActivity() {
            if (faceDetailRun) compositeRefinedFaces(input, generated) ?: error("No faces could be located for face-only refinement.") else if (mask != null) compositeMaskedEdit(input, generated, mask) else generated
           } else if (useNightmare) {
            val generated = try {
-            NightmareClient.generate(editPrompt, tokenForRun, input, requestedStrength, requestedHighQuality, requestedResolution, editFlowForRun, requestedSpeed, imageFlowForRun, cartoonMode = cartoonMode && tab == 0 && input == null, routingPrompt = requestedPrompt)
+            NightmareClient.generate(editPrompt, tokenForRun, input, requestedStrength, requestedHighQuality, requestedResolution, editFlowForRun, requestedSpeed, imageFlowForRun, cartoonMode = cartoonMode && tab == 0 && input == null, routingPrompt = requestedPrompt, requestedModelId = if (input == null && nightmareMode) nightmareSelectedModel.ifBlank { null } else null)
            } catch (nightmareError: Exception) {
             val maskFailure = nightmareError.message.orEmpty()
              val maskUnavailable = input != null &&

@@ -1,4 +1,4 @@
-name: Boobs V4.8 - English Cartoon Bubbles
+name: Boobs V5.0 - Nightmare Studio
 on:
   workflow_dispatch:
   pull_request:
@@ -7,6 +7,8 @@ on:
     branches: [main]
     paths:
       - 'app/src/main/java/com/unboundaistudio/MainActivity.kt'
+      - 'app/src/main/java/com/unboundaistudio/NightmareCatalog.kt'
+      - 'app/src/test/java/com/unboundaistudio/NightmareCatalogTest.kt'
       - 'app/src/main/java/com/unboundaistudio/FictionalAdultPrompt.kt'
       - 'app/src/test/java/com/unboundaistudio/FictionalAdultPromptTest.kt'
       - 'app/src/main/java/com/unboundaistudio/AssistantScreen.kt'
@@ -47,7 +49,7 @@ on:
       - 'app/src/main/java/com/unboundaistudio/MobileI2VVideoEngine.kt'
       - 'app/src/main/java/com/unboundaistudio/OfflineVideoEngine.kt'
       - 'app/src/main/java/com/unboundaistudio/MobileI2VModelUpdater.kt'
-      - '.github/workflows/boobs-v4.8-english-cartoon-bubbles.yml'
+      - '.github/workflows/boobs-v5.0-nightmare-studio.yml'
 permissions:
   contents: read
 jobs:
@@ -72,7 +74,7 @@ jobs:
           HF_ACCESS_TOKEN: ${{ secrets.HF_ACCESS_TOKEN }}
           NIGHTMARE_API_TOKEN: ${{ secrets.NIGHTMARE_API_TOKEN }}
         run: |
-          grep -q 'versionName = "4.8"' app/build.gradle.kts
+          grep -q 'versionName = "5.0"' app/build.gradle.kts
           if [ -z "$HF_ACCESS_TOKEN" ]; then echo "::warning::HF_ACCESS_TOKEN not configured; APK will not have embedded Hugging Face access"; fi
           if [ -z "$NIGHTMARE_API_TOKEN" ]; then echo "::warning::NIGHTMARE_API_TOKEN missing; app will use saved token instead"; fi
       - name: Fetch native Qwen 2.1 runtime
@@ -106,15 +108,15 @@ jobs:
           mkdir -p app/src/main/res/drawable-nodpi
           base64 --decode app/icon_source.b64 > app/src/main/res/drawable-nodpi/boobs_launcher.jpg
           test -s app/src/main/res/drawable-nodpi/boobs_launcher.jpg
-      - name: Compile and test Boobs V4.8
+      - name: Compile and test Boobs V5.0
         env:
           HF_ACCESS_TOKEN: ${{ secrets.HF_ACCESS_TOKEN }}
           NIGHTMARE_API_TOKEN: ${{ secrets.NIGHTMARE_API_TOKEN }}
         run: gradle assembleDebug lintDebug testDebugUnitTest --no-daemon
       - name: Name APK with version
-        run: cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/Boobs-V4.8-EnglishCartoonBubbles-debug.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/Boobs-V5.0-Nightmare-Studio-debug.apk
       - uses: actions/upload-artifact@v4
         with:
           if-no-files-found: error
-          name: Boobs-V4.8-EnglishCartoonBubbles-APK
-          path: app/build/outputs/apk/debug/Boobs-V4.8-EnglishCartoonBubbles-debug.apk
+          name: Boobs-V5.0-Nightmare-Studio-APK
+          path: app/build/outputs/apk/debug/Boobs-V5.0-Nightmare-Studio-debug.apk

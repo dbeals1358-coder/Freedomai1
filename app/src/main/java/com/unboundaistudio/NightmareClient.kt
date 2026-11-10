@@ -79,7 +79,7 @@ internal object NightmareClient {
         return Pair(w.coerceAtLeast(512), h.coerceAtLeast(512))
     }
 
-    fun generate(prompt: String, token: String, input: android.graphics.Bitmap?, strength: Float, highQuality: Boolean, resolution: Int = 1024, editFlow: String = "auto", speed: String = "BALANCED", generationFlow: String = "saved:FreedomAI RealVis", disableControlNet: Boolean = false, cartoonMode: Boolean = false, routingPrompt: String? = null): android.graphics.Bitmap {
+    fun generate(prompt: String, token: String, input: android.graphics.Bitmap?, strength: Float, highQuality: Boolean, resolution: Int = 1024, editFlow: String = "auto", speed: String = "BALANCED", generationFlow: String = "saved:FreedomAI RealVis", disableControlNet: Boolean = false, cartoonMode: Boolean = false, routingPrompt: String? = null, requestedModelId: String? = null): android.graphics.Bitmap {
         require(token.isNotBlank()) { "Enter your Nightmare API token in Connection settings" }
         require(!token.contains('\n') && !token.contains('\r')) { "Invalid Nightmare API token" }
         // Skip the redundant authenticated /info round trip on every generation.
@@ -120,6 +120,16 @@ internal object NightmareClient {
             } else {
                 android.util.Log.i("FreedomAI-Cartoon", "Using installed drawing model: " + selection.modelId)
             }
+        }
+
+        // Advanced mode may request a model already installed in Nightmare.
+        // Validate server-supplied IDs; never silently substitute a different model.
+        if (input == null && !requestedModelId.isNullOrBlank()) {
+            check(NightmareCatalog.modelsFromArray(installedModels(token))
+                .any { it.id == requestedModelId }) {
+                "The selected model is not currently installed in Nightmare. Refresh Models or select Automatic."
+            }
+            payload.put("model", requestedModelId)
         }
 
         var editFrame: NightmareEditGeometry.Frame? = null
@@ -251,7 +261,7 @@ internal object NightmareClient {
                 connection.disconnect()
                 return try {
                     generate(prompt, token, input, strength, highQuality, resolution,
-                        editFlow, speed, generationFlow, disableControlNet = true, cartoonMode = cartoonMode, routingPrompt = routingPrompt)
+                        editFlow, speed, generationFlow, disableControlNet = true, cartoonMode = cartoonMode, routingPrompt = routingPrompt, requestedModelId = requestedModelId)
                 } catch (retryError: Exception) {
                     error("Nightmare could not create the image without ControlNet. Open Nightmare, select the current flow, tap the image Generate node, and set ControlNet to None. Your models were not removed. Retry: ${retryError.message?.take(180)}")
                 }
