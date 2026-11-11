@@ -1048,9 +1048,9 @@ class MainActivity : ComponentActivity() {
           label = { Text("Cartoon style — type anything") },
           placeholder = { Text("e.g. 2D, comic, anime, 3D, hand-drawn") },
           modifier = Modifier.fillMaxWidth())
-         Text("Nightmare cartoon generation", style = MaterialTheme.typography.titleSmall)
+         Text("Nightmare cartoons: Lustify Apex V8 DMD2", style = MaterialTheme.typography.titleSmall)
          Text("Uses Nightmare Text to image. No gallery photo is supplied; current or saved editing workflows cannot reuse an older photo.")
-         Text("Your written scene and style take priority. If only a photo model is installed in Nightmare, it may not follow cartoon prompts accurately.")
+         Text("Cartoons use the installed Lustify Apex V8 DMD2 and its native DMD2 settings. Other photo and video modes are unchanged.")
           Text("English speech bubbles: type the exact words in double quotes, for example: A fox says \"Watch out!\". The app adds those English words after the picture is drawn. Unquoted text may be omitted.")
          OutlinedButton(onClick = { openNightmare() }, enabled = !busy) { Text("Choose Nightmare image model") }
          Text("Characters in cartoon")

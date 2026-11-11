@@ -21,10 +21,13 @@ internal object NightmareClient {
     @Synchronized private fun installedModels(token: String): org.json.JSONArray {
         val now = android.os.SystemClock.elapsedRealtime()
         cachedModels?.takeIf { now - cachedModelsAt < 300_000L }?.let { return it }
-        val response = JSONObject(authenticatedGet("/models", token))
-        val models = response.optJSONArray("models") ?: response.optJSONArray("items")
-            ?: response.optJSONArray("checkpoints")
-            ?: error("Nightmare did not report its installed picture models.")
+        val response = org.json.JSONTokener(authenticatedGet("/models", token)).nextValue()
+        val models = when (response) {
+            is org.json.JSONArray -> response
+            is JSONObject -> response.optJSONArray("models") ?: response.optJSONArray("items")
+                ?: response.optJSONArray("checkpoints") ?: response.optJSONArray("data")
+            else -> null
+        } ?: error("Nightmare did not report its installed picture models.")
         cachedModels = models
         cachedModelsAt = now
         return models
@@ -104,27 +107,17 @@ internal object NightmareClient {
             .put("prompt", if (input == null && !cartoonMode) PhotoCompositionPrompt.prepare(prompt) else if (input == null) prompt else EditRequestRouting.promptFor(actualFlow, prompt))
         if (cartoonMode) {
             payload.put("negative", CartoonImagePrompt.negativePrompt(true, prompt, routingPrompt ?: prompt))
-            // A missing/incomplete model list must never block text-to-image generation.
-            // Prefer an installed drawing model; otherwise use Nightmare's current model.
-            val installed = runCatching { installedModels(token) }
-                .onFailure {
-                    android.util.Log.w("FreedomAI-Cartoon",
-                        "Cannot list models; using the selected Nightmare model.")
-                }.getOrNull()
-            val selection = CartoonModelSelector.chooseOrCurrent(installed, prompt)
-            selection.modelId?.let { payload.put("model", it) }
+            // Use the exact proven Nightmare checkpoint, not Pony or generic art.
+            val selection = CartoonModelSelector.chooseLustifyApexDmd2(installedModels(token))
+                ?: error("Lustify Apex V8 DMD2 was not found in Nightmare's installed model list. Open Nightmare, select that checkpoint, enable its API, and retry.")
+            payload.put("model", requireNotNull(selection.modelId))
             lastCartoonModelLabel = selection.label
-            if (selection.modelId == null) {
-                android.util.Log.w("FreedomAI-Cartoon",
-                    "No recognized drawing model. Rendering with current Nightmare model; style may vary.")
-            } else {
-                android.util.Log.i("FreedomAI-Cartoon", "Using installed drawing model: " + selection.modelId)
-            }
+            android.util.Log.i("FreedomAI-Cartoon", "Checkpoint: " + selection.modelId)
         }
 
         // Advanced mode may request a model already installed in Nightmare.
         // Validate server-supplied IDs; never silently substitute a different model.
-        if (input == null && !requestedModelId.isNullOrBlank()) {
+        if (input == null && !cartoonMode && !requestedModelId.isNullOrBlank()) {
             check(NightmareCatalog.modelsFromArray(installedModels(token))
                 .any { it.id == requestedModelId }) {
                 "The selected model is not currently installed in Nightmare. Refresh Models or select Automatic."
@@ -136,14 +129,15 @@ internal object NightmareClient {
         if (input == null) {
             val (width, height) = if (cartoonMode) CartoonImagePrompt.canvasFor(prompt, resolution)
                 else resolution to resolution
-            val steps = if (cartoonMode) when (speed) {
-                "FAST" -> 16; "MAX QUALITY" -> 38; else -> 28
-            } else when (speed) {
-                "FAST" -> 12; "MAX QUALITY" -> 35; else -> if (highQuality) 35 else 22
+            if (!cartoonMode) {
+                val steps = when (speed) {
+                    "FAST" -> 12; "MAX QUALITY" -> 35; else -> if (highQuality) 35 else 22
+                }
+                payload.put("steps", steps).put("cfg", 6.0)
             }
-            payload.put("steps", steps)
-                .put("cfg", if (cartoonMode) 7.0 else 6.0)
-                .put("width", width).put("height", height)
+            // The model override installs DMD2-native steps, CFG and scheduler.
+            // Do not overwrite them with generic cartoon settings.
+            payload.put("width", width).put("height", height)
         } else {
             // Edit at model-friendly resolution; retain full source for framing/compositing in the UI.
             // Fast photo edits run at 512px in Nightmare, avoiding the much slower 1024px

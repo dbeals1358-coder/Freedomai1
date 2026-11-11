@@ -186,6 +186,18 @@ internal object CartoonImagePrompt {
 internal object CartoonModelSelector {
     data class Selection(val modelId: String?, val label: String)
 
+    /** Exact installed model; never silently substitute a different checkpoint. */
+    fun chooseLustifyApexDmd2(models: org.json.JSONArray?): Selection? {
+        if (models == null) return null
+        return NightmareCatalog.modelsFromArray(models).firstOrNull { model ->
+            val name = (model.id + " " + model.label).lowercase()
+            name.contains("lustify") && name.contains("apex") &&
+                (name.contains("v8") || name.contains("version 8") || name.contains("apex 8")) &&
+                name.contains("dmd2") &&
+                !Regex("""(inpaint|upscal|video|controlnet|lora)""").containsMatchIn(name)
+        }?.let { Selection(it.id, it.label) }
+    }
+
     /** A suitable art model improves quality but is never required to generate. */
     fun chooseOrCurrent(models: org.json.JSONArray?, prompt: String): Selection {
         val match = models?.let { chooseInstalled(it, prompt) }

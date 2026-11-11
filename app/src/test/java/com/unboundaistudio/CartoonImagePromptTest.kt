@@ -210,6 +210,29 @@ class CartoonImagePromptTest {
         assertFalse(oneClothed.contains("Every adult male character wears clothing"))
     }
 
+    @Test fun exactLustifyApexDmd2IsChosenOverPonyAndPlainV8() {
+        val catalog = org.json.JSONArray("""[
+            {"id":"pony_diffusion","name":"Pony Diffusion"},
+            {"id":"lustify_apex_v8","name":"Lustify Apex V8"},
+            {"id":"lustify_apex_v8_dmd2","name":"Lustify Apex V8 DMD2"}
+        ]""")
+        val selected = CartoonModelSelector.chooseLustifyApexDmd2(catalog)
+        assertEquals("lustify_apex_v8_dmd2", selected?.modelId)
+        assertEquals("Lustify Apex V8 DMD2", selected?.label)
+    }
+
+    @Test fun absentDmd2NeverFallsBackToWrongModel() {
+        val others = org.json.JSONArray("""["pony_diffusion","lustify_apex_v8"]""")
+        assertEquals(null, CartoonModelSelector.chooseLustifyApexDmd2(others))
+        assertEquals(null, CartoonModelSelector.chooseLustifyApexDmd2(null))
+    }
+
+    @Test fun stringModelCatalogAlsoFindsLustify() {
+        val choices = org.json.JSONArray("""["realvisxl","lustify-apex-v8-dmd2"]""")
+        assertEquals("lustify-apex-v8-dmd2",
+            CartoonModelSelector.chooseLustifyApexDmd2(choices)?.modelId)
+    }
+
     @Test fun selectsInstalledArtModelButNotRealvisOr3dFlow() {
         val both = org.json.JSONArray("""[{"id":"realvisxl","name":"RealVis XL","family":"sdxl"},{"id":"pony_diffusion","name":"Pony Diffusion","family":"sdxl"}]""")
         assertEquals("pony_diffusion", CartoonModelSelector.chooseInstalled(both, "1970s cartoon"))
