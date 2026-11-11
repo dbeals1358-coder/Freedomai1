@@ -105,14 +105,18 @@ internal object NightmareClient {
         } else EditRequestRouting.chooseFlow(editFlow, routingPrompt ?: prompt)
         val payload = JSONObject().put("flow", actualFlow)
             .put("prompt", if (input == null && !cartoonMode) PhotoCompositionPrompt.prepare(prompt) else if (input == null) prompt else EditRequestRouting.promptFor(actualFlow, prompt))
+        var cartoonUsesDmd2 = false
         if (cartoonMode) {
             payload.put("negative", CartoonImagePrompt.negativePrompt(true, prompt, routingPrompt ?: prompt))
-            // Use the exact proven Nightmare checkpoint, not Pony or generic art.
-            val selection = CartoonModelSelector.chooseLustifyApexDmd2(installedModels(token))
-                ?: error("Lustify Apex V8 DMD2 was not found in Nightmare's installed model list. Open Nightmare, select that checkpoint, enable its API, and retry.")
-            payload.put("model", requireNotNull(selection.modelId))
+            // Respect a hand-drawn 2D request when an installed cel-animation
+            // checkpoint exists. Otherwise retain the Lustify Apex fallback.
+            val selection = CartoonModelSelector.chooseForCartoon(installedModels(token), prompt)
+                ?: error("No suitable installed cartoon model found in Nightmare. Install a 2D cel-animation model or Lustify Apex V8 DMD2, enable Nightmare's API, and retry.")
+            val modelId = requireNotNull(selection.modelId)
+            cartoonUsesDmd2 = modelId.contains("dmd2", ignoreCase = true)
+            payload.put("model", modelId)
             lastCartoonModelLabel = selection.label
-            android.util.Log.i("FreedomAI-Cartoon", "Checkpoint: " + selection.modelId)
+            android.util.Log.i("FreedomAI-Cartoon", "Checkpoint: " + modelId)
         }
 
         // Advanced mode may request a model already installed in Nightmare.
@@ -129,14 +133,14 @@ internal object NightmareClient {
         if (input == null) {
             val (width, height) = if (cartoonMode) CartoonImagePrompt.canvasFor(prompt, resolution)
                 else resolution to resolution
-            if (!cartoonMode) {
+            if (!cartoonMode || !cartoonUsesDmd2) {
                 val steps = when (speed) {
                     "FAST" -> 12; "MAX QUALITY" -> 35; else -> if (highQuality) 35 else 22
                 }
                 payload.put("steps", steps).put("cfg", 6.0)
             }
-            // The model override installs DMD2-native steps, CFG and scheduler.
-            // Do not overwrite them with generic cartoon settings.
+            // DMD2 needs its native steps/CFG/scheduler, while regular 2D
+            // checkpoints must receive ordinary diffusion sampling settings.
             payload.put("width", width).put("height", height)
         } else {
             // Edit at model-friendly resolution; retain full source for framing/compositing in the UI.
