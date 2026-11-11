@@ -353,11 +353,10 @@ class CartoonImagePromptTest {
         assertEquals("lustify-apex-v8-dmd2", CartoonModelSelector.chooseForCartoon(installed, "3D cartoon")?.modelId)
     }
 
-    @Test fun retroFallbackExplicitlyIdentifiesStyleUncertainty() {
+    @Test fun retroCartoonRefusesRealisticOnlyFallback() {
         val installed = org.json.JSONArray("""["lustify-apex-v8-dmd2"]""")
         val selected = CartoonModelSelector.chooseForCartoon(installed, "1970s 2D cartoon")
-        assertEquals("lustify-apex-v8-dmd2", selected?.modelId)
-        assertTrue(selected?.label?.contains("style may vary") == true)
+        assertEquals(null, selected?.modelId)
     }
 
 }
