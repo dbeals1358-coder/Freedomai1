@@ -29,7 +29,9 @@ internal object CartoonImagePrompt {
     private val requestedLettering = Regex("""(?i)\b(says?|speech bubbles?|thought bubbles?|captions?|dialogue|dialog|sign reads|text reads|lettering|labels?|words?|title reads)\b""")
     private val noLettering = Regex("""(?i)\b(no|without|never|not)\s+(?:any\s+)?(text|words?|lettering|speech bubbles?|captions?|labels?|dialogue)\b""")
     fun letteringRequested(description: String): Boolean =
-        requestedLettering.containsMatchIn(description) && !noLettering.containsMatchIn(description)
+        (requestedLettering.containsMatchIn(description) ||
+            CartoonDialogue.hasImplicitQuotedDialogue(description)) &&
+            !noLettering.containsMatchIn(description)
 
     private fun explicitNude(description: String, gender: String): Boolean =
         Regex("""(?i)\b(nude|naked|unclothed)\s+(?:adult\s+)?(?:$gender)\b|\b(?:$gender)\b\s+(?:(?:is|are)\s+)?(nude|naked|unclothed)\b""")
@@ -196,6 +198,34 @@ internal object CartoonModelSelector {
                 name.contains("dmd2") &&
                 !Regex("""(inpaint|upscal|video|controlnet|lora)""").containsMatchIn(name)
         }?.let { Selection(it.id, it.label) }
+    }
+
+    /**
+     * For a hand-drawn retro request, prefer an actually installed 2D/cel
+     * checkpoint over a diffusion model that tends to produce glossy CGI.
+     * Otherwise retain Lustify Apex as the verified V5.1 fallback.
+     */
+    fun chooseDedicatedRetroTwoD(models: org.json.JSONArray?): Selection? {
+        if (models == null) return null
+        val dedicatedStyle = Regex("""(?i)(?:\b2d\b|cel.?anim|hand.?drawn|hanna.?barbera|retro.?cartoon|flat.?toon|saturday.?morning)""")
+        val unsuitable = Regex("""(?i)(?:inpaint|upscal|video|controlnet|lora|vae|realvis|photoreal|flux|qwen|\b3d\b|\bcgi\b)""")
+        return NightmareCatalog.modelsFromArray(models)
+            .firstOrNull { model ->
+                val name = model.id + " " + model.label
+                dedicatedStyle.containsMatchIn(name) && !unsuitable.containsMatchIn(name)
+            }?.let { Selection(it.id, it.label) }
+    }
+
+    /** Automatically match the requested drawing style to installed checkpoints. */
+    fun chooseForCartoon(models: org.json.JSONArray?, prompt: String): Selection? {
+        val retro = CartoonImagePrompt.wantsRetroTwoD(prompt)
+        if (retro) {
+            chooseDedicatedRetroTwoD(models)?.let { return it }
+        }
+        return chooseLustifyApexDmd2(models)?.let { model ->
+            if (retro) model.copy(label = model.label + " (2D fallback; style may vary)")
+            else model
+        }
     }
 
     /** A suitable art model improves quality but is never required to generate. */
