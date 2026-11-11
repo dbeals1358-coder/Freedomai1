@@ -7,6 +7,7 @@ internal object CartoonImagePrompt {
     private val retroStyle = Regex("""(?i)(hanna[\s-]?barbera|1970'?s|70'?s|seventies|retro|vintage|classic animation|saturday morning)""")
     private val threeD = Regex("""(?i)\b(3d|cgi|photorealistic|three[\s-]?dimensional)\b""")
     private val action = Regex("""(?i)\b(fighting|fight|chasing|chase|rescuing|rescue|battling|battle|running|jumping|flying|escaping|pursuing|saving)\b""")
+    private val crimeFighting = Regex("""(?i)\b(?:crime[\s-]?fighting|fight(?:ing|s)?\s+crime|stop(?:ping|s)?\s+(?:a\s+)?(?:crime|robbery))\b""")
     private val nudeWords = Regex("""(?i)\b(nude|naked|unclothed|undressed)\b|remove (all )?cloth(?:es|ing)|without (any )?cloth(?:es|ing)""")
     private val noNudeWords = Regex("""(?i)\b(?:no|without)\s+(?:any\s+)?(?:nudity|nude|naked|unclothed)\b|\b(?:everyone|everybody|all\s+characters?)\s+(?:must\s+be\s+)?(?:clothed|dressed)\b""")
 
@@ -132,6 +133,11 @@ internal object CartoonImagePrompt {
         val actionGuidance = if (action.containsMatchIn(scene)) {
             "Depict a single action frame with the described action actually happening; show interacting characters, not a static portrait."
         } else ""
+        // Shorthand such as "crime fighting cartoon characters" must produce
+        // one actual comic scene, not a pair of static photographic figures.
+        val crimeSceneGuidance = if (crimeFighting.containsMatchIn(scene)) {
+            "Show the described original ADULT cartoon crime fighter or fighters actively stopping a crime, facing an obvious cartoon criminal or threat in a recognizable city setting. Show full figures, gestures and dynamic interaction in ONE continuous illustrated action scene. No studio backdrop, character lineup, side-by-side portraits or split screen."
+        } else ""
         val exactDialogue = CartoonDialogue.extract(scene)
         val textGuidance = if (exactDialogue.isNotEmpty()) {
             "Speech bubbles must be ENGLISH ONLY. Leave the top quarter of the cartoon free for speech balloons. Do not draw ANY letters, captions, glyphs, fake text or other writing anywhere; the app prints the correctly spelled English dialogue from the user's quoted words after generation. Otherwise leave the illustration free of text."
@@ -142,11 +148,12 @@ internal object CartoonImagePrompt {
         }
         return listOf(
             "$scene. Visual style: $chosenStyle.",
+            styleGuidance,
+            crimeSceneGuidance,
+            actionGuidance,
             maleDirective,
             femaleDirective,
             subjectGuidance,
-            actionGuidance,
-            styleGuidance,
             "Include all named characters, setting, actions and objects. Keep clothing and body-coverage details consistent, without adding unwanted garments or swapping features between characters.",
             textGuidance
         ).filter { it.isNotBlank() }.joinToString(" ")
@@ -162,7 +169,7 @@ internal object CartoonImagePrompt {
         val exclusions = if (wantsRetroTwoD(prompt)) {
             ", photograph, photographic realism, live action, 3D model, CGI render, realistic skin, plastic figures, modern 3D animation"
         } else ""
-        val actionExclusions = if (action.containsMatchIn(prompt)) ", static portrait, posed group photo, standing in a row, police lineup" else ""
+        val actionExclusions = if (action.containsMatchIn(prompt)) ", static portrait, posed group photo, standing in a row, police lineup, diptych, split-screen comparison, separate character portraits, plain gray photographic studio background" else ""
         // Costume-associated character names can make models draw uniforms even
         // when ALL described adults should be unclothed. This negative applies
         // only when both adult coverage groups are explicitly nude: it must not
@@ -201,9 +208,9 @@ internal object CartoonModelSelector {
     }
 
     /**
-     * For a hand-drawn retro request, prefer an actually installed 2D/cel
-     * checkpoint over a diffusion model that tends to produce glossy CGI.
-     * Otherwise retain Lustify Apex as the verified V5.1 fallback.
+     * Prefer an installed cel-animation or illustrated checkpoint for drawings.
+     * A photo checkpoint is not a valid fallback for a 2D cartoon request:
+     * fail explicitly instead of rendering realistic people.
      */
     fun chooseDedicatedRetroTwoD(models: org.json.JSONArray?): Selection? {
         if (models == null) return null
@@ -219,13 +226,18 @@ internal object CartoonModelSelector {
     /** Automatically match the requested drawing style to installed checkpoints. */
     fun chooseForCartoon(models: org.json.JSONArray?, prompt: String): Selection? {
         val retro = CartoonImagePrompt.wantsRetroTwoD(prompt)
-        if (retro) {
-            chooseDedicatedRetroTwoD(models)?.let { return it }
+        if (retro) chooseDedicatedRetroTwoD(models)?.let { return it }
+        val installedArt = models?.let { chooseInstalled(it, prompt) }
+        if (!installedArt.isNullOrBlank()) {
+            val label = NightmareCatalog.modelsFromArray(models).firstOrNull { it.id == installedArt }?.label
+                ?: installedArt
+            return Selection(installedArt, label + if (retro) " (2D illustrated fallback)" else "")
         }
-        return chooseLustifyApexDmd2(models)?.let { model ->
-            if (retro) model.copy(label = model.label + " (2D fallback; style may vary)")
-            else model
-        }
+        // 3D is an explicit exception; photographic checkpoints are NOT a
+        // fallback when the person asked for flat 2D, comic or anime artwork.
+        val threeDRequested = Regex("""(?i)\b(3d|cgi|three[\s-]?dimensional)\b""")
+            .containsMatchIn(prompt.substringBefore("Visual style:")) && !retro
+        return if (threeDRequested) chooseLustifyApexDmd2(models) else null
     }
 
     /** A suitable art model improves quality but is never required to generate. */

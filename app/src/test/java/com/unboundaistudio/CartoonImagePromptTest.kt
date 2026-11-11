@@ -210,6 +210,47 @@ class CartoonImagePromptTest {
         assertFalse(oneClothed.contains("Every adult male character wears clothing"))
     }
 
+    @Test fun shortCrimeFightingPromptRequestsOneIllustratedActionScene() {
+        val scene = "crime fighting cartoon characters naked remove clothing"
+        val prompt = CartoonImagePrompt.build(scene, CartoonImagePrompt.DEFAULT_STYLE)
+        assertTrue(prompt.contains("ADULT cartoon crime fighter"))
+        assertTrue(prompt.contains("actively stopping a crime"))
+        assertTrue(prompt.contains("ONE continuous illustrated action scene"))
+        assertTrue(prompt.contains("Every original adult male character is fully unclothed"))
+        assertTrue(prompt.contains("Every original adult female character is fully unclothed"))
+        assertEquals(Pair(1024, 768), CartoonImagePrompt.canvasFor(scene, 1024))
+        val negative = CartoonImagePrompt.negativePrompt(true, prompt, scene)
+        assertTrue(negative.contains("split-screen comparison"))
+        assertTrue(negative.contains("photographic realism"))
+    }
+
+    @Test fun retroCartoonPrefersPonyIllustrationOverLustifyPhotoModel() {
+        val catalog = org.json.JSONArray("""[
+            {"id":"lustify_apex_v8_dmd2","name":"Lustify Apex V8 DMD2"},
+            {"id":"pony_diffusion","name":"Pony Diffusion"}
+        ]""")
+        val prompt = CartoonImagePrompt.build("crime fighting cartoon characters", "")
+        assertEquals("pony_diffusion", CartoonModelSelector.chooseForCartoon(catalog, prompt)?.modelId)
+    }
+
+    @Test fun retroCartoonNeverFallsBackToPhotoOnlyModel() {
+        val catalog = org.json.JSONArray("""[
+            {"id":"realvisxl","name":"RealVis XL"},
+            {"id":"lustify_apex_v8_dmd2","name":"Lustify Apex V8 DMD2"}
+        ]""")
+        val prompt = CartoonImagePrompt.build("crime fighting cartoon characters", "")
+        assertEquals(null, CartoonModelSelector.chooseForCartoon(catalog, prompt))
+    }
+
+    @Test fun dedicatedCelModelBeatsGenericIllustrationModel() {
+        val catalog = org.json.JSONArray("""[
+            {"id":"pony_diffusion","name":"Pony Diffusion"},
+            {"id":"retro_cel_2d","name":"Retro 2D cel animation"}
+        ]""")
+        val prompt = CartoonImagePrompt.build("crime fighting cartoon characters", "")
+        assertEquals("retro_cel_2d", CartoonModelSelector.chooseForCartoon(catalog, prompt)?.modelId)
+    }
+
     @Test fun exactLustifyApexDmd2IsChosenOverPonyAndPlainV8() {
         val catalog = org.json.JSONArray("""[
             {"id":"pony_diffusion","name":"Pony Diffusion"},

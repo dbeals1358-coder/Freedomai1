@@ -111,7 +111,7 @@ internal object NightmareClient {
             // Respect a hand-drawn 2D request when an installed cel-animation
             // checkpoint exists. Otherwise retain the Lustify Apex fallback.
             val selection = CartoonModelSelector.chooseForCartoon(installedModels(token), prompt)
-                ?: error("No suitable installed cartoon model found in Nightmare. Install a 2D cel-animation model or Lustify Apex V8 DMD2, enable Nightmare's API, and retry.")
+                ?: error("No compatible cartoon/illustration checkpoint is installed in Nightmare. The current photo model cannot make the requested 2D cartoon. Install or enable a 2D cel/cartoon, Pony, or comic illustration model in Nightmare, then retry. Existing models were not changed.")
             val modelId = requireNotNull(selection.modelId)
             cartoonUsesDmd2 = modelId.contains("dmd2", ignoreCase = true)
             payload.put("model", modelId)
