@@ -229,8 +229,8 @@ internal object CartoonModelSelector {
         if (retro) chooseDedicatedRetroTwoD(models)?.let { return it }
         val installedArt = models?.let { chooseInstalled(it, prompt) }
         if (!installedArt.isNullOrBlank()) {
-            val label = NightmareCatalog.modelsFromArray(models).firstOrNull { it.id == installedArt }?.label
-                ?: installedArt
+            val label = models?.let { NightmareCatalog.modelsFromArray(it)
+                .firstOrNull { candidate -> candidate.id == installedArt }?.label } ?: installedArt
             return Selection(installedArt, label + if (retro) " (2D illustrated fallback)" else "")
         }
         // 3D is an explicit exception; photographic checkpoints are NOT a
