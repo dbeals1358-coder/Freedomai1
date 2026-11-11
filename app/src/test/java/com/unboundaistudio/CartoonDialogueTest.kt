@@ -32,4 +32,16 @@ class CartoonDialogueTest {
     @Test fun limitBubbleCountToFitFrame() {
         assertEquals(3, CartoonDialogue.extract("A says \"One\", B says \"Two\", C says \"Three\", D says \"Four\"").size)
     }
+
+    @Test fun uppercaseQuotedSpeechNeedsNoExtraKeywords() {
+        val scene = "A retro cartoon hero with a quote \"HELP ME HERO\""
+        assertTrue(CartoonDialogue.hasImplicitQuotedDialogue(scene))
+        assertEquals(listOf("HELP ME HERO"), CartoonDialogue.extract(scene))
+    }
+
+    @Test fun quotedCharacterNamesAreNotMistakenForSpeech() {
+        assertTrue(CartoonDialogue.extract("A hero called \"Captain Hero\" stands on a roof").isEmpty())
+        assertTrue(CartoonDialogue.extract("A hero called \"SUPER HERO\" stands on a roof").isEmpty())
+    }
+
 }
