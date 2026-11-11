@@ -292,4 +292,31 @@ class CartoonImagePromptTest {
     @Test fun simpleSoloCartoonsCanStaySquare() {
         assertEquals(Pair(1024, 1024), CartoonImagePrompt.canvasFor("one cartoon cat portrait", 1024))
     }
+
+    @Test fun implicitSpeechInSeventiesCartoonGetsEnglishLettering() {
+        val scene = "70's Hanna Barbera style heroes \"HELP ME HERO\""
+        val prompt = CartoonImagePrompt.build(scene, CartoonImagePrompt.DEFAULT_STYLE)
+        assertTrue(CartoonImagePrompt.letteringRequested(scene))
+        assertTrue(prompt.contains("1970s flat hand-drawn 2D"))
+        assertTrue(prompt.contains("correctly spelled English dialogue"))
+        assertEquals(listOf("HELP ME HERO"), CartoonDialogue.extract(scene))
+    }
+
+    @Test fun dedicatedTwoDModelTakesPrecedenceOverLustifyFallback() {
+        val installed = org.json.JSONArray("""[
+            {"id":"lustify-apex-v8-dmd2", "name":"Lustify Apex V8 DMD2"},
+            {"id":"retro_cel_2d", "name":"Retro Cel 2D"}
+        ]""")
+        val chosen = CartoonModelSelector.chooseForCartoon(installed, "70's Hanna Barbera cartoon")
+        assertEquals("retro_cel_2d", chosen?.modelId)
+        assertEquals("lustify-apex-v8-dmd2", CartoonModelSelector.chooseForCartoon(installed, "3D cartoon")?.modelId)
+    }
+
+    @Test fun retroFallbackExplicitlyIdentifiesStyleUncertainty() {
+        val installed = org.json.JSONArray("""["lustify-apex-v8-dmd2"]""")
+        val selected = CartoonModelSelector.chooseForCartoon(installed, "1970s 2D cartoon")
+        assertEquals("lustify-apex-v8-dmd2", selected?.modelId)
+        assertTrue(selected?.label?.contains("style may vary") == true)
+    }
+
 }
