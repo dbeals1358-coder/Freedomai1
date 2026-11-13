@@ -7,6 +7,29 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CartoonImagePromptTest {
+
+    @Test fun runTogetherSuperheroNamesBecomeFiveDistinctAdultsInSingleScene() {
+        val scene = "70's hanna barbera style cartoon characters nude catwoman batgirlsupergirl batman superman nude"
+        val prompt = CartoonImagePrompt.build(scene, CartoonImagePrompt.DEFAULT_STYLE)
+        assertTrue(prompt.startsWith("70's hanna barbera style cartoon characters nude catwoman batgirl supergirl"))
+        assertTrue(prompt.contains("exactly 5 separate, recognizable ADULT characters"))
+        assertTrue(prompt.contains("Catwoman, Batgirl, Supergirl, Batman, Superman"))
+        assertTrue(prompt.contains("no collage, no montage"))
+        assertTrue(prompt.contains("Every original adult male character is fully unclothed"))
+        assertTrue(prompt.contains("Every original adult female character is fully unclothed"))
+        assertEquals(Pair(1024, 768), CartoonImagePrompt.canvasFor(scene, 1024))
+        val negative = CartoonImagePrompt.negativePrompt(true, prompt, scene)
+        assertTrue(negative.contains("collage"))
+        assertTrue(negative.contains("superhero uniforms"))
+    }
+
+    @Test fun namesWithSpacesRemainUnchangedAndSoloCharactersAreNotGrouped() {
+        val solo = "Catwoman on a balcony"
+        assertEquals(solo, CartoonImagePrompt.normalizeCharacterSpacing(solo))
+        assertFalse(CartoonImagePrompt.build(solo, "2D").contains("exactly 2 separate"))
+        assertEquals("Batgirl Supergirl", CartoonImagePrompt.normalizeCharacterSpacing("BatgirlSupergirl"))
+    }
+
     @Test fun userQuotedWordsAreInsertedByAppNotGeneratedAsGibberish() {
         val description = "A fox says \"Run now!\" in a speech bubble"
         val prompt = CartoonImagePrompt.build(description, "Comic book")

@@ -12,6 +12,29 @@ internal object CartoonImagePrompt {
     private val noNudeWords = Regex("""(?i)\b(?:no|without)\s+(?:any\s+)?(?:nudity|nude|naked|unclothed)\b|\b(?:everyone|everybody|all\s+characters?)\s+(?:must\s+be\s+)?(?:clothed|dressed)\b""")
 
 
+
+    // Voice dictation sometimes removes spaces between adjacent character names.
+    // Repair only recognizable full-name pairs; do not rewrite ordinary story words.
+    private val joinedHeroes = Regex("""(?i)\b(catwoman|batgirl|supergirl|batman|superman)(catwoman|batgirl|supergirl|batman|superman)\b""")
+    private val individualHeroes = Regex("""(?i)\b(catwoman|batgirl|supergirl|batman|superman)\b""")
+
+    fun normalizeCharacterSpacing(description: String): String {
+        var text = description.trim()
+        repeat(4) {
+            text = joinedHeroes.replace(text) { match ->
+                match.groupValues[1] + " " + match.groupValues[2]
+            }
+        }
+        return text
+    }
+
+    private fun recognizedHeroes(description: String): List<String> {
+        return individualHeroes.findAll(normalizeCharacterSpacing(description))
+            .map { match -> match.value.lowercase().replaceFirstChar { it.uppercase() } }
+            .distinct()
+            .toList()
+    }
+
     // A style explicitly typed in the scene takes priority over the default
     // 1970s style in the separate style field. "2D" does not mean "retro".
     private fun styleInDescription(description: String): String? = when {
@@ -57,7 +80,7 @@ internal object CartoonImagePrompt {
     /** Keep wide action/group scenes in-frame instead of cropping into a square portrait. */
     fun canvasFor(description: String, requestedSide: Int): Pair<Int, Int> {
         val side = (requestedSide.coerceIn(512, 1024) / 64) * 64
-        val wide = action.containsMatchIn(description) ||
+        val wide = recognizedHeroes(description).size >= 2 || action.containsMatchIn(description) ||
             Regex("""(?i)\b(group|couple|both|together|landscape|wide|panorama|crowd|several|team|two characters|three characters)\b""")
                 .containsMatchIn(description)
         return if (wide) side to (side * 3 / 4 / 64 * 64) else side to side
@@ -84,7 +107,8 @@ internal object CartoonImagePrompt {
         require(description.isNotBlank()) { "Describe the cartoon you want to create." }
         // Put the complete user specification FIRST. Diffusion checkpoints often
         // emphasize the first part of a prompt; long boilerplate used to bury it.
-        val scene = description.trim()
+        val scene = normalizeCharacterSpacing(description)
+        val heroes = recognizedHeroes(scene)
         val chosenStyle = styleInDescription(scene) ?: style.trim().ifBlank { DEFAULT_STYLE }
         val retro2D = wantsRetroTwoD(chosenStyle)
         val requested3D = threeD.containsMatchIn(chosenStyle) && !retro2D
@@ -108,6 +132,9 @@ internal object CartoonImagePrompt {
             femaleNude || (autoNude && (bothNude || !maleNude)) -> "Nude"
             else -> femaleClothing
         }
+        val namedGroupGuidance = if (heroes.size >= 2) {
+            "Required composition: exactly " + heroes.size + " separate, recognizable ADULT characters: " + heroes.joinToString(", ") + ". Include each named character once, all in ONE continuous illustrated scene. Each character has a distinct face, complete figure and clear silhouette. No extra characters, no duplicates, no layered headshots, no overlapping bodies, no collage, no montage, no split panels. Frame everyone together, with enough room to see the entire group."
+        } else ""
         val styleGuidance = when {
             referenceComic -> "Required look: bold ink outlines, flat colored 2D comic-book illustration, distinct expressive cartoon faces; not a photograph."
             retro2D -> "Required look: classic Hanna-Barbera-inspired 1960s–1980s Saturday-morning television animation, original flat hand-inked 2D cels, thick clean black contour lines, bright flat solid colors, minimal shadows, simplified expressive faces and proportions, hand-painted simple backgrounds. Flat hand-drawn 2D animation, not CGI, not 3D, no gradients or realistic textures."
@@ -148,6 +175,7 @@ internal object CartoonImagePrompt {
         }
         return listOf(
             "$scene. Visual style: $chosenStyle.",
+            namedGroupGuidance,
             styleGuidance,
             crimeSceneGuidance,
             actionGuidance,
@@ -161,7 +189,7 @@ internal object CartoonImagePrompt {
 
     fun negativePrompt(cartoonMode: Boolean, prompt: String, originalDescription: String = prompt): String {
         // Do not negatively prompt away letters when the user requested dialogue.
-        val rawScene = originalDescription.substringBefore(". Visual style: ")
+        val rawScene = normalizeCharacterSpacing(originalDescription.substringBefore(". Visual style: "))
         // Image models draw unreliable lettering. Always suppress AI-drawn
         // letters; exact requested English words are overlaid by Android.
         val base = negativePrompt(cartoonMode)
@@ -169,6 +197,7 @@ internal object CartoonImagePrompt {
         val exclusions = if (wantsRetroTwoD(prompt)) {
             ", photograph, photographic realism, live action, 3D model, CGI render, realistic skin, plastic figures, modern 3D animation"
         } else ""
+        val groupExclusions = if (recognizedHeroes(rawScene).size >= 2) ", collage, montage, repeated heroes, duplicate people, multiple character portraits, overlapping figures, composite headshots, missing full bodies" else ""
         val actionExclusions = if (action.containsMatchIn(prompt)) ", static portrait, posed group photo, standing in a row, police lineup, diptych, split-screen comparison, separate character portraits, plain gray photographic studio background" else ""
         // Costume-associated character names can make models draw uniforms even
         // when ALL described adults should be unclothed. This negative applies
@@ -179,7 +208,7 @@ internal object CartoonImagePrompt {
         val clothingExclusions = if (allAdultsNude) {
             ", clothing, superhero uniforms, bodysuits, costumes, boots, gloves, shorts, underwear, fabric coverings, censorship bars"
         } else ""
-        return base + exclusions + actionExclusions + clothingExclusions + ", non-English lettering, foreign-language text, pseudo-letters, gibberish text, illegible lettering, misspelled speech bubbles, unrelated subjects, missing characters, duplicate characters, generic headshot, wrong setting"
+        return base + exclusions + groupExclusions + actionExclusions + clothingExclusions + ", non-English lettering, foreign-language text, pseudo-letters, gibberish text, illegible lettering, misspelled speech bubbles, unrelated subjects, missing characters, duplicate characters, generic headshot, wrong setting"
     }
 
     fun negativePrompt(cartoonMode: Boolean): String =
