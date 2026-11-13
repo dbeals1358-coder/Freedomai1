@@ -2,6 +2,7 @@ package com.unboundaistudio
 
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLEncoder
 import org.json.JSONObject
 
 /**
@@ -16,6 +17,8 @@ internal object NightmareClient {
     @Volatile var lastCartoonModelLabel: String = "Not selected"
         private set
     @Volatile var lastCartoonLetteringApplied: Boolean = false
+        private set
+    @Volatile var lastImageFlowUsed: String = ""
         private set
 
     @Synchronized private fun installedModels(token: String): org.json.JSONArray {
@@ -103,6 +106,29 @@ internal object NightmareClient {
             }
             generationFlow
         } else EditRequestRouting.chooseFlow(editFlow, routingPrompt ?: prompt)
+        // GET /flows/<id> describes the actual image-node IDs in this flow.
+        // A current canvas can be a text-only workflow; safely switch to Auto Edit
+        // rather than sending an image to a nonexistent hard-coded "image" node.
+        val imageNodeIds: Set<String> = if (input == null) emptySet() else {
+            val encodedFlow = URLEncoder.encode(actualFlow, "UTF-8")
+            val schema = try {
+                JSONObject(authenticatedGet("/flows/$encodedFlow", token))
+            } catch (e: Exception) {
+                error("Could not inspect Nightmare edit workflow '$actualFlow': ${e.message}. " +
+                    "Select Auto in Connections & settings, or open the workflow in Nightmare.")
+            }
+            try {
+                NightmareImageFlowPlanner.connectedImageNodeIds(schema)
+            } catch (e: IllegalStateException) {
+                if (actualFlow == "current") {
+                    return generate(prompt, token, input, strength, highQuality, resolution,
+                        "auto", speed, generationFlow, disableControlNet, cartoonMode,
+                        routingPrompt, requestedModelId)
+                }
+                error("${e.message} Select Auto in Connections & settings, or select " +
+                    "an image-to-image/edit workflow. Your original photo is preserved.")
+            }
+        }
         val payload = JSONObject().put("flow", actualFlow)
             .put("prompt", if (input == null && !cartoonMode) PhotoCompositionPrompt.prepare(prompt) else if (input == null) prompt else EditRequestRouting.promptFor(actualFlow, prompt))
         var cartoonUsesDmd2 = false
@@ -162,8 +188,11 @@ internal object NightmareClient {
             check(editBitmap.compress(format, if (hasAlpha) 100 else 92, stream)) {
                 "Failed to encode original image for editing"
             }
-            payload.put("images", JSONObject().put("image",
-                android.util.Base64.encodeToString(stream.toByteArray(), android.util.Base64.NO_WRAP)))
+            val encodedImage = android.util.Base64.encodeToString(
+                stream.toByteArray(), android.util.Base64.NO_WRAP)
+            val imageInputs = JSONObject()
+            imageNodeIds.forEach { nodeId -> imageInputs.put(nodeId, encodedImage) }
+            payload.put("images", imageInputs)
 
             when (actualFlow) {
                 "inpaint" -> {
@@ -228,6 +257,19 @@ internal object NightmareClient {
             val code = connection.responseCode
             val body = (if (code in 200..299) connection.inputStream else connection.errorStream)
                 ?.bufferedReader()?.use { it.readText() }.orEmpty()
+            if (input != null && NightmareImageFlowPlanner.missingImageNode(code, body)) {
+                // The canvas may have been changed while the job was prepared.
+                // Recover the current flow once, never loop or restyle silently.
+                if (actualFlow == "current") {
+                    connection.disconnect()
+                    return generate(prompt, token, input, strength, highQuality, resolution,
+                        "auto", speed, generationFlow, disableControlNet, cartoonMode,
+                        routingPrompt, requestedModelId)
+                }
+                error("Nightmare workflow '$actualFlow' no longer has the photo input " +
+                    "it advertised. Select Auto or an image editing workflow in Connections " +
+                    "& settings. Your original photo is unchanged.")
+            }
             if (code == 500 && body.contains("backend did not start", ignoreCase = true)) {
                 error("Nightmare could not start the processing backend for flow '${payload.optString("flow")}'. This is a Nightmare model/runtime startup failure, not a button or image-upload failure. Open that exact flow in Nightmare and run a simple image-to-image edit; check model loading, available RAM and Nightmare logs. Run ID: ${runCatching { JSONObject(body).optString("run") }.getOrDefault("unknown")}")
             }
@@ -300,6 +342,7 @@ internal object NightmareClient {
             android.util.Log.i("FreedomAI-Timing", "Nightmare total=${android.os.SystemClock.elapsedRealtime() - requestStarted}ms")
             val decoded = bitmap ?: error("Nightmare returned an unreadable image")
             val restored = editFrame?.restoreOutput(decoded) ?: decoded
+            if (input != null) lastImageFlowUsed = actualFlow
             if (!cartoonMode) return restored
             val exactWords = CartoonDialogue.extract(routingPrompt ?: prompt)
             val lettered = CartoonLetteringOverlay.render(restored, exactWords)
