@@ -121,4 +121,4 @@ jobs:
         with:
           if-no-files-found: error
           name: Boobs-V5.5-Nightmare-Edit-Fix-APK
-          path: app/build/outputs/apk/debug/Boobs-V5.4-Cartoon-Fix-debug.apk
+          path: app/build/outputs/apk/debug/Boobs-V5.5-Nightmare-Edit-Fix-debug.apk
