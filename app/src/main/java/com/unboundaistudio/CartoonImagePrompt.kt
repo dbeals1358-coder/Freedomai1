@@ -182,6 +182,7 @@ internal object CartoonImagePrompt {
             maleDirective,
             femaleDirective,
             subjectGuidance,
+            "Scene fidelity: depict the exact requested subjects and their requested interaction. Do not invent superhero battles, chases, rescues, fights, weapons, or action poses unless the user actually described them. Do not replace the described scene with a generic action illustration.",
             "Include all named characters, setting, actions and objects. Keep clothing and body-coverage details consistent, without adding unwanted garments or swapping features between characters.",
             textGuidance
         ).filter { it.isNotBlank() }.joinToString(" ")
