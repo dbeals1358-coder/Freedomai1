@@ -20,6 +20,12 @@ internal object CartoonImagePrompt {
 
     fun normalizeCharacterSpacing(description: String): String {
         var text = description.trim()
+        // Voice transcription often separates the canonical names into two words.
+        text = text.replace(Regex("""(?i)\bcat\s+woman\b"""), "Catwoman")
+            .replace(Regex("""(?i)\bsuper\s+girl\b"""), "Supergirl")
+            .replace(Regex("""(?i)\bbat\s+girl\b"""), "Batgirl")
+            .replace(Regex("""(?i)\bbat\s+man\b"""), "Batman")
+            .replace(Regex("""(?i)\bsuper\s+man\b"""), "Superman")
         repeat(4) {
             text = joinedHeroes.replace(text) { match ->
                 match.groupValues[1] + " " + match.groupValues[2]
