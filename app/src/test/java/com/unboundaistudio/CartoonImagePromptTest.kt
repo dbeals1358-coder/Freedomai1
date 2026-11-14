@@ -382,4 +382,15 @@ class CartoonImagePromptTest {
         assertEquals(null, selected?.modelId)
     }
 
+    @Test fun dictatedSplitHeroNamesAreRecognized() {
+        val scene = "wonder woman supergirl cat woman"
+        val normalized = CartoonImagePrompt.normalizeCharacterSpacing(scene)
+        assertTrue(normalized.contains("Catwoman"))
+        val prompt = CartoonImagePrompt.build(scene, CartoonImagePrompt.DEFAULT_STYLE)
+        assertTrue(prompt.contains("Supergirl"))
+        assertTrue(prompt.contains("Catwoman"))
+        assertTrue(prompt.contains("exactly 2 separate"))
+    }
+
+
 }
