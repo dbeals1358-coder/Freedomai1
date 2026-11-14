@@ -270,8 +270,22 @@ internal object NightmareClient {
                     "it advertised. Select Auto or an image editing workflow in Connections " +
                     "& settings. Your original photo is unchanged.")
             }
-            if (code == 500 && body.contains("backend did not start", ignoreCase = true)) {
-                error("Nightmare could not start the processing backend for flow '${payload.optString("flow")}'. This is a Nightmare model/runtime startup failure, not a button or image-upload failure. Open that exact flow in Nightmare and run a simple image-to-image edit; check model loading, available RAM and Nightmare logs. Run ID: ${runCatching { JSONObject(body).optString("run") }.getOrDefault("unknown")}")
+            if (code == 500 && (body.contains("backend did not start", ignoreCase = true) ||
+                    body.contains("could not start the processing backend", ignoreCase = true))) {
+                // Auto-selected inpaint can fail before the clothes parser or model starts.
+                // Retry once with an installed instruction-edit model; never switch to
+                // ordinary img2img, which can change the person's identity.
+                if (input != null && editFlow == "auto" && actualFlow == "inpaint") {
+                    connection.disconnect()
+                    val recovery = runCatching {
+                        generate(prompt, token, input, strength, highQuality, resolution,
+                            "flux_edit", speed, generationFlow, disableControlNet,
+                            cartoonMode, routingPrompt, requestedModelId)
+                    }
+                    recovery.getOrNull()?.let { return it }
+                    error("Nightmare inpaint backend failed to start, and the instruction-edit fallback also failed. Check Nightmare model loading and free memory. Fallback: ${recovery.exceptionOrNull()?.message?.take(220)}")
+                }
+                error("Nightmare could not start the processing backend for flow '${payload.optString("flow")}'. Check model loading, available RAM and Nightmare logs. Run ID: ${runCatching { JSONObject(body).optString("run") }.getOrDefault("unknown")}")
             }
             if (EditRequestRouting.shouldRetryMissingClothingMask(editFlow, actualFlow, code, body)) {
                 // Auto edit can recover without downloading or painting a mask.
