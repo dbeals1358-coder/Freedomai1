@@ -165,7 +165,7 @@ internal object CartoonImagePrompt {
         }
         val interactionRequested = Regex("""(?i)\b(with|together|beside|next to|holding|hugging|kissing|talking to|looking at|interacting with)\b""").containsMatchIn(scene) && heroes.size >= 2
         val actionGuidance = if (action.containsMatchIn(scene) || interactionRequested) {
-            "Depict the described interaction in one continuous scene with all requested characters visibly present, not a single-character portrait or unrelated pose."
+            "Depict a single action frame with the described action actually happening; show all requested interacting characters visibly present in one continuous scene, not a static single-character portrait or unrelated pose."
         } else ""
         // Shorthand such as "crime fighting cartoon characters" must produce
         // one actual comic scene, not a pair of static photographic figures.
