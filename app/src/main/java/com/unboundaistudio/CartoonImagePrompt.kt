@@ -163,8 +163,9 @@ internal object CartoonImagePrompt {
             "Clothed" -> "Every adult female character wears clothing as described."
             else -> ""
         }
-        val actionGuidance = if (action.containsMatchIn(scene)) {
-            "Depict a single action frame with the described action actually happening; show interacting characters, not a static portrait."
+        val interactionRequested = Regex("""(?i)\b(with|together|beside|next to|holding|hugging|kissing|talking to|looking at|interacting with)\b""").containsMatchIn(scene) && heroes.size >= 2
+        val actionGuidance = if (action.containsMatchIn(scene) || interactionRequested) {
+            "Depict the described interaction in one continuous scene with all requested characters visibly present, not a single-character portrait or unrelated pose."
         } else ""
         // Shorthand such as "crime fighting cartoon characters" must produce
         // one actual comic scene, not a pair of static photographic figures.
@@ -188,7 +189,7 @@ internal object CartoonImagePrompt {
             maleDirective,
             femaleDirective,
             subjectGuidance,
-            "Scene fidelity: depict the exact requested subjects and their requested interaction. Do not invent superhero battles, chases, rescues, fights, weapons, or action poses unless the user actually described them. Do not replace the described scene with a generic action illustration.",
+            "Scene fidelity: depict the exact requested subjects and their requested interaction. When multiple characters are named, never omit one or show only a single-character close-up. For the default 2D style, render in full color with clean ink outlines, not black-and-white line art. Do not invent superhero battles, chases, rescues, fights, weapons, or action poses unless the user actually described them. Do not replace the described scene with a generic action illustration.",
             "Include all named characters, setting, actions and objects. Keep clothing and body-coverage details consistent, without adding unwanted garments or swapping features between characters.",
             textGuidance
         ).filter { it.isNotBlank() }.joinToString(" ")
@@ -202,7 +203,7 @@ internal object CartoonImagePrompt {
         val base = negativePrompt(cartoonMode)
         if (!cartoonMode) return base
         val exclusions = if (wantsRetroTwoD(prompt)) {
-            ", photograph, photographic realism, live action, 3D model, CGI render, realistic skin, plastic figures, modern 3D animation"
+            ", black-and-white artwork, monochrome, grayscale, uncolored ink drawing, pencil-only sketch, photograph, photographic realism, live action, 3D model, CGI render, realistic skin, plastic figures, modern 3D animation"
         } else ""
         val groupExclusions = if (recognizedHeroes(rawScene).size >= 2) ", collage, montage, repeated heroes, duplicate people, multiple character portraits, overlapping figures, composite headshots, missing full bodies" else ""
         val actionExclusions = if (action.containsMatchIn(prompt)) ", static portrait, posed group photo, standing in a row, police lineup, diptych, split-screen comparison, separate character portraits, plain gray photographic studio background" else ""
