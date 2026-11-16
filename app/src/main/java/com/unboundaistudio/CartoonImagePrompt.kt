@@ -189,7 +189,7 @@ internal object CartoonImagePrompt {
             maleDirective,
             femaleDirective,
             subjectGuidance,
-            "Scene fidelity: depict the exact requested subjects and their requested interaction. When multiple characters are named, never omit one or show only a single-character close-up. For the default 2D style, render in full color with clean ink outlines, not black-and-white line art. Do not invent superhero battles, chases, rescues, fights, weapons, or action poses unless the user actually described them. Do not replace the described scene with a generic action illustration.",
+            "Scene fidelity: depict the exact requested subjects and their requested interaction. When multiple characters are named, never omit one or show only a single-character close-up. For the default 2D style, render in full color with clean ink outlines, not black-and-white line art. When crime-fighting is requested, show an actual crime being stopped rather than a posed team portrait; otherwise do not invent superhero battles, chases, rescues, fights, weapons, or action poses unless the user described them. Do not replace the described scene with a generic action illustration.",
             "Include all named characters, setting, actions and objects. Keep clothing and body-coverage details consistent, without adding unwanted garments or swapping features between characters.",
             textGuidance
         ).filter { it.isNotBlank() }.joinToString(" ")
@@ -206,7 +206,7 @@ internal object CartoonImagePrompt {
             ", black-and-white artwork, monochrome, grayscale, uncolored ink drawing, pencil-only sketch, photograph, photographic realism, live action, 3D model, CGI render, realistic skin, plastic figures, modern 3D animation"
         } else ""
         val groupExclusions = if (recognizedHeroes(rawScene).size >= 2) ", collage, montage, repeated heroes, duplicate people, multiple character portraits, overlapping figures, composite headshots, missing full bodies" else ""
-        val actionExclusions = if (action.containsMatchIn(prompt)) ", static portrait, posed group photo, standing in a row, police lineup, diptych, split-screen comparison, separate character portraits, plain gray photographic studio background" else ""
+        val actionExclusions = if (action.containsMatchIn(rawScene) || crimeFighting.containsMatchIn(rawScene)) ", static portrait, posed group photo, standing in a row, police lineup, diptych, split-screen comparison, separate character portraits, plain gray photographic studio background" else ""
         // Costume-associated character names can make models draw uniforms even
         // when ALL described adults should be unclothed. This negative applies
         // only when both adult coverage groups are explicitly nude: it must not
