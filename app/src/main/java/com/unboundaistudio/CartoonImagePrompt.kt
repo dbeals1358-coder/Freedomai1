@@ -180,14 +180,16 @@ internal object CartoonImagePrompt {
         } else {
             "No speech bubbles, captions, labels or lettering. Otherwise leave the illustration free of text."
         }
+        // Prioritize explicit clothing constraints before lengthy style guidance.
+        val priorityWardrobe = listOf(maleDirective, femaleDirective)
+            .filter { it.isNotBlank() }.joinToString(" ")
         return listOf(
             "$scene. Visual style: $chosenStyle.",
+            priorityWardrobe,
             namedGroupGuidance,
             styleGuidance,
             crimeSceneGuidance,
             actionGuidance,
-            maleDirective,
-            femaleDirective,
             subjectGuidance,
             "Scene fidelity: depict the exact requested subjects and their requested interaction. When multiple characters are named, never omit one or show only a single-character close-up. For the default 2D style, render in full color with clean ink outlines, not black-and-white line art. When crime-fighting is requested, show an actual crime being stopped rather than a posed team portrait; otherwise do not invent superhero battles, chases, rescues, fights, weapons, or action poses unless the user described them. Do not replace the described scene with a generic action illustration.",
             "Include all named characters, setting, actions and objects. Keep clothing and body-coverage details consistent, without adding unwanted garments or swapping features between characters.",
