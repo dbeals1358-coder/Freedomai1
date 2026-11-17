@@ -45,7 +45,7 @@ internal object CartoonImagePrompt {
     // 1970s style in the separate style field. "2D" does not mean "retro".
     private fun styleInDescription(description: String): String? = when {
         threeD.containsMatchIn(description) -> "3D animated cartoon render"
-        retroStyle.containsMatchIn(description) -> "1960s–1980s flat hand-drawn 2D animation cels in a Hanna-Barbera-inspired style"
+        retroStyle.containsMatchIn(description) -> if (Regex("""(?i)\b(?:1980s|80\x27?s|eighties)\b""").containsMatchIn(description)) "1980s flat hand-drawn 2D animation cels in a Hanna-Barbera-inspired style" else "1970s flat hand-drawn 2D animation cels in a Hanna-Barbera-inspired style"
         Regex("""(?i)\b(anime|manga)\b""").containsMatchIn(description) -> "2D anime / manga drawing"
         Regex("""(?i)\b(comic[- ]book|comic strip|graphic novel)\b""").containsMatchIn(description) -> "hand-inked 2D comic-book illustration"
         Regex("""(?i)\b(watercolou?r)\b""").containsMatchIn(description) -> "watercolor cartoon painting"
