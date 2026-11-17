@@ -4,7 +4,7 @@ package com.unboundaistudio
 internal object CartoonImagePrompt {
     const val DEFAULT_STYLE = "classic 1960s–1980s Hanna-Barbera-inspired Saturday-morning TV cartoon, traditional hand-inked 2D cel animation, bold clean black outlines, bright flat solid colors, minimal shading, expressive simplified faces and proportions"
 
-    private val retroStyle = Regex("""(?i)(hanna[\s-]?barbera|1970'?s|70'?s|seventies|retro|vintage|classic animation|saturday morning)""")
+    private val retroStyle = Regex("""(?i)(hanna[\s-]?barbera|(?:19)?80'?s|eighties|1980s|1970'?s|70'?s|seventies|retro|vintage|classic animation|saturday morning)""")
     private val threeD = Regex("""(?i)\b(3d|cgi|photorealistic|three[\s-]?dimensional)\b""")
     private val action = Regex("""(?i)\b(fighting|fight|chasing|chase|rescuing|rescue|battling|battle|running|jumping|flying|escaping|pursuing|saving)\b""")
     private val crimeFighting = Regex("""(?i)\b(?:crime[\s-]?fighting|fight(?:ing|s)?\s+crime|stop(?:ping|s)?\s+(?:a\s+)?(?:crime|robbery))\b""")
@@ -45,7 +45,7 @@ internal object CartoonImagePrompt {
     // 1970s style in the separate style field. "2D" does not mean "retro".
     private fun styleInDescription(description: String): String? = when {
         threeD.containsMatchIn(description) -> "3D animated cartoon render"
-        retroStyle.containsMatchIn(description) -> "1970s flat hand-drawn 2D animation cels in a Hanna-Barbera-inspired style"
+        retroStyle.containsMatchIn(description) -> "1960s–1980s flat hand-drawn 2D animation cels in a Hanna-Barbera-inspired style"
         Regex("""(?i)\b(anime|manga)\b""").containsMatchIn(description) -> "2D anime / manga drawing"
         Regex("""(?i)\b(comic[- ]book|comic strip|graphic novel)\b""").containsMatchIn(description) -> "hand-inked 2D comic-book illustration"
         Regex("""(?i)\b(watercolou?r)\b""").containsMatchIn(description) -> "watercolor cartoon painting"
@@ -139,7 +139,7 @@ internal object CartoonImagePrompt {
             else -> femaleClothing
         }
         val namedGroupGuidance = if (heroes.size >= 2) {
-            "Required composition: exactly " + heroes.size + " separate, recognizable ADULT characters: " + heroes.joinToString(", ") + ". Include each named character once, all in ONE continuous illustrated scene. Each character has a distinct face, complete figure and clear silhouette. No extra characters, no duplicates, no layered headshots, no overlapping bodies, no collage, no montage, no split panels. Frame everyone together, with enough room to see the entire group."
+            "Required composition: exactly " + heroes.size + " separate, recognizable ADULT characters: " + heroes.joinToString(", ") + ". Include each named character once, all in ONE continuous illustrated scene. Each character has a distinct face, complete figure and clear silhouette. No extra characters, no duplicates, no layered headshots, no overlapping bodies, no collage, no montage, no split panels. Use a wide two-character composition, with both subjects equally prominent and visible from head to at least knees. Frame everyone together, with enough room to see the entire group."
         } else ""
         val styleGuidance = when {
             referenceComic -> "Required look: bold ink outlines, flat colored 2D comic-book illustration, distinct expressive cartoon faces; not a photograph."
@@ -163,7 +163,7 @@ internal object CartoonImagePrompt {
             "Clothed" -> "Every adult female character wears clothing as described."
             else -> ""
         }
-        val interactionRequested = Regex("""(?i)\b(with|together|beside|next to|holding|hugging|kissing|talking to|looking at|interacting with)\b""").containsMatchIn(scene) && heroes.size >= 2
+        val interactionRequested = heroes.size >= 2 && (Regex("""(?i)\b(with|together|beside|next to|holding|hugging|kissing|talking to|looking at|interacting with|romance|romantic|intimacy|sex)\b""").containsMatchIn(scene) || heroes.size >= 2)
         val actionGuidance = if (action.containsMatchIn(scene) || interactionRequested) {
             "Depict a single action frame with the described action actually happening; show all requested interacting characters visibly present in one continuous scene, not a static single-character portrait or unrelated pose."
         } else ""
