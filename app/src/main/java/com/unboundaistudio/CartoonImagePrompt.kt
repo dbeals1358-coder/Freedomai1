@@ -139,7 +139,7 @@ internal object CartoonImagePrompt {
             else -> femaleClothing
         }
         val namedGroupGuidance = if (heroes.size >= 2) {
-            "Required composition: exactly " + heroes.size + " separate, recognizable ADULT characters: " + heroes.joinToString(", ") + ". Include each named character once, all in ONE continuous illustrated scene. Each character has a distinct face, complete figure and clear silhouette. No extra characters, no duplicates, no layered headshots, no overlapping bodies, no collage, no montage, no split panels. Use a wide two-character composition, with both subjects equally prominent and visible from head to at least knees. Frame everyone together, with enough room to see the entire group."
+            "Required composition: exactly " + heroes.size + " separate, recognizable ADULT characters: " + heroes.joinToString(", ") + ". Include each named character once, all in ONE continuous illustrated scene. Each character has a distinct face, complete figure and clear silhouette. Do not blend character identities, masks, logos, costumes or body parts between characters. Each hero must have their own consistent signature appearance. No extra characters, no duplicates, no layered headshots, no overlapping bodies, no collage, no montage, no split panels. Use a wide two-character composition, with both subjects equally prominent and visible from head to at least knees. Frame everyone together, with enough room to see the entire group."
         } else ""
         val styleGuidance = when {
             referenceComic -> "Required look: bold ink outlines, flat colored 2D comic-book illustration, distinct expressive cartoon faces; not a photograph."
