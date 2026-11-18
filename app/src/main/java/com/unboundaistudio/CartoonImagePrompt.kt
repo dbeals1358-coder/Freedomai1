@@ -265,6 +265,16 @@ internal object CartoonModelSelector {
     /** Automatically match the requested drawing style to installed checkpoints. */
     fun chooseForCartoon(models: org.json.JSONArray?, prompt: String): Selection? {
         val retro = CartoonImagePrompt.wantsRetroTwoD(prompt)
+        // Match the user's known-working Nightmare checkpoint first when installed.
+        // Do not mistake the separate DMD2 variant for the V8 Swap checkpoint.
+        models?.let { catalog ->
+            NightmareCatalog.modelsFromArray(catalog).firstOrNull { model ->
+                val name = (model.id + " " + model.label).lowercase()
+                name.contains("lustify") && name.contains("apex") &&
+                    name.contains("v8") && name.contains("swap") &&
+                    !Regex("""(inpaint|upscal|video|controlnet|lora)""").containsMatchIn(name)
+            }?.let { return Selection(it.id, it.label) }
+        }
         if (retro) chooseDedicatedRetroTwoD(models)?.let { return it }
         val installedArt = models?.let { chooseInstalled(it, prompt) }
         if (!installedArt.isNullOrBlank()) {
