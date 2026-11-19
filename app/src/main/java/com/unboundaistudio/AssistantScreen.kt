@@ -37,6 +37,7 @@ fun AssistantScreen(onCreateImage: (String) -> Unit = {}, onEditImage: (String) 
  var localModelPath by remember { mutableStateOf(prefs.getString("local_model", "") ?: "") }
  var offlineSettingsVisible by remember { mutableStateOf(false) }
  var showAssistantSettings by remember { mutableStateOf(false) }
+ var assistantMode by remember { mutableStateOf(prefs.getString("assistant_mode", "Auto") ?: "Auto") }
  var useOfflineAssistant by remember { mutableStateOf(prefs.getBoolean("use_offline_assistant", false)) }
  var allowMatureTopics by remember { mutableStateOf(prefs.getBoolean("allow_mature_topics", true)) }
  var customInstructions by remember { mutableStateOf(prefs.getString("custom_instructions", "").orEmpty()) }
@@ -114,6 +115,16 @@ fun AssistantScreen(onCreateImage: (String) -> Unit = {}, onEditImage: (String) 
   if (BuildConfig.HF_ACCESS_TOKEN.isBlank() && apiKey.isBlank()) {
    Text("A Hugging Face Inference Providers token is required for online chat.")
   }
+  Text("AI connection mode")
+  Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+   listOf("Auto", "Offline", "Online").forEach { option ->
+    FilterChip(selected = assistantMode == option, onClick = {
+     assistantMode = option
+     prefs.edit().putString("assistant_mode", option).apply()
+    }, label = { Text(option) })
+   }
+  }
+  Text("Auto tries online first and falls back to an installed offline model. Offline never sends chat messages to a cloud provider.")
   Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
    Text("Prefer offline assistant", modifier = Modifier.weight(1f))
    Switch(checked = useOfflineAssistant, onCheckedChange = {
@@ -121,7 +132,7 @@ fun AssistantScreen(onCreateImage: (String) -> Unit = {}, onEditImage: (String) 
     prefs.edit().putBoolean("use_offline_assistant", it).apply()
    })
   }
-  if (useOfflineAssistant) {
+  if (useOfflineAssistant || assistantMode != "Online") {
    OutlinedButton(onClick = { offlineSettingsVisible = !offlineSettingsVisible }) {
     Text(if (offlineSettingsVisible) "Hide offline model setup" else "Offline model setup (optional)")
    }
@@ -239,7 +250,7 @@ fun AssistantScreen(onCreateImage: (String) -> Unit = {}, onEditImage: (String) 
     scope.launch {
      try {
       val answer = withContext(Dispatchers.IO) {
-       if (useOfflineAssistant) {
+       if (assistantMode == "Offline" || (assistantMode == "Auto" && useOfflineAssistant)) {
          if (localModelPath.isBlank() || File(localModelPath).length() <= 100_000_000L) {
           downloading = true
           downloadStatus = "Preparing offline assistant automatically..."
@@ -258,7 +269,7 @@ fun AssistantScreen(onCreateImage: (String) -> Unit = {}, onEditImage: (String) 
          assistantReply(endpoint, model, onlineToken, history.toList(), allowMatureTopics, customInstructions)
         } catch (onlineError: Exception) {
          val offlineFile = File(localModelPath)
-         if (localModelPath.isNotBlank() && offlineFile.isFile && offlineFile.length() > 100_000_000L) {
+         if (assistantMode == "Auto" && localModelPath.isNotBlank() && offlineFile.isFile && offlineFile.length() > 100_000_000L) {
           try {
            offlineAssistantReply(context, localModelPath, history.toList(), allowMatureTopics, customInstructions)
           } catch (offlineError: Exception) {
