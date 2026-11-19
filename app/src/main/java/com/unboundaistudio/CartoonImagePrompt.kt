@@ -4,6 +4,26 @@ package com.unboundaistudio
 internal object CartoonImagePrompt {
     const val DEFAULT_STYLE = "classic 1960s–1980s Hanna-Barbera-inspired Saturday-morning TV cartoon, traditional hand-inked 2D cel animation, bold clean black outlines, bright flat solid colors, minimal shading, expressive simplified faces and proportions"
 
+    /** Named characters retain their own visual identity rather than inheriting the generic cartoon preset. */
+    private val namedCharacters = listOf(
+        Triple(Regex("""(?i)\\bfred\\s+flintstone\\b"""), "Fred Flintstone", "classic Flintstones 2D cel design, black hair, heavy black eyebrows, prominent rounded nose, broad stocky body, orange spotted tunic and blue necktie"),
+        Triple(Regex("""(?i)\\b(?:homer|hammer)\\s+simpson\\b"""), "Homer Simpson", "classic Simpsons 2D cel design, yellow skin, round bald head with two thin hairs, large round eyes, prominent muzzle and white collared shirt"),
+        Triple(Regex("""(?i)\\bmarge\\s+simpson\\b"""), "Marge Simpson", "classic Simpsons 2D cel design, very tall cylindrical blue hair, yellow skin, round eyes, green strapless dress and red necklace"),
+        Triple(Regex("""(?i)\\bwonder\\s+woman\\b"""), "Wonder Woman", "classic DC superhero comic illustration, long dark wavy hair, golden tiara with red star, red and gold armored bodice, blue star-patterned costume, golden lasso"),
+        Triple(Regex("""(?i)\\bwilma\\s+flintstone\\b"""), "Wilma Flintstone", "classic Flintstones 2D cel design, red hair in a bun, white one-shoulder dress and large white bead necklace"),
+        Triple(Regex("""(?i)\\bbarney\\s+rubble\\b"""), "Barney Rubble", "classic Flintstones 2D cel design, short blond hair, small stocky build and brown tunic"),
+        Triple(Regex("""(?i)\\bscooby[\\s-]?doo\\b"""), "Scooby-Doo", "classic Hanna-Barbera cel-animation Great Dane, brown fur, black spots, long muzzle and turquoise SD collar"),
+        Triple(Regex("""(?i)\\b(?:bart|lisa)\\s+simpson\\b"""), "Simpsons child", "classic Simpsons yellow-skinned 2D animation character, retain the exact named character's signature hair silhouette and clothing")
+    )
+
+    private fun namedCharacterGuidance(scene: String): String {
+        val matches = namedCharacters.filter { it.first.containsMatchIn(scene) }
+        if (matches.isEmpty()) return ""
+        return "Character identity requirements: " + matches.joinToString("; ") {
+            it.second + ": " + it.third
+        } + ". Preserve each named character's original franchise-specific face geometry, silhouette, proportions and linework. For crossover scenes, keep each character in their own recognizable drawing style within one coherent background; do not homogenize all characters into Hanna-Barbera style or swap their defining features."
+    }
+
     private val retroStyle = Regex("""(?i)(hanna[\s-]?barbera|(?:19)?80'?s|eighties|1980s|1970'?s|70'?s|seventies|retro|vintage|classic animation|saturday morning)""")
     private val threeD = Regex("""(?i)\b(3d|cgi|photorealistic|three[\s-]?dimensional)\b""")
     private val action = Regex("""(?i)\b(fighting|fight|chasing|chase|rescuing|rescue|battling|battle|running|jumping|flying|escaping|pursuing|saving)\b""")
@@ -115,7 +135,7 @@ internal object CartoonImagePrompt {
         // emphasize the first part of a prompt; long boilerplate used to bury it.
         val scene = normalizeCharacterSpacing(description)
         val heroes = recognizedHeroes(scene)
-        val chosenStyle = styleInDescription(scene) ?: style.trim().ifBlank { DEFAULT_STYLE }
+        val chosenStyle = styleInDescription(scene) ?: if (namedCharacterGuidance(scene).isNotBlank()) "mixed original character-specific 2D cartoon and comic-book styles" else style.trim().ifBlank { DEFAULT_STYLE }
         val retro2D = wantsRetroTwoD(chosenStyle)
         val requested3D = threeD.containsMatchIn(chosenStyle) && !retro2D
         val referenceComic = chosenStyle.contains("comic-book", ignoreCase = true)
@@ -138,6 +158,7 @@ internal object CartoonImagePrompt {
             femaleNude || (autoNude && (bothNude || !maleNude)) -> "Nude"
             else -> femaleClothing
         }
+        val characterIdentityGuidance = namedCharacterGuidance(scene)
         val namedGroupGuidance = if (heroes.size >= 2) {
             "Required composition: exactly " + heroes.size + " separate, recognizable ADULT characters: " + heroes.joinToString(", ") + ". Include each named character once, all in ONE continuous illustrated scene. Each character has a distinct face, complete figure and clear silhouette. Do not blend character identities, masks, logos, costumes or body parts between characters. Each hero must have their own consistent signature appearance. No extra characters, no duplicates, no layered headshots, no overlapping bodies, no collage, no montage, no split panels. Use a wide two-character composition, with both subjects equally prominent and visible from head to at least knees. Frame everyone together, with enough room to see the entire group."
         } else ""
@@ -187,6 +208,7 @@ internal object CartoonImagePrompt {
             "$scene. Visual style: $chosenStyle.",
             priorityWardrobe,
             namedGroupGuidance,
+            characterIdentityGuidance,
             styleGuidance,
             crimeSceneGuidance,
             actionGuidance,
