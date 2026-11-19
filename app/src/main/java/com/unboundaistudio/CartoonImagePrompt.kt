@@ -16,8 +16,10 @@ internal object CartoonImagePrompt {
         Triple(Regex("""(?i)\\b(?:bart|lisa)\\s+simpson\\b"""), "Simpsons child", "classic Simpsons yellow-skinned 2D animation character, retain the exact named character's signature hair silhouette and clothing")
     )
 
+    private fun recognizedNamedCharacters(scene: String) = namedCharacters.filter { it.first.containsMatchIn(scene) }
+
     private fun namedCharacterGuidance(scene: String): String {
-        val matches = namedCharacters.filter { it.first.containsMatchIn(scene) }
+        val matches = recognizedNamedCharacters(scene)
         if (matches.isEmpty()) return ""
         return "Character identity requirements: " + matches.joinToString("; ") {
             it.second + ": " + it.third
@@ -106,7 +108,7 @@ internal object CartoonImagePrompt {
     /** Keep wide action/group scenes in-frame instead of cropping into a square portrait. */
     fun canvasFor(description: String, requestedSide: Int): Pair<Int, Int> {
         val side = (requestedSide.coerceIn(512, 1024) / 64) * 64
-        val wide = recognizedHeroes(description).size >= 2 || action.containsMatchIn(description) ||
+        val wide = (recognizedHeroes(description).size + recognizedNamedCharacters(description).size) >= 2 || action.containsMatchIn(description) ||
             Regex("""(?i)\b(group|couple|both|together|landscape|wide|panorama|crowd|several|team|two characters|three characters)\b""")
                 .containsMatchIn(description)
         return if (wide) side to (side * 3 / 4 / 64 * 64) else side to side
@@ -159,9 +161,11 @@ internal object CartoonImagePrompt {
             else -> femaleClothing
         }
         val characterIdentityGuidance = namedCharacterGuidance(scene)
-        val namedGroupGuidance = if (heroes.size >= 2) {
-            "Required composition: exactly " + heroes.size + " separate, recognizable ADULT characters: " + heroes.joinToString(", ") + ". Include each named character once, all in ONE continuous illustrated scene. Each character has a distinct face, complete figure and clear silhouette. Do not blend character identities, masks, logos, costumes or body parts between characters. Each hero must have their own consistent signature appearance. No extra characters, no duplicates, no layered headshots, no overlapping bodies, no collage, no montage, no split panels. Use a wide two-character composition, with both subjects equally prominent and visible from head to at least knees. Frame everyone together, with enough room to see the entire group."
+        val allNamed = (heroes + recognizedNamedCharacters(scene).map { it.second }).distinct()
+        val namedGroupGuidance = if (allNamed.size >= 2) {
+            "Required composition: exactly " + allNamed.size + " separate, recognizable characters: " + allNamed.joinToString(", ") + ". Include each named character once, all in ONE continuous illustrated scene. Each character has a distinct face, complete figure and clear silhouette. Do not blend character identities, masks, logos, costumes or body parts between characters. Each hero must have their own consistent signature appearance. No extra characters, no duplicates, no layered headshots, no overlapping bodies, no collage, no montage, no split panels. Use a wide two-character composition, with both subjects equally prominent and visible from head to at least knees. Frame everyone together, with enough room to see the entire group."
         } else ""
+        val panelGuidance = if (Regex("""(?i)\b(comic strip|multiple panels|four panels|two panels|storyboard|page layout)\b""").containsMatchIn(scene)) "" else "Compose ONE single uninterrupted image, not a comic page, grid, split frame, diptych, triptych, or four-panel collage. "
         val styleGuidance = when {
             referenceComic -> "Required look: bold ink outlines, flat colored 2D comic-book illustration, distinct expressive cartoon faces; not a photograph."
             retro2D -> "Required look: classic Hanna-Barbera-inspired 1960s–1980s Saturday-morning television animation, original flat hand-inked 2D cels, thick clean black contour lines, bright flat solid colors, minimal shadows, simplified expressive faces and proportions, hand-painted simple backgrounds. Flat hand-drawn 2D animation, not CGI, not 3D, no gradients or realistic textures."
@@ -184,7 +188,7 @@ internal object CartoonImagePrompt {
             "Clothed" -> "Every adult female character wears clothing as described."
             else -> ""
         }
-        val interactionRequested = heroes.size >= 2 && (Regex("""(?i)\b(with|together|beside|next to|holding|hugging|kissing|talking to|looking at|interacting with|romance|romantic|intimacy|sex)\b""").containsMatchIn(scene) || heroes.size >= 2)
+        val interactionRequested = allNamed.size >= 2 && (Regex("""(?i)\b(with|together|beside|next to|holding|hugging|kissing|talking to|looking at|interacting with|romance|romantic|intimacy|sex)\b""").containsMatchIn(scene) || allNamed.size >= 2)
         val actionGuidance = if (action.containsMatchIn(scene) || interactionRequested) {
             "Depict a single action frame with the described action actually happening; show all requested interacting characters visibly present in one continuous scene, not a static single-character portrait or unrelated pose."
         } else ""
@@ -208,6 +212,7 @@ internal object CartoonImagePrompt {
             "$scene. Visual style: $chosenStyle.",
             priorityWardrobe,
             namedGroupGuidance,
+            panelGuidance,
             characterIdentityGuidance,
             styleGuidance,
             crimeSceneGuidance,
@@ -229,8 +234,8 @@ internal object CartoonImagePrompt {
         val exclusions = if (wantsRetroTwoD(prompt)) {
             ", black-and-white artwork, monochrome, grayscale, uncolored ink drawing, pencil-only sketch, photograph, photographic realism, live action, 3D model, CGI render, realistic skin, plastic figures, modern 3D animation"
         } else ""
-        val groupExclusions = if (recognizedHeroes(rawScene).size >= 2) ", collage, montage, repeated heroes, duplicate people, multiple character portraits, overlapping figures, composite headshots, missing full bodies" else ""
-        val actionExclusions = if (action.containsMatchIn(rawScene) || crimeFighting.containsMatchIn(rawScene)) ", static portrait, posed group photo, standing in a row, police lineup, diptych, split-screen comparison, separate character portraits, plain gray photographic studio background" else ""
+        val groupExclusions = if ((recognizedHeroes(rawScene).size + recognizedNamedCharacters(rawScene).size) >= 2) ", collage, montage, repeated heroes, duplicate people, multiple character portraits, overlapping figures, composite headshots, missing full bodies" else ""
+        val actionExclusions = if (action.containsMatchIn(rawScene) || crimeFighting.containsMatchIn(rawScene) || (recognizedHeroes(rawScene).size + recognizedNamedCharacters(rawScene).size) >= 2) ", static portrait, posed group photo, standing in a row, police lineup, diptych, split-screen comparison, separate character portraits, plain gray photographic studio background" else ""
         // Costume-associated character names can make models draw uniforms even
         // when ALL described adults should be unclothed. This negative applies
         // only when both adult coverage groups are explicitly nude: it must not
