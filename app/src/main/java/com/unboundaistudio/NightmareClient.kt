@@ -130,7 +130,7 @@ internal object NightmareClient {
             }
         }
         val payload = JSONObject().put("flow", actualFlow)
-            .put("prompt", if (input == null && !cartoonMode) PhotoCompositionPrompt.prepare(prompt) else if (input == null) prompt else EditRequestRouting.promptFor(actualFlow, prompt))
+            .put("prompt", if (input == null && !cartoonMode) prompt.trim() // Send exact requested scene; avoid generic composition text overriding actions else if (input == null) prompt else EditRequestRouting.promptFor(actualFlow, prompt))
         var cartoonUsesDmd2 = false
         if (cartoonMode) {
             payload.put("negative", CartoonImagePrompt.negativePrompt(true, prompt, routingPrompt ?: prompt))
