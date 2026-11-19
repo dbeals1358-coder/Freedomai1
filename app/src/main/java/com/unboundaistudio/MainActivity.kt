@@ -826,7 +826,7 @@ class MainActivity : ComponentActivity() {
          if (faceDetailRun) requestedPrompt else CartoonImagePrompt.withEnglishTextForEditing("$requestedPrompt. Keep the same person, face, pose, camera and background.")
         } else if (cartoonMode && tab == 0) CartoonImagePrompt.build(
          requestedPrompt, cartoonStyle, cartoonCharacters, cartoonMaleClothing, cartoonFemaleClothing
-        ) else FaceDetailEnhancement.generationPrompt(requestedPrompt)
+        ) else requestedPrompt.trim() // Preserve exact user wording for photo generation
        if (input != null && !faceDetailRun && precisionEdit && (!maskMode || strokes.isEmpty())) {
         status = "Precision Edit requires a painted area. Paint the region to change or disable Precision Edit."
         return
