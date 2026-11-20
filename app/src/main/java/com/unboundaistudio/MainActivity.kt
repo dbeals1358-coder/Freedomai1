@@ -215,6 +215,8 @@ class MainActivity : ComponentActivity() {
    var showAdvancedConnection by remember { mutableStateOf(false) }
    var prompt by remember { mutableStateOf("") }
     var cartoonMode by remember { mutableStateOf(false) }
+    var expandCartoonPrompt by remember { mutableStateOf(prefs.getBoolean("expand_cartoon_prompt", false)) }
+    var lastRequestDetails by remember { mutableStateOf("") }
     var cartoonStyle by remember { mutableStateOf(CartoonImagePrompt.DEFAULT_STYLE) }
     var cartoonCharacters by remember { mutableStateOf(
      prefs.getString("cartoon_character_selection", "From description")
@@ -824,14 +826,15 @@ class MainActivity : ComponentActivity() {
        val requestedResolution = if (input == null && requestedSpeed == "FAST") 768 else resolution
        val editPrompt = if (input != null) {
          if (faceDetailRun) requestedPrompt else CartoonImagePrompt.withEnglishTextForEditing("$requestedPrompt. Keep the same person, face, pose, camera and background.")
-        } else if (cartoonMode && tab == 0) CartoonImagePrompt.build(
-         requestedPrompt, cartoonStyle, cartoonCharacters, cartoonMaleClothing, cartoonFemaleClothing
+        } else if (cartoonMode && tab == 0) CartoonImagePrompt.generationPrompt(
+         requestedPrompt, expandCartoonPrompt, cartoonStyle, cartoonCharacters, cartoonMaleClothing, cartoonFemaleClothing
         ) else requestedPrompt.trim() // Preserve exact user wording for photo generation
        if (input != null && !faceDetailRun && precisionEdit && (!maskMode || strokes.isEmpty())) {
         status = "Precision Edit requires a painted area. Paint the region to change or disable Precision Edit."
         return
        }
        val mask = if (input != null && !faceDetailRun && maskMode && strokes.isNotEmpty()) makeMask(input.width, input.height, strokes.toList(), brush) else null
+              lastRequestDetails = ""
               result = null // Do not leave a previous variation visible as a failed new edit.
               busy = true; generationPercent = 0; renderingPercent = 0; nativeProgress = useNativeEdit
               nightmareConnectionFailed = false
@@ -930,6 +933,7 @@ class MainActivity : ComponentActivity() {
           status = "The AI returned a blank white image. Your original photo is safe. Try again with lower edit strength or restart the model."
          } else {
           generationPercent = 100
+          if (input == null && useNightmare) lastRequestDetails = NightmareClient.lastGenerationDetails
            resultGeneratedHere = if (input == null) true else originalGeneratedHere
            status = if (usedFastLocalEdit) "Fast local recolor complete. Only detected fabric pixels were changed; no AI render was needed." else if (useOnlineEdit) "Online Qwen edit complete. Check the result against the original." else if (useNativeEdit) "Qwen Turbo edit complete. Compare the face, pose and background with the original." else if (input != null && useNightmare) "Nightmare local edit complete (actual flow: ${NightmareClient.lastImageFlowUsed.ifBlank { EditRequestRouting.chooseFlow(editFlowForRun, requestedPrompt) }}). Actual model must be confirmed in Nightmare run details." else if (input != null) "AI returned an edit — compare it with your requested change below" else if (cartoonMode && tab == 0 && input == null && useNightmare) "Cartoon generated with ${NightmareClient.lastCartoonModelLabel}. ${if (NightmareClient.lastCartoonLetteringApplied) "Exact English dialogue added to speech bubbles." else "For correctly spelled speech bubbles, put the words in double quotes."} Compare the result to your prompt." else "Image ready"
          }
@@ -1044,6 +1048,14 @@ class MainActivity : ComponentActivity() {
          Text("Bold outlines • bright colors • hand-drawn look", style = MaterialTheme.typography.bodySmall)
          TextButton(onClick = { showCartoonOptions = !showCartoonOptions }) { Text(if (showCartoonOptions) "Hide cartoon options ↑" else "Cartoon options ↓") }
          if (showCartoonOptions) {
+         Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+          Text("Add character and style guidance", modifier = Modifier.weight(1f))
+          Switch(checked = expandCartoonPrompt, enabled = !busy, onCheckedChange = {
+           expandCartoonPrompt = it
+           prefs.edit().putBoolean("expand_cartoon_prompt", it).apply()
+          })
+         }
+         if (expandCartoonPrompt) {
          OutlinedTextField(value = cartoonStyle, onValueChange = { cartoonStyle = it },
           label = { Text("Cartoon style — type anything") },
           placeholder = { Text("e.g. 2D, comic, anime, 3D, hand-drawn") },
@@ -1104,7 +1116,8 @@ class MainActivity : ComponentActivity() {
            status = "Cartoon clothing now follows your written description."
           }, enabled = !busy, modifier = Modifier.weight(1f)) { Text("Follow prompt") }
          }
-         Text("Your written prompt takes priority over these options.", style = MaterialTheme.typography.bodySmall)
+         }
+         if (!expandCartoonPrompt) Text("Uses the words you type.", style = MaterialTheme.typography.bodySmall)
          }
         }
         OutlinedTextField(value = prompt, onValueChange = { prompt = it },
@@ -1113,6 +1126,11 @@ class MainActivity : ComponentActivity() {
          modifier = Modifier.fillMaxWidth().height(170.dp))
        OutlinedButton(onClick = { listenForPrompt() }, enabled = !busy) { Text("🎤 Speak prompt") }
        Button(onClick = { requestImage(null) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text(if (busy) "Creating…" else if (cartoonMode) "Create Cartoon" else "Create Image") }
+       if (lastRequestDetails.isNotBlank() && result != null) {
+        var showDetails by remember(lastRequestDetails) { mutableStateOf(false) }
+        TextButton(onClick = { showDetails = !showDetails }) { Text(if (showDetails) "Hide details" else "Details") }
+        if (showDetails) Text(lastRequestDetails)
+       }
 
       } else if (!videoMode && (tab == 1 || (tab == 2 && adultConfirmed && !fictionalAdultMode))) {
        if (tab == 2) Text("Private editing: adjust brightness and saturation, then save to app-private storage. AI edits may send your photo to the selected model/server. Only use images you have permission to edit.")
@@ -1407,6 +1425,7 @@ class MainActivity : ComponentActivity() {
          Text(if (showMobileI2VInfo) "Hide video details ↑" else "Video details & requirements ↓")
         }
         if (showMobileI2VInfo) {
+         prefs.getString("mobilei2v_checkpoint", null)?.let { Text("Last offline video checkpoint: $it") }
          Text("MobileI2V checks all three ONNX models and downloads missing ones from the verified release. The source VAE must be published in that release for automatic installation. Motion prompts are not supported by the official model.")
         }
        }
@@ -1467,6 +1486,15 @@ class MainActivity : ComponentActivity() {
              runOnUiThread { status = "Connecting to Nightmare…" }
             }
             if (useMobileI2V) {
+             fun checkpoint(stage: String) {
+              val memory = android.app.ActivityManager.MemoryInfo()
+              (getSystemService(ACTIVITY_SERVICE) as android.app.ActivityManager).getMemoryInfo(memory)
+              val processMiB = android.os.Debug.getPss() / 1024
+              val availableMiB = memory.availMem / (1024 * 1024)
+              prefs.edit().putString("mobilei2v_checkpoint",
+               "$stage · app PSS ${processMiB} MiB · available ${availableMiB} MiB").commit()
+             }
+             checkpoint("Checking models")
              val models = java.io.File(filesDir, "models/video-v1")
              // Check verified release on every video attempt so previously installed
              // full-precision models can be upgraded to the smaller validated graph.
@@ -1475,8 +1503,14 @@ class MainActivity : ComponentActivity() {
               runOnUiThread { generationPercent = p; status = "Checking MobileI2V models… $p%" }
              }
              runOnUiThread { generationPercent = 0; status = "Generating MobileI2V video…" }
+             checkpoint("Models ready, starting inference")
+             var lastCheckpoint = -1
              MobileI2VVideoEngine.generate(this@MainActivity, java.io.File(filesDir, "models/video-v1"), cacheDir, image, motionPrompt, duration) { p ->
               if (generationJob?.isActive == false) throw kotlinx.coroutines.CancellationException("MobileI2V cancelled")
+              if (p != lastCheckpoint) {
+               checkpoint("Inference progress $p%")
+               lastCheckpoint = p
+              }
               runOnUiThread { generationPercent = p; status = "MobileI2V processing… $p%" }
              }
             } else {

@@ -379,6 +379,16 @@ class CartoonImagePromptTest {
         assertEquals(Pair(768, 576), CartoonImagePrompt.canvasFor("a team rescuing a cat", 768))
     }
 
+    @Test fun exactModePreservesWhoHasEachObject() {
+        val scene = "Fred Flintstone holds a red bowling ball while Homer Simpson eats a pink donut."
+        assertEquals(scene, CartoonImagePrompt.generationPrompt(scene, false, "anime", "Man", "Auto", "Auto"))
+    }
+
+    @Test fun retroModelWinsEvenWhenSwapIsInstalledFirst() {
+        val models = org.json.JSONArray("""["lustify-apex-v8-swap", "retro-cel-2d"]""")
+        assertEquals("retro-cel-2d", CartoonModelSelector.chooseForCartoon(models, "1970s hand-drawn cartoon")?.modelId)
+    }
+
     @Test fun simpleSoloCartoonsCanStaySquare() {
         assertEquals(Pair(1024, 1024), CartoonImagePrompt.canvasFor("one cartoon cat portrait", 1024))
     }

@@ -14,6 +14,8 @@ internal object NightmareClient {
     private const val BASE_URL = "http://127.0.0.1:8820"
     private var cachedModels: org.json.JSONArray? = null
     private var cachedModelsAt: Long = 0L
+    @Volatile var lastGenerationDetails: String = ""
+        private set
     @Volatile var lastCartoonModelLabel: String = "Not selected"
         private set
     @Volatile var lastCartoonLetteringApplied: Boolean = false
@@ -136,12 +138,17 @@ internal object NightmareClient {
             payload.put("negative", CartoonImagePrompt.negativePrompt(true, prompt, routingPrompt ?: prompt))
             // Respect a hand-drawn 2D request when an installed cel-animation
             // checkpoint exists. Otherwise retain the Lustify Apex fallback.
-            val selection = CartoonModelSelector.chooseForCartoon(installedModels(token), prompt)
+            val catalog = installedModels(token)
+            val selection = if (requestedModelId.isNullOrBlank()) CartoonModelSelector.chooseForCartoon(catalog, prompt)
+            else NightmareCatalog.modelsFromArray(catalog).firstOrNull { it.id == requestedModelId }
+                ?.let { CartoonModelSelector.Selection(it.id, it.label) }
+                ?: error("Selected model is unavailable. Refresh Models or select Automatic.")
+            val selected = selection
                 ?: error("No compatible cartoon/illustration checkpoint is installed in Nightmare. The current photo model cannot make the requested 2D cartoon. Install or enable a 2D cel/cartoon, Pony, or comic illustration model in Nightmare, then retry. Existing models were not changed.")
-            val modelId = requireNotNull(selection.modelId)
+            val modelId = requireNotNull(selected.modelId)
             cartoonUsesDmd2 = modelId.contains("dmd2", ignoreCase = true)
             payload.put("model", modelId)
-            lastCartoonModelLabel = selection.label
+            lastCartoonModelLabel = selected.label
             android.util.Log.i("FreedomAI-Cartoon", "Checkpoint: " + modelId)
         }
 
@@ -357,6 +364,10 @@ internal object NightmareClient {
             val decoded = bitmap ?: error("Nightmare returned an unreadable image")
             val restored = editFrame?.restoreOutput(decoded) ?: decoded
             if (input != null) lastImageFlowUsed = actualFlow
+            if (input == null) {
+                val model = payload.optString("model").ifBlank { "Nightmare workflow default" }
+                lastGenerationDetails = "Model requested: $model\nWorkflow: $actualFlow\nPrompt sent: ${payload.getString("prompt")}"
+            }
             if (!cartoonMode) return restored
             val exactWords = CartoonDialogue.extract(routingPrompt ?: prompt)
             val lettered = CartoonLetteringOverlay.render(restored, exactWords)

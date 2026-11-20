@@ -125,6 +125,11 @@ internal object CartoonImagePrompt {
             "Do not add extra dialogue, gibberish, fake letters or captions that were not requested. " +
             "If the artwork contains no text and none was requested, keep it free of text."
 
+    fun generationPrompt(description: String, expand: Boolean, style: String, characters: String,
+                         maleClothing: String, femaleClothing: String): String =
+        if (expand) build(description, style, characters, maleClothing, femaleClothing)
+        else description.trim()
+
     fun build(
         description: String,
         style: String,
@@ -292,7 +297,14 @@ internal object CartoonModelSelector {
     /** Automatically match the requested drawing style to installed checkpoints. */
     fun chooseForCartoon(models: org.json.JSONArray?, prompt: String): Selection? {
         val retro = CartoonImagePrompt.wantsRetroTwoD(prompt)
-        // Match the user's known-working Nightmare checkpoint first when installed.
+        if (retro) chooseDedicatedRetroTwoD(models)?.let { return it }
+        val installedArt = models?.let { chooseInstalled(it, prompt) }
+        if (!installedArt.isNullOrBlank()) {
+            val label = models?.let { NightmareCatalog.modelsFromArray(it)
+                .firstOrNull { candidate -> candidate.id == installedArt }?.label } ?: installedArt
+            return Selection(installedArt, label + if (retro) " (2D illustrated fallback)" else "")
+        }
+        // Use the previously supported Swap checkpoint when no illustrated model matches.
         // Do not mistake the separate DMD2 variant for the V8 Swap checkpoint.
         models?.let { catalog ->
             NightmareCatalog.modelsFromArray(catalog).firstOrNull { model ->
@@ -301,13 +313,6 @@ internal object CartoonModelSelector {
                     name.contains("v8") && name.contains("swap") &&
                     !Regex("""(inpaint|upscal|video|controlnet|lora)""").containsMatchIn(name)
             }?.let { return Selection(it.id, it.label) }
-        }
-        if (retro) chooseDedicatedRetroTwoD(models)?.let { return it }
-        val installedArt = models?.let { chooseInstalled(it, prompt) }
-        if (!installedArt.isNullOrBlank()) {
-            val label = models?.let { NightmareCatalog.modelsFromArray(it)
-                .firstOrNull { candidate -> candidate.id == installedArt }?.label } ?: installedArt
-            return Selection(installedArt, label + if (retro) " (2D illustrated fallback)" else "")
         }
         // 3D is an explicit exception; photographic checkpoints are NOT a
         // fallback when the person asked for flat 2D, comic or anime artwork.
