@@ -11,8 +11,8 @@ android {
         minSdk = 29
         targetSdk = 35
         ndk { abiFilters += "arm64-v8a" }
-        versionCode = 69
-        versionName = "6.0"
+        versionCode = 70
+        versionName = "6.1"
     }
     // The build injects this into the APK; it can be extracted from the APK.
     val hfToken = System.getenv("HF_ACCESS_TOKEN").orEmpty()
