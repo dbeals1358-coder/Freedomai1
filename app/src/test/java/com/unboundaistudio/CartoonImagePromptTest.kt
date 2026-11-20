@@ -7,6 +7,21 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CartoonImagePromptTest {
+    @Test fun namedCharactersAreRecognizedWithOriginalStyles() {
+        val scene = "Wonder Woman and Fred Flintstones standing together"
+        val prompt = CartoonImagePrompt.build(scene, CartoonImagePrompt.DEFAULT_STYLE)
+        assertTrue(prompt.contains("Wonder Woman: classic DC superhero comic illustration"))
+        assertTrue(prompt.contains("Fred Flintstone: classic Flintstones 2D cel design"))
+        assertTrue(prompt.contains("exactly 2 separate, recognizable ADULT characters"))
+        assertEquals(Pair(1024, 768), CartoonImagePrompt.canvasFor(scene, 1024))
+    }
+
+    @Test fun simpsonsCharactersKeepDistinctDesigns() {
+        val prompt = CartoonImagePrompt.build("Homer Simpson meets Marge Simpson", CartoonImagePrompt.DEFAULT_STYLE)
+        assertTrue(prompt.contains("Homer Simpson: classic Simpsons 2D cel design"))
+        assertTrue(prompt.contains("Marge Simpson: classic Simpsons 2D cel design"))
+    }
+
 
     @Test fun runTogetherSuperheroNamesBecomeFiveDistinctAdultsInSingleScene() {
         val scene = "70's hanna barbera style cartoon characters nude catwoman batgirlsupergirl batman superman nude"
