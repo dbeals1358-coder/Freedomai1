@@ -16,6 +16,17 @@ class CartoonImagePromptTest {
         assertEquals(Pair(1024, 768), CartoonImagePrompt.canvasFor(scene, 1024))
     }
 
+    @Test fun simpsonNameVariantsKeepBothCharactersInFrame() {
+        for (name in listOf("homer Simpsons", "Homer Simpson's", "Homer Simpson’s")) {
+            val scene = "Wonder Woman finds $name umbrella"
+            val prompt = CartoonImagePrompt.build(scene, CartoonImagePrompt.DEFAULT_STYLE)
+            assertTrue(prompt.contains("Homer Simpson: classic Simpsons 2D cel design"))
+            assertTrue(prompt.contains("exactly 2 separate"))
+            assertTrue(prompt.contains("One uninterrupted illustration in a shared setting"))
+            assertEquals(Pair(1024, 768), CartoonImagePrompt.canvasFor(scene, 1024))
+        }
+    }
+
     @Test fun simpsonsCharactersKeepDistinctDesigns() {
         val prompt = CartoonImagePrompt.build("Homer Simpson meets Marge Simpson", CartoonImagePrompt.DEFAULT_STYLE)
         assertTrue(prompt.contains("Homer Simpson: classic Simpsons 2D cel design"))
