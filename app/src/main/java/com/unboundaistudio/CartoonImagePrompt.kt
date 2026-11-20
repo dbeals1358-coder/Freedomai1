@@ -6,14 +6,14 @@ internal object CartoonImagePrompt {
 
     /** Named characters retain their own visual identity rather than inheriting the generic cartoon preset. */
     private val namedCharacters = listOf(
-        Triple(Regex("""(?i)\\bfred\\s+flintstone\\b"""), "Fred Flintstone", "classic Flintstones 2D cel design, black hair, heavy black eyebrows, prominent rounded nose, broad stocky body, orange spotted tunic and blue necktie"),
-        Triple(Regex("""(?i)\\b(?:homer|hammer)\\s+simpson\\b"""), "Homer Simpson", "classic Simpsons 2D cel design, yellow skin, round bald head with two thin hairs, large round eyes, prominent muzzle and white collared shirt"),
-        Triple(Regex("""(?i)\\bmarge\\s+simpson\\b"""), "Marge Simpson", "classic Simpsons 2D cel design, very tall cylindrical blue hair, yellow skin, round eyes, green strapless dress and red necklace"),
-        Triple(Regex("""(?i)\\bwonder\\s+woman\\b"""), "Wonder Woman", "classic DC superhero comic illustration, long dark wavy hair, golden tiara with red star, red and gold armored bodice, blue star-patterned costume, golden lasso"),
-        Triple(Regex("""(?i)\\bwilma\\s+flintstone\\b"""), "Wilma Flintstone", "classic Flintstones 2D cel design, red hair in a bun, white one-shoulder dress and large white bead necklace"),
-        Triple(Regex("""(?i)\\bbarney\\s+rubble\\b"""), "Barney Rubble", "classic Flintstones 2D cel design, short blond hair, small stocky build and brown tunic"),
-        Triple(Regex("""(?i)\\bscooby[\\s-]?doo\\b"""), "Scooby-Doo", "classic Hanna-Barbera cel-animation Great Dane, brown fur, black spots, long muzzle and turquoise SD collar"),
-        Triple(Regex("""(?i)\\b(?:bart|lisa)\\s+simpson\\b"""), "Simpsons child", "classic Simpsons yellow-skinned 2D animation character, retain the exact named character's signature hair silhouette and clothing")
+        Triple(Regex("""(?i)\bfred\s+flintstone(?:s)?\b"""), "Fred Flintstone", "classic Flintstones 2D cel design, black hair, heavy black eyebrows, prominent rounded nose, broad stocky body, orange spotted tunic and blue necktie"),
+        Triple(Regex("""(?i)\b(?:homer|hammer)\s+simpson\b"""), "Homer Simpson", "classic Simpsons 2D cel design, yellow skin, round bald head with two thin hairs, large round eyes, prominent muzzle and white collared shirt"),
+        Triple(Regex("""(?i)\bmarge\s+simpson\b"""), "Marge Simpson", "classic Simpsons 2D cel design, very tall cylindrical blue hair, yellow skin, round eyes, green strapless dress and red necklace"),
+        Triple(Regex("""(?i)\bwonder\s+woman\b"""), "Wonder Woman", "classic DC superhero comic illustration, long dark wavy hair, golden tiara with red star, red and gold armored bodice, blue star-patterned costume, golden lasso"),
+        Triple(Regex("""(?i)\bwilma\s+flintstone\b"""), "Wilma Flintstone", "classic Flintstones 2D cel design, red hair in a bun, white one-shoulder dress and large white bead necklace"),
+        Triple(Regex("""(?i)\bbarney\s+rubble\b"""), "Barney Rubble", "classic Flintstones 2D cel design, short blond hair, small stocky build and brown tunic"),
+        Triple(Regex("""(?i)\bscooby[\s-]?doo\b"""), "Scooby-Doo", "classic Hanna-Barbera cel-animation Great Dane, brown fur, black spots, long muzzle and turquoise SD collar"),
+        Triple(Regex("""(?i)\b(?:bart|lisa)\s+simpson\b"""), "Simpsons child", "classic Simpsons yellow-skinned 2D animation character, retain the exact named character's signature hair silhouette and clothing")
     )
 
     private fun recognizedNamedCharacters(scene: String) = namedCharacters.filter { it.first.containsMatchIn(scene) }
