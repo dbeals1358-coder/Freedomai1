@@ -404,7 +404,7 @@ class CartoonImagePromptTest {
         val prompt = CartoonImagePrompt.build(scene, CartoonImagePrompt.DEFAULT_STYLE)
         assertTrue(prompt.contains("Supergirl"))
         assertTrue(prompt.contains("Catwoman"))
-        assertTrue(prompt.contains("exactly 2 separate"))
+        assertTrue(prompt.contains("exactly 3 separate"))
     }
 
 
