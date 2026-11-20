@@ -78,6 +78,7 @@ class MainActivity : ComponentActivity() {
    var server by remember { mutableStateOf(prefs.getString("url", "") ?: "") }
    var localMode by remember { mutableStateOf(prefs.getBoolean("local", true)) }
    var nightmareMode by remember { mutableStateOf(prefs.getBoolean("nightmare", true)) }
+   var hybridAuto by remember { mutableStateOf(prefs.getBoolean("hybrid_auto_v169", false)) }
    var nightmareToken by remember { mutableStateOf((prefs.getString("nightmare_token", "") ?: "").ifBlank { BuildConfig.NIGHTMARE_API_TOKEN }) }
    var nightmareEditFlow by remember {
     // Migrate the old img2img default. That flow restyles instead of making precise changes.
@@ -673,6 +674,12 @@ class MainActivity : ComponentActivity() {
       if (showConnection) {
       Card(Modifier.fillMaxWidth()) {
       Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+      Text("AI engine selection", style = MaterialTheme.typography.titleMedium)
+      Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+       Text("Automatic engine selection")
+       Switch(checked = hybridAuto, enabled = !busy, onCheckedChange = { hybridAuto = it; prefs.edit().putBoolean("hybrid_auto_v169", it).apply() })
+      }
+      Text("Auto selects a configured compatible engine. Turn it off to use manual settings. No paid service is enabled automatically.")
       Text("Nightmare", style = MaterialTheme.typography.titleMedium)
       Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
        Text("Use Nightmare for images")
@@ -802,8 +809,31 @@ class MainActivity : ComponentActivity() {
         status = "Enter a valid HTTPS server URL"; return
        }
        prefs.edit().putString("url", address).apply()
-       val useLocal = localMode
-       val useNightmare = nightmareMode && !useOnlineEdit && !useNativeEdit
+       val hybridCandidates = if (hybridAuto && !useNativeEdit && !useOnlineEdit) {
+        val task = if (input == null) HybridEngineSelector.Task.TEXT_IMAGE else HybridEngineSelector.Task.IMAGE_EDIT
+        HybridEngineSelector.candidates(
+         HybridEngineSelector.Request(HybridEngineSelector.Mode.AUTO, task,
+          internetAvailable = true, preferQuality = requestedHighQuality),
+         listOf(
+          HybridEngineSelector.Engine("nightmare", HybridEngineSelector.Location.DEVICE,
+           setOf(HybridEngineSelector.Task.TEXT_IMAGE, HybridEngineSelector.Task.IMAGE_EDIT),
+           ready = nightmareMode, qualityRank = 3),
+          HybridEngineSelector.Engine("localdream", HybridEngineSelector.Location.DEVICE,
+           setOf(HybridEngineSelector.Task.TEXT_IMAGE, HybridEngineSelector.Task.IMAGE_EDIT),
+           ready = localMode, qualityRank = 1),
+          HybridEngineSelector.Engine("remote", HybridEngineSelector.Location.NETWORK,
+           setOf(HybridEngineSelector.Task.TEXT_IMAGE, HybridEngineSelector.Task.IMAGE_EDIT),
+           ready = !nightmareMode && !localMode && address.startsWith("https://"), qualityRank = 2)
+         )
+        )
+       } else emptyList()
+       if (hybridAuto && !useNativeEdit && !useOnlineEdit && hybridCandidates.isEmpty()) {
+        status = "Auto: no configured compatible image engine. Enable Nightmare or Local Dream, or configure an HTTPS server."
+        return
+       }
+       val selectedEngine = hybridCandidates.firstOrNull()?.id
+       val useLocal = if (hybridAuto) selectedEngine == "localdream" else localMode
+       val useNightmare = if (hybridAuto) selectedEngine == "nightmare" else nightmareMode && !useOnlineEdit && !useNativeEdit
        if (cartoonMode && tab == 0 && input == null && !useNightmare) {
         status = "Cartoon creation requires Nightmare text-to-image. Select Nightmare in Connection settings; the photo/edit engines cannot create a fresh cartoon here."
         return
