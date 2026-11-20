@@ -73,6 +73,31 @@ internal object NativeQwenEditor {
 
     fun cancelDownload() { activeDownloader?.cancel() }
 
+    fun generate(
+        context: Context, prompt: String, width: Int, height: Int, onProgress: (Int) -> Unit
+    ): Bitmap {
+        require(prompt.isNotBlank())
+        require(width in 32..512 && height in 32..512 && width % 32 == 0 && height % 32 == 0)
+        check(ready(context)) { "Install Qwen Turbo before generating offline." }
+        val output = File.createTempFile("qwen-create-", ".png", context.cacheDir)
+        try {
+            val settings = QwenImage21.Options().apply {
+                turbo = true
+                tinyVae = true
+                useGpu = true
+                textEncoderOnCpu = true
+                keepModelsLoaded = false
+                crashMarkerFile = File(context.filesDir, "qwen-generation-in-progress.txt")
+            }
+            return QwenImage21(directory(context), settings).use { engine ->
+                engine.generate(prompt, width, height, 6, kotlin.random.Random.nextInt(1, Int.MAX_VALUE),
+                    output, QwenImage21.ProgressListener { onProgress(it.coerceIn(0, 100)) })
+            } ?: error("Qwen did not return a readable image.")
+        } finally {
+            output.delete()
+        }
+    }
+
     /**
      * Uses the supplied bitmap as the actual Qwen edit reference. Turbo is fixed at six DiT steps.
      * The returned image is the model's real result, not a new text-to-image generation.
