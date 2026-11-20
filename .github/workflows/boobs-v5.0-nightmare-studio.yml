@@ -121,7 +121,7 @@ jobs:
         run: |
           set -euo pipefail
           APK="app/build/outputs/apk/debug/Boobs-V6-1-Android-debug.apk"
-          TAG="v6.0"
+          TAG="v6.1"
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" "$APK" --clobber
           else
