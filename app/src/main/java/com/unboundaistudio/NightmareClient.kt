@@ -87,7 +87,7 @@ internal object NightmareClient {
         return Pair(w.coerceAtLeast(512), h.coerceAtLeast(512))
     }
 
-    fun generate(prompt: String, token: String, input: android.graphics.Bitmap?, strength: Float, highQuality: Boolean, resolution: Int = 1024, editFlow: String = "auto", speed: String = "BALANCED", generationFlow: String = "saved:FreedomAI RealVis", disableControlNet: Boolean = false, cartoonMode: Boolean = false, routingPrompt: String? = null, requestedModelId: String? = null): android.graphics.Bitmap {
+    fun generate(prompt: String, token: String, input: android.graphics.Bitmap?, strength: Float, highQuality: Boolean, resolution: Int = 1024, editFlow: String = "auto", speed: String = "BALANCED", generationFlow: String = "saved:FreedomAI RealVis", disableControlNet: Boolean = false, cartoonMode: Boolean = false, routingPrompt: String? = null, requestedModelId: String? = null, studioRatio: String? = null, literal: Boolean = false): android.graphics.Bitmap {
         require(token.isNotBlank()) { "Enter your Nightmare API token in Connection settings" }
         require(!token.contains('\n') && !token.contains('\r')) { "Invalid Nightmare API token" }
         // Skip the redundant authenticated /info round trip on every generation.
@@ -125,14 +125,14 @@ internal object NightmareClient {
                 if (actualFlow == "current") {
                     return generate(prompt, token, input, strength, highQuality, resolution,
                         "auto", speed, generationFlow, disableControlNet, cartoonMode,
-                        routingPrompt, requestedModelId)
+                        routingPrompt, requestedModelId, studioRatio, literal)
                 }
                 error("${e.message} Select Auto in Connections & settings, or select " +
                     "an image-to-image/edit workflow. Your original photo is preserved.")
             }
         }
         val payload = JSONObject().put("flow", actualFlow)
-            .put("prompt", if (input == null) prompt.trim() else EditRequestRouting.promptFor(actualFlow, prompt))
+            .put("prompt", if (literal) prompt else if (input == null) prompt.trim() else EditRequestRouting.promptFor(actualFlow, prompt))
         var cartoonUsesDmd2 = false
         if (cartoonMode) {
             payload.put("negative", CartoonImagePrompt.negativePrompt(true, prompt, routingPrompt ?: prompt))
@@ -164,7 +164,7 @@ internal object NightmareClient {
 
         var editFrame: NightmareEditGeometry.Frame? = null
         if (input == null) {
-            val (width, height) = if (cartoonMode) CartoonImagePrompt.canvasFor(prompt, resolution)
+            val (width, height) = if (studioRatio != null) studioDimensions(resolution, studioRatio) else if (cartoonMode) CartoonImagePrompt.canvasFor(prompt, resolution)
                 else resolution to resolution
             if (!cartoonMode || !cartoonUsesDmd2) {
                 val steps = when (speed) {
@@ -271,7 +271,7 @@ internal object NightmareClient {
                     connection.disconnect()
                     return generate(prompt, token, input, strength, highQuality, resolution,
                         "auto", speed, generationFlow, disableControlNet, cartoonMode,
-                        routingPrompt, requestedModelId)
+                        routingPrompt, requestedModelId, studioRatio, literal)
                 }
                 error("Nightmare workflow '$actualFlow' no longer has the photo input " +
                     "it advertised. Select Auto or an image editing workflow in Connections " +
@@ -287,7 +287,7 @@ internal object NightmareClient {
                     val recovery = runCatching {
                         generate(prompt, token, input, strength, highQuality, resolution,
                             "flux_edit", speed, generationFlow, disableControlNet,
-                            cartoonMode, routingPrompt, requestedModelId)
+                            cartoonMode, routingPrompt, requestedModelId, studioRatio, literal)
                     }
                     recovery.getOrNull()?.let { return it }
                     error("Nightmare inpaint backend failed to start, and the instruction-edit fallback also failed. Check Nightmare model loading and free memory. Fallback: ${recovery.exceptionOrNull()?.message?.take(220)}")
@@ -299,7 +299,7 @@ internal object NightmareClient {
                 // Only a genuine auto-mask failure permits this one-time retry.
                 val fallback = runCatching {
                     generate(prompt, token, input, strength, highQuality, resolution,
-                        "flux_edit", speed, routingPrompt = routingPrompt)
+                        "flux_edit", speed, routingPrompt = routingPrompt, literal = literal)
                 }
                 fallback.getOrNull()?.let { return it }
                 error("Nightmare clothing auto-mask unavailable; instruction-edit fallback failed too. Check that the installed Qwen/FLUX edit model runs successfully inside Nightmare. Original photo preserved. Details: ${fallback.exceptionOrNull()?.message?.substringBefore(":{")?.take(110)}")
@@ -322,7 +322,7 @@ internal object NightmareClient {
                 connection.disconnect()
                 return try {
                     generate(prompt, token, input, strength, highQuality, resolution,
-                        editFlow, speed, generationFlow, disableControlNet = true, cartoonMode = cartoonMode, routingPrompt = routingPrompt, requestedModelId = requestedModelId)
+                        editFlow, speed, generationFlow, disableControlNet = true, cartoonMode = cartoonMode, routingPrompt = routingPrompt, requestedModelId = requestedModelId, studioRatio = studioRatio, literal = literal)
                 } catch (retryError: Exception) {
                     error("Nightmare could not create the image without ControlNet. Open Nightmare, select the current flow, tap the image Generate node, and set ControlNet to None. Your models were not removed. Retry: ${retryError.message?.take(180)}")
                 }

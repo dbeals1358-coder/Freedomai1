@@ -13,6 +13,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -175,6 +176,18 @@ class MainActivity : ComponentActivity() {
      }
     }
    }
+   var studio by remember { mutableStateOf(true) }
+   var tool by remember { mutableStateOf(StudioTool.EDIT) }
+   var studioRatio by remember { mutableStateOf("1:1") }
+   var studioSize by remember { mutableIntStateOf(1024) }
+   var pickingSecond by remember { mutableStateOf(false) }
+   var second by remember { mutableStateOf<Bitmap?>(null) }
+   var latestStudioImage by remember { mutableStateOf<Bitmap?>(null) }
+   val latestFile = remember { java.io.File(filesDir, "studio-latest.png") }
+   LaunchedEffect(Unit) {
+    val previous = withContext(Dispatchers.IO) { BitmapFactory.decodeFile(latestFile.path) }
+    if (latestStudioImage == null) latestStudioImage = previous
+   }
    var tab by remember { mutableStateOf(-1) }
    var videoMode by remember { mutableStateOf(false) }
    var showStripeFix by remember { mutableStateOf(false) }
@@ -300,9 +313,15 @@ class MainActivity : ComponentActivity() {
      contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
      var sample = 1
      while (bounds.outWidth / sample > 1600 || bounds.outHeight / sample > 1600) sample *= 2
-     original = contentResolver.openInputStream(uri)?.use {
+     val picked = contentResolver.openInputStream(uri)?.use {
       BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply { inSampleSize = sample })
      }
+     if (pickingSecond) {
+      second = picked
+      pickingSecond = false
+      return@rememberLauncherForActivityResult
+     }
+     original = picked
      brightness = 0f; saturation = 1f; strokes.clear(); result = if (videoMode) original else null; originalGeneratedHere = false; resultGeneratedHere = false
     } catch (e: Exception) { Toast.makeText(this@MainActivity, "Couldn't open image", Toast.LENGTH_LONG).show() }
    }
@@ -453,8 +472,410 @@ class MainActivity : ComponentActivity() {
       }
      }
     }
-    Scaffold(bottomBar = {
+      fun requestImage(input: Bitmap?, promptOverride: String? = null) {
+        val faceDetailRun = input != null && promptOverride == FaceDetailEnhancement.REFINE_PROMPT
+       if ((promptOverride ?: prompt).isBlank() && !(tab == 2 && fictionalAdultMode && input == null)) { status = "Describe the image first"; return }
+       // FAST: a conservative, color-only bikini recolor can use source pixels
+       // without AI inference. If fabric recognition fails, use the selected editor.
+       val useOnlineEdit = false
+       val useNativeEdit = input != null && nativeQwen && !useOnlineEdit && !nightmareMode
+       val autoColorRequest = if (!studio && input != null && editSpeed == "FAST" &&
+         !maskMode && !precisionEdit) AutomaticClothingEdit.parse(promptOverride ?: prompt) else null
+        if (useNativeEdit && !qwenReady) {
+        status = "Download Qwen Turbo models in the Edit tab before using built-in AI Edit (~11 GB)."
+        return
+       }
+       val address = server.trim().trimEnd('/')
+       if (autoColorRequest == null && !useNativeEdit && !useOnlineEdit && !nightmareMode && !localMode && runCatching { URL(address).let { it.protocol == "https" && it.host.isNotBlank() && it.userInfo == null && it.query == null && it.ref == null } }.getOrDefault(false).not()) {
+        status = "Enter a valid HTTPS server URL"; return
+       }
+       prefs.edit().putString("url", address).apply()
+       val hybridCandidates = if (hybridAuto && !useNativeEdit && !useOnlineEdit) {
+        val task = if (input == null) HybridEngineSelector.Task.TEXT_IMAGE else HybridEngineSelector.Task.IMAGE_EDIT
+        HybridEngineSelector.candidates(
+         HybridEngineSelector.Request(HybridEngineSelector.Mode.AUTO, task,
+          internetAvailable = true, preferQuality = (if (input == null) generationSpeed else editSpeed) == "MAX QUALITY"),
+         listOf(
+          HybridEngineSelector.Engine("nightmare", HybridEngineSelector.Location.DEVICE,
+           setOf(HybridEngineSelector.Task.TEXT_IMAGE, HybridEngineSelector.Task.IMAGE_EDIT),
+           ready = nightmareMode, qualityRank = 3),
+          HybridEngineSelector.Engine("localdream", HybridEngineSelector.Location.DEVICE,
+           setOf(HybridEngineSelector.Task.TEXT_IMAGE, HybridEngineSelector.Task.IMAGE_EDIT),
+           ready = localMode, qualityRank = 1),
+          HybridEngineSelector.Engine("remote", HybridEngineSelector.Location.NETWORK,
+           setOf(HybridEngineSelector.Task.TEXT_IMAGE, HybridEngineSelector.Task.IMAGE_EDIT),
+           ready = !nightmareMode && !localMode && address.startsWith("https://"), qualityRank = 2)
+         )
+        )
+       } else emptyList()
+       if (hybridAuto && !useNativeEdit && !useOnlineEdit && hybridCandidates.isEmpty()) {
+        status = "Auto: no configured compatible image engine. Enable Nightmare or Local Dream, or configure an HTTPS server."
+        return
+       }
+       val selectedEngine = hybridCandidates.firstOrNull()?.id
+       val useLocal = if (hybridAuto) selectedEngine == "localdream" else localMode
+       val useNightmare = if (hybridAuto) selectedEngine == "nightmare" else nightmareMode && !useOnlineEdit && !useNativeEdit
+       if (cartoonMode && tab == 0 && input == null && !useNightmare) {
+        status = "Cartoon creation requires Nightmare text-to-image. Select Nightmare in Connection settings; the photo/edit engines cannot create a fresh cartoon here."
+        return
+       }
+       val tokenForRun = nightmareToken
+       val imageFlowForRun = if (cartoonMode && tab == 0 && input == null) {
+        CartoonImagePrompt.generationFlow()
+       } else nightmareImageFlow
+       // Respect Auto: garment changes need auto-masked inpainting; forcing flux_edit
+        // here incorrectly bypassed the selected editing workflow on every photo edit.
+       val requestedPrompt = if (tab == 2 && fictionalAdultMode && input == null) {
+        val age = characterAge.toIntOrNull()
+        if (age == null || age < 18 || age > 100) { status = "Enter an adult age from 18 to 100"; return }
+        FictionalAdultPrompt.build(age, characterSubject, appearance, bodyDescription, pose, setting, photoStyle, prompt, anatomyChoice, sceneCount)
+       } else (promptOverride ?: prompt)
+       // Keep "auto" intact so NightmareClient can recover from missing inpaint
+       // auto-mask support. The original user instruction is passed separately
+       // for routing, so the English comic-text hint cannot switch to img2img.
+       val editFlowForRun = if (faceDetailRun && nightmareMode) "flux_edit" else nightmareEditFlow
+         val requestedStrength = if (faceDetailRun) 0.45f else if (input != null) editStrength.coerceIn(0.10f, 0.80f) else editStrength
+       val requestedSpeed = if (faceDetailRun) "MAX QUALITY" else if (input != null) editSpeed else generationSpeed
+       val requestedHighQuality = requestedSpeed == "MAX QUALITY"
+       val requestedResolution = if (studio) studioSize else if (input == null && requestedSpeed == "FAST") 768 else resolution
+       val editPrompt = if (studio) requestedPrompt else if (input != null) {
+         if (faceDetailRun) requestedPrompt else CartoonImagePrompt.withEnglishTextForEditing("$requestedPrompt. Keep the same person, face, pose, camera and background.")
+        } else if (cartoonMode && tab == 0) CartoonImagePrompt.generationPrompt(
+         requestedPrompt, expandCartoonPrompt, cartoonStyle, cartoonCharacters, cartoonMaleClothing, cartoonFemaleClothing
+        ) else requestedPrompt.trim() // Preserve exact user wording for photo generation
+       if (input != null && !faceDetailRun && precisionEdit && (!maskMode || strokes.isEmpty())) {
+        status = "Precision Edit requires a painted area. Paint the region to change or disable Precision Edit."
+        return
+       }
+       val mask = if (input != null && !faceDetailRun && maskMode && strokes.isNotEmpty()) makeMask(input.width, input.height, strokes.toList(), brush) else null
+              lastRequestDetails = ""
+              result = null // Do not leave a previous variation visible as a failed new edit.
+              busy = true; generationPercent = 0; renderingPercent = 0; nativeProgress = useNativeEdit
+              nightmareConnectionFailed = false
+              status = if (useOnlineEdit) "Editing with online Qwen…" else if (useNativeEdit) "Editing locally with Qwen Turbo…" else if (input != null) "Editing photo…" else "Creating image…" 
+        // Nightmare does not currently expose generation progress through this client.
+        // Show an explicitly estimated percentage, capped below 100 until an image arrives.
+        val progressJob = if (useNativeEdit) null else scope.launch {
+         imageElapsedSeconds = 0
+         while (isActive && busy) {
+          delay(1000)
+          if (busy) {
+           imageElapsedSeconds++
+           generationPercent = (generationPercent + 1).coerceAtMost(80)
+            // Remote rendering has no actual progress callback. Display a
+            // clearly labeled estimate that never reaches 100% before completion.
+            if (!nativeProgress) renderingPercent = (renderingPercent + 1).coerceAtMost(95)
+          }
+         }
+        }
+       generationJob = scope.launch {
+        val editEngine = if (useOnlineEdit) "Online Qwen" else if (useNativeEdit) "On-device Qwen" else if (useNightmare) "Nightmare" else if (useLocal) "Local Dream" else "Remote image server"
+        var usedFastLocalEdit = false
+        val editStartedAt = android.os.SystemClock.elapsedRealtime()
+        var inferenceFinishedAt = editStartedAt
+        try {
+         status = "$editEngine: processing image (elapsed time shown below)"
+         val completedImage = withContext(Dispatchers.IO) {
+          val fastLocalColor = if (input != null && autoColorRequest != null)
+           AutomaticClothingEdit.recolor(input, autoColorRequest) else null
+          if (fastLocalColor != null) {
+           usedFastLocalEdit = true
+           fastLocalColor
+           } else if (useNativeEdit && input != null) {
+           val generated = NativeQwenEditor.edit(
+            this@MainActivity, input, editPrompt,
+            com.scsonic.qwenimage21.QwenImage21.Size.Tier.valueOf(if (faceDetailRun) "STANDARD" else qwenTier)
+           ) { percentage -> runOnUiThread {
+            if (generationJob?.isActive == true) {
+             generationPercent = percentage
+             status = "Qwen Turbo: $percentage% completed"
+            }
+           } }
+           check(!isNearlyWhiteImage(generated)) { "Qwen returned a blank image." }
+           if (faceDetailRun) compositeRefinedFaces(input, generated) ?: error("No faces could be located for face-only refinement.") else if (mask != null) compositeMaskedEdit(input, generated, mask) else generated
+          } else if (useNightmare) {
+           val generated = try {
+            NightmareClient.generate(editPrompt, tokenForRun, input, requestedStrength, requestedHighQuality, requestedResolution, editFlowForRun, requestedSpeed, imageFlowForRun, studioRatio = if (studio && input == null) studioRatio else null, literal = studio, cartoonMode = cartoonMode && tab == 0 && input == null, routingPrompt = requestedPrompt, requestedModelId = if (input == null && nightmareMode) nightmareSelectedModel.ifBlank { null } else null)
+           } catch (nightmareError: Exception) {
+            val maskFailure = nightmareError.message.orEmpty()
+             val maskUnavailable = input != null &&
+              (maskFailure.contains("auto-mask is unavailable", ignoreCase = true) ||
+               maskFailure.contains("cannot automatically mask", ignoreCase = true) ||
+               maskFailure.contains("no working instruction-edit fallback", ignoreCase = true))
+            if (maskUnavailable && qwenReady) {
+             runOnUiThread { status = "Nightmare mask unavailable. Trying installed Qwen editor…" }
+             NativeQwenEditor.edit(this@MainActivity, input!!, editPrompt,
+              com.scsonic.qwenimage21.QwenImage21.Size.Tier.valueOf(if (faceDetailRun) "STANDARD" else qwenTier)
+             ) { percentage -> runOnUiThread { generationPercent = percentage } }
+            } else if (maskUnavailable) {
+             // NightmareClient has already tried the installed instruction-edit
+             // fallback when the original workflow was Auto. Do not repeat it.
+             error("Nightmare could not complete the edit: ${maskFailure.take(330)}. Original photo preserved. Check the installed Qwen/FLUX editor in Nightmare, or enable Clothes Auto Mask.")
+            } else throw nightmareError
+           }
+           check(!isNearlyWhiteImage(generated)) { "The AI returned a blank white image. Try a different flow or restart the model." }
+           if (input != null && isSameImage(input, generated)) error("Nightmare returned the original image unchanged; verify the img2img flow and its image input.")
+           if (mask != null && input != null) compositeMaskedEdit(input, generated, mask) else if (faceDetailRun && input != null) {
+             compositeRefinedFaces(input, generated) ?: error("No faces could be automatically located for face-only refinement. Original photo preserved.")
+            } else if (input != null) {
+              val framed = preserveFraming(input, generated)
+              if (EditRequestRouting.shouldPreserveFace(requestedPrompt))
+               preserveDetectedFace(input, framed) else framed
+             } else generated
+          } else if (useLocal) {
+           val encoded = input?.let { bitmap ->
+            ByteArrayOutputStream().use { stream -> bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream); Base64.encodeToString(stream.toByteArray(), Base64.NO_WRAP) }
+           }
+           if (mask != null) error("Painted-area edits require an HTTPS AUTOMATIC1111 server")
+           val frame = LocalDreamClient.generate(editPrompt, encoded, requestedStrength, ratio = if (studio && input == null) studioRatio else "1:1", size = if (studio && input == null) studioSize else 1024, literal = studio) { step, total ->
+            runOnUiThread { if (generationJob?.isActive == true) status = "Creating image: step $step of $total" }
+           }
+           Bitmap.createBitmap(frame.pixels, frame.width, frame.height, Bitmap.Config.ARGB_8888).let { generated ->
+             if (faceDetailRun && input != null) compositeRefinedFaces(input, generated) ?: error("No faces located for face-only refinement.") else generated
+            }
+          } else {
+           val generated = generateImage(address, editPrompt, input, requestedStrength, mask, requestedHighQuality, cartoonMode && tab == 0 && input == null, if (studio && input == null) studioDimensions(studioSize, studioRatio) else null, studio)
+           if (faceDetailRun && input != null) compositeRefinedFaces(input, generated) ?: error("No faces located for face-only refinement.") else if (input != null && mask == null) preserveFraming(input, generated) else generated
+          }
+         }
+         inferenceFinishedAt = android.os.SystemClock.elapsedRealtime()
+         kotlinx.coroutines.currentCoroutineContext().ensureActive()
+         stripeRepairUndo = null
+         result = completedImage
+         if (result != null && isNearlyWhiteImage(result!!)) {
+          result = null
+          status = "The AI returned a blank white image. Your original photo is safe. Try again with lower edit strength or restart the model."
+         } else {
+          generationPercent = 100
+          if (studio) {
+           latestStudioImage = completedImage
+           withContext(Dispatchers.IO) {
+            val file = android.util.AtomicFile(latestFile)
+            val stream = file.startWrite()
+            try {
+             check(completedImage.compress(Bitmap.CompressFormat.PNG, 100, stream))
+             file.finishWrite(stream)
+            } catch (e: Exception) { file.failWrite(stream); throw e }
+           }
+          }
+          if (input == null && useNightmare) lastRequestDetails = NightmareClient.lastGenerationDetails
+           resultGeneratedHere = if (input == null) true else originalGeneratedHere
+           status = if (usedFastLocalEdit) "Fast local recolor complete. Only detected fabric pixels were changed; no AI render was needed." else if (useOnlineEdit) "Online Qwen edit complete. Check the result against the original." else if (useNativeEdit) "Qwen Turbo edit complete. Compare the face, pose and background with the original." else if (input != null && useNightmare) "Nightmare local edit complete (actual flow: ${NightmareClient.lastImageFlowUsed.ifBlank { EditRequestRouting.chooseFlow(editFlowForRun, requestedPrompt) }}). Actual model must be confirmed in Nightmare run details." else if (input != null) "AI returned an edit — compare it with your requested change below" else if (cartoonMode && tab == 0 && input == null && useNightmare) "Cartoon generated with ${NightmareClient.lastCartoonModelLabel}. ${if (NightmareClient.lastCartoonLetteringApplied) "Exact English dialogue added to speech bubbles." else "For correctly spelled speech bubbles, put the words in double quotes."} Compare the result to your prompt." else "Image ready"
+         }
+         val totalSeconds = (android.os.SystemClock.elapsedRealtime() - editStartedAt) / 1000
+         val engineSeconds = (inferenceFinishedAt - editStartedAt) / 1000
+         status += " | Engine: ${if (usedFastLocalEdit) "On-device color edit" else editEngine} | Processing: ${engineSeconds}s | Total: ${totalSeconds}s"
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e
+        } catch (e: Exception) {
+         val nightmareHelp = if (useNightmare) NightmareConnectionDiagnostics.helpFor(e) else null
+         nightmareConnectionFailed = nightmareHelp != null
+         status = when {
+          nightmareHelp != null -> nightmareHelp
+          useOnlineEdit -> "Online Qwen edit failed: ${e.message ?: "Check your endpoint, model and token"}. Original image unchanged."
+           useNativeEdit -> "Native Qwen edit failed: ${e.message ?: "Unknown model error"}. Your original image is unchanged."
+          useNightmare -> "Nightmare ${if (input != null) "edit" else "generation"} failed (flow: ${if (input != null) editFlowForRun else imageFlowForRun}): ${e.message ?: "connection failed"}. Open the matching flow in Nightmare, check its model and image input."
+          useLocal -> "Local Dream: ${e.message ?: "connection failed"}. Keep the model loaded; try split screen if disconnected."
+          else -> "Could not create image: ${e.message ?: "connection failed"}"
+         }
+        } finally { progressJob?.cancel(); if (generationJob == kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job]) { busy = false; generationJob = null } }
+       }
+      }
+    fun requestVideo(image: Bitmap) {
+        if (!useMobileI2V && motionPrompt.isBlank()) status = "Describe the desired movement"
+        else {
+         busy = true
+         generationPercent = 0
+         videoElapsedSeconds = 0
+         status = if (useMobileI2V) "Running offline MobileI2V models…" else "Connecting to Nightmare…"
+         generationJob = scope.launch {
+          try {
+           val video = withContext(Dispatchers.IO) {
+            // Clean only stale FreedomAI render artifacts, never user media or models.
+            runOnUiThread { status = "Preparing video: clearing temporary memory…" }
+            val staleCutoff = System.currentTimeMillis() - 60L * 60L * 1000L
+            cacheDir.listFiles()?.forEach { file ->
+             if (file.isFile && file.lastModified() < staleCutoff &&
+                 (file.name.startsWith("mobilei2v_") || file.name.startsWith("freedomai_video_")) &&
+                 file.extension.lowercase() in setOf("mp4", "tmp")) {
+              runCatching { file.delete() }
+             }
+            }
+            // Avoid expensive forced GC/finalization when Nightmare handles video inference.
+            if (useMobileI2V) {
+             System.gc()
+             runOnUiThread { status = "Preparing MobileI2V ONNX models…" }
+            } else {
+             runOnUiThread { status = "Connecting to Nightmare…" }
+            }
+            if (useMobileI2V) {
+             fun checkpoint(stage: String) {
+              val memory = android.app.ActivityManager.MemoryInfo()
+              (getSystemService(ACTIVITY_SERVICE) as android.app.ActivityManager).getMemoryInfo(memory)
+              val processMiB = android.os.Debug.getPss() / 1024
+              val availableMiB = memory.availMem / (1024 * 1024)
+              prefs.edit().putString("mobilei2v_checkpoint",
+               "$stage · app PSS ${processMiB} MiB · available ${availableMiB} MiB").commit()
+             }
+             checkpoint("Checking models")
+             val models = java.io.File(filesDir, "models/video-v1")
+             // Check verified release on every video attempt so previously installed
+             // full-precision models can be upgraded to the smaller validated graph.
+             runOnUiThread { status = "Checking compatible MobileI2V models…" }
+             MobileI2VModelUpdater.install(models) { p ->
+              runOnUiThread { generationPercent = p; status = "Checking MobileI2V models… $p%" }
+             }
+             runOnUiThread { generationPercent = 0; status = "Generating MobileI2V video…" }
+             checkpoint("Models ready, starting inference")
+             var lastCheckpoint = -1
+             MobileI2VVideoEngine.generate(this@MainActivity, java.io.File(filesDir, "models/video-v1"), cacheDir, image, motionPrompt, duration) { p ->
+              if (generationJob?.isActive == false) throw kotlinx.coroutines.CancellationException("MobileI2V cancelled")
+              if (p != lastCheckpoint) {
+               checkpoint("Inference progress $p%")
+               lastCheckpoint = p
+              }
+              runOnUiThread { generationPercent = p; status = "MobileI2V processing… $p%" }
+             }
+            } else {
+             NightmareVideoClient.generate(this@MainActivity, nightmareToken, nightmareVideoFlow, image, motionPrompt, duration) { stage ->
+              runOnUiThread {
+               if (busy && !useMobileI2V && generationJob?.isActive == true) status = stage
+              }
+             }
+            }
+           }
+           kotlinx.coroutines.currentCoroutineContext().ensureActive()
+           if (useMobileI2V) withContext(Dispatchers.IO) {
+            // Experimental MP4 must pass the same corruption and motion gate.
+            // A pan/zoom substitute or still clip must not be called AI action.
+            NightmareVideoQualityGate.requireUsable(this@MainActivity, video.bytes)
+           }
+           val values = ContentValues().apply {
+            put(MediaStore.Video.Media.DISPLAY_NAME, "FreedomAI_Motion_${System.currentTimeMillis()}.mp4")
+            put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
+            put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/FreedomAI")
+            put(MediaStore.Video.Media.IS_PENDING, 1)
+           }
+           val uri = contentResolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values) ?: error("Cannot save video")
+           try {
+            withContext(Dispatchers.IO) { contentResolver.openOutputStream(uri)?.use { it.write(video.bytes) } ?: error("Cannot write MP4") }
+            contentResolver.update(uri, ContentValues().apply { put(MediaStore.Video.Media.IS_PENDING, 0) }, null, null)
+            val quality = withContext(Dispatchers.IO) {
+             runCatching { VideoMotionCheck.inspect(this@MainActivity, uri) }.getOrNull()
+            }
+            lastVideo = uri
+            lastVideoGenerator = if (useMobileI2V) "MobileI2V (offline)" else "Nightmare"
+            prefs.edit().putString("last_video_generator", lastVideoGenerator)
+             .putString("last_video_uri", uri.toString()).apply()
+            showVideoPlayer = true
+            generationPercent = 100
+            status = if (useMobileI2V) "Experimental MobileI2V video saved (${video.width}×${video.height}, ${video.durationLabel}s). Motion prompts are unsupported in the official checkpoint; check frame quality." else if (video.reducedForMemory) "AI video saved to Movies/FreedomAI (reduced to ${video.width}×${video.height}, ${video.durationLabel}s to fit NPU memory)." else "AI video saved to Movies/FreedomAI (${video.width}×${video.height}, ${video.durationLabel}s)."
+            if (quality != null && quality.samples >= 4) {
+             if (quality.nearlyStatic) status += " WARNING: Video contains almost no movement."
+             if (quality.largeFrameChanges >= 3) status += " WARNING: Abrupt frame changes detected; possible video model/decoder corruption. Try another compatible Nightmare image-to-video workflow."
+             android.util.Log.i("FreedomAI-VideoQuality", "Generator=${lastVideoGenerator}, change=${quality.meanChange}, abrupt=${quality.largeFrameChanges}")
+            }
+           } catch (e: Exception) { contentResolver.delete(uri, null, null); throw e }
+          } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+          catch (e: OutOfMemoryError) {
+           status = "MobileI2V stopped: Android ran out of memory. Original photo is preserved. Use a smaller model or remote video rendering."
+           android.util.Log.e("MobileI2V", "Video memory exhaustion", e)
+          }
+          catch (e: Exception) {
+           android.util.Log.e("MobileI2V", "Video generation failed", e)
+           status = "AI video failed: ${e.message}"
+          }
+          finally { if (generationJob == kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job]) { busy = false; generationJob = null } }
+         }
+        }
+    }
+    fun openTool(next: StudioTool, starter: String? = null) {
+     tool = next
+     videoMode = next == StudioTool.VIDEO
+     cartoonMode = false
+     tab = if (next == StudioTool.TEXT) 0 else 1
+     if (starter != null) prompt = starter
+     status = ""
+    }
+    androidx.activity.compose.BackHandler(enabled = !studio || tab != -1) {
+     if (!busy) { studio = true; tab = -1; videoMode = false }
+    }
+    if (studio) Scaffold(containerColor = UiColor(0xFF090B10), bottomBar = {
+     NavigationBar(containerColor = UiColor(0xFF1F2330)) {
+      listOf("Home", "Generate", "Creation").forEachIndexed { i, label ->
+       NavigationBarItem(selected = when(i) { 0 -> tab == -1; 1 -> tab == 0 || tab == 1; else -> tab == 4 },
+        enabled = !busy, onClick = { when(i) { 0 -> tab = -1; 1 -> openTool(tool); else -> tab = 4 } },
+        icon = { Text(listOf("⌂", "⊕", "▣")[i], color = if (i == 1) studioOrange else UiColor.White) },
+        label = { Text(label) })
+      }
+     }
+    }) { inset ->
+     key(tab, tool) {
+      Column(Modifier.padding(inset).fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+       verticalArrangement = Arrangement.spacedBy(14.dp)) {
+       when (tab) {
+        -1 -> StudioHome({ next, starter -> openTool(next, starter) }, { studio = false; tab = -1 })
+        4 -> {
+         Text("Creation", style = MaterialTheme.typography.headlineSmall)
+         latestStudioImage?.let { bitmap ->
+          Image(bitmap.asImageBitmap(), "Latest image", Modifier.fillMaxWidth().heightIn(max = 420.dp).clickable { expandedPhoto = bitmap })
+          Button(onClick = { save(bitmap) }) { Text("Save image") }
+         }
+         if (lastVideo != null) OutlinedButton(onClick = { showVideoPlayer = true }) { Text("Play latest video") }
+         if (latestStudioImage == null && lastVideo == null) Text("Your next creation will appear here.")
+        }
+        else -> {
+         Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+          Text(if (videoMode) "AI Videos" else "AI Images", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
+          TextButton(enabled = !busy, onClick = { studio = false; showConnection = true }) { Text("Settings") }
+         }
+         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+          StudioTool.entries.forEach { next ->
+           FilterChip(selected = next == tool, enabled = !busy, onClick = { openTool(next) }, label = { Text(next.label) },
+            colors = FilterChipDefaults.filterChipColors(selectedContainerColor = studioOrange, selectedLabelColor = UiColor.Black))
+          }
+         }
+         if (tool != StudioTool.TEXT) {
+          Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp, androidx.compose.ui.Alignment.CenterHorizontally)) {
+           StudioReference("Add Image", original, !busy) { pickingSecond = false; picker.launch("image/*") }
+           if (!videoMode) StudioReference("Optional", second, !busy) { pickingSecond = true; picker.launch("image/*") }
+          }
+          if (!videoMode && second != null) TextButton(enabled = !busy, onClick = { second = null }) { Text("Remove second reference • side-by-side input") }
+         }
+         OutlinedTextField(if (videoMode) motionPrompt else prompt,
+          { if (videoMode) motionPrompt = it else prompt = it }, enabled = !busy,
+          modifier = Modifier.fillMaxWidth().heightIn(min = 148.dp), shape = RoundedCornerShape(18.dp),
+          colors = OutlinedTextFieldDefaults.colors(unfocusedContainerColor = UiColor(0xFF292F3D), focusedContainerColor = UiColor(0xFF292F3D)),
+          placeholder = { Text(when(tool) {
+           StudioTool.VIDEO -> "Describe motion, expression, camera movement, and atmosphere."
+           StudioTool.EDIT -> "Describe the outfit, pose, style, lighting, and mood to change."
+           StudioTool.TEXT -> "Describe the image you want to create."
+          }) })
+         if (tool == StudioTool.TEXT) {
+          StudioOptions("Size", listOf("512", "768", "1024"), studioSize.toString(), !busy) { studioSize = it.toInt() }
+          StudioOptions("Ratio", listOf("1:1", "3:4", "4:3", "9:16"), studioRatio, !busy) { studioRatio = it }
+         }
+         if (videoMode) StudioOptions("Duration", listOf(2,4,8,10).map { "${it}s" }, "${duration}s", !busy) { duration = it.removeSuffix("s").toInt() }
+         Button(enabled = !busy && (if (videoMode) motionPrompt else prompt).isNotBlank() && (tool == StudioTool.TEXT || original != null),
+          modifier = Modifier.fillMaxWidth(), onClick = {
+           if (videoMode) { useMobileI2V = false; original?.let { requestVideo(it) } }
+           else if (tool == StudioTool.TEXT) requestImage(null)
+           else original?.let { first -> requestImage(second?.let { referencePair(first,it) } ?: first) }
+          }, colors = ButtonDefaults.buttonColors(containerColor = studioOrange, contentColor = UiColor.Black)) {
+          Text(if (busy) "Generating…" else if (videoMode) "Generate Video" else "Generate Image")
+         }
+         if (busy) { LinearProgressIndicator(Modifier.fillMaxWidth()); TextButton(onClick = { cancelGeneration() }) { Text("Cancel") } }
+         if (status.isNotBlank()) Text(status)
+         if (!videoMode && result != null && latestStudioImage === result) latestStudioImage?.let { bitmap ->
+          Image(bitmap.asImageBitmap(), "Generated image", Modifier.fillMaxWidth().heightIn(max = 420.dp).clickable { expandedPhoto = bitmap })
+          OutlinedButton(onClick = { save(bitmap) }) { Text("Save image") }
+         }
+        }
+       }
+      }
+     }
+    } else Scaffold(bottomBar = {
      NavigationBar {
+      NavigationBarItem(selected = false, enabled = !busy, onClick = { studio = true; tab = -1; videoMode = false }, icon = { Text("⌂") }, label = { Text("Studio") })
       NavigationBarItem(selected = tab == -1, onClick = { tab = -1; videoMode = false; prompt = ""; motionPrompt = ""; status = ""; result = null; original = null; generationPercent = 0; brightness = 0f; saturation = 1f; strokes.clear(); drawing = emptyList(); maskMode = false; expandedPhoto = null; pendingAssistantImage = null; originalGeneratedHere = false; resultGeneratedHere = false }, icon = { Text("⌂") }, label = { Text("Home") })
       NavigationBarItem(selected = tab == 0, onClick = { tab = 0 }, icon = { Text("✦") }, label = { Text("Create") })
       NavigationBarItem(selected = tab == 1, onClick = { tab = 1 }, icon = { Text("◈") }, label = { Text("Edit") })
@@ -790,203 +1211,6 @@ class MainActivity : ComponentActivity() {
         modifier = Modifier.fillMaxWidth()) { Text("Open Nightmare") }
        OutlinedButton(enabled = !busy, onClick = { checkNightmareConnection() },
         modifier = Modifier.fillMaxWidth()) { Text("Check Nightmare connection") }
-      }
-      fun requestImage(input: Bitmap?, promptOverride: String? = null) {
-        val faceDetailRun = input != null && promptOverride == FaceDetailEnhancement.REFINE_PROMPT
-       if ((promptOverride ?: prompt).isBlank() && !(tab == 2 && fictionalAdultMode && input == null)) { status = "Describe the image first"; return }
-       // FAST: a conservative, color-only bikini recolor can use source pixels
-       // without AI inference. If fabric recognition fails, use the selected editor.
-       val useOnlineEdit = false
-       val useNativeEdit = input != null && nativeQwen && !useOnlineEdit && !nightmareMode
-       val autoColorRequest = if (input != null && editSpeed == "FAST" &&
-         !maskMode && !precisionEdit) AutomaticClothingEdit.parse(promptOverride ?: prompt) else null
-        if (useNativeEdit && !qwenReady) {
-        status = "Download Qwen Turbo models in the Edit tab before using built-in AI Edit (~11 GB)."
-        return
-       }
-       val address = server.trim().trimEnd('/')
-       if (autoColorRequest == null && !useNativeEdit && !useOnlineEdit && !nightmareMode && !localMode && runCatching { URL(address).let { it.protocol == "https" && it.host.isNotBlank() && it.userInfo == null && it.query == null && it.ref == null } }.getOrDefault(false).not()) {
-        status = "Enter a valid HTTPS server URL"; return
-       }
-       prefs.edit().putString("url", address).apply()
-       val hybridCandidates = if (hybridAuto && !useNativeEdit && !useOnlineEdit) {
-        val task = if (input == null) HybridEngineSelector.Task.TEXT_IMAGE else HybridEngineSelector.Task.IMAGE_EDIT
-        HybridEngineSelector.candidates(
-         HybridEngineSelector.Request(HybridEngineSelector.Mode.AUTO, task,
-          internetAvailable = true, preferQuality = (if (input == null) generationSpeed else editSpeed) == "MAX QUALITY"),
-         listOf(
-          HybridEngineSelector.Engine("nightmare", HybridEngineSelector.Location.DEVICE,
-           setOf(HybridEngineSelector.Task.TEXT_IMAGE, HybridEngineSelector.Task.IMAGE_EDIT),
-           ready = nightmareMode, qualityRank = 3),
-          HybridEngineSelector.Engine("localdream", HybridEngineSelector.Location.DEVICE,
-           setOf(HybridEngineSelector.Task.TEXT_IMAGE, HybridEngineSelector.Task.IMAGE_EDIT),
-           ready = localMode, qualityRank = 1),
-          HybridEngineSelector.Engine("remote", HybridEngineSelector.Location.NETWORK,
-           setOf(HybridEngineSelector.Task.TEXT_IMAGE, HybridEngineSelector.Task.IMAGE_EDIT),
-           ready = !nightmareMode && !localMode && address.startsWith("https://"), qualityRank = 2)
-         )
-        )
-       } else emptyList()
-       if (hybridAuto && !useNativeEdit && !useOnlineEdit && hybridCandidates.isEmpty()) {
-        status = "Auto: no configured compatible image engine. Enable Nightmare or Local Dream, or configure an HTTPS server."
-        return
-       }
-       val selectedEngine = hybridCandidates.firstOrNull()?.id
-       val useLocal = if (hybridAuto) selectedEngine == "localdream" else localMode
-       val useNightmare = if (hybridAuto) selectedEngine == "nightmare" else nightmareMode && !useOnlineEdit && !useNativeEdit
-       if (cartoonMode && tab == 0 && input == null && !useNightmare) {
-        status = "Cartoon creation requires Nightmare text-to-image. Select Nightmare in Connection settings; the photo/edit engines cannot create a fresh cartoon here."
-        return
-       }
-       val tokenForRun = nightmareToken
-       val imageFlowForRun = if (cartoonMode && tab == 0 && input == null) {
-        CartoonImagePrompt.generationFlow()
-       } else nightmareImageFlow
-       // Respect Auto: garment changes need auto-masked inpainting; forcing flux_edit
-        // here incorrectly bypassed the selected editing workflow on every photo edit.
-       val requestedPrompt = if (tab == 2 && fictionalAdultMode && input == null) {
-        val age = characterAge.toIntOrNull()
-        if (age == null || age < 18 || age > 100) { status = "Enter an adult age from 18 to 100"; return }
-        FictionalAdultPrompt.build(age, characterSubject, appearance, bodyDescription, pose, setting, photoStyle, prompt, anatomyChoice, sceneCount)
-       } else (promptOverride ?: prompt)
-       // Keep "auto" intact so NightmareClient can recover from missing inpaint
-       // auto-mask support. The original user instruction is passed separately
-       // for routing, so the English comic-text hint cannot switch to img2img.
-       val editFlowForRun = if (faceDetailRun && nightmareMode) "flux_edit" else nightmareEditFlow
-         val requestedStrength = if (faceDetailRun) 0.45f else if (input != null) editStrength.coerceIn(0.10f, 0.80f) else editStrength
-       val requestedSpeed = if (faceDetailRun) "MAX QUALITY" else if (input != null) editSpeed else generationSpeed
-       val requestedHighQuality = requestedSpeed == "MAX QUALITY"
-       val requestedResolution = if (input == null && requestedSpeed == "FAST") 768 else resolution
-       val editPrompt = if (input != null) {
-         if (faceDetailRun) requestedPrompt else CartoonImagePrompt.withEnglishTextForEditing("$requestedPrompt. Keep the same person, face, pose, camera and background.")
-        } else if (cartoonMode && tab == 0) CartoonImagePrompt.generationPrompt(
-         requestedPrompt, expandCartoonPrompt, cartoonStyle, cartoonCharacters, cartoonMaleClothing, cartoonFemaleClothing
-        ) else requestedPrompt.trim() // Preserve exact user wording for photo generation
-       if (input != null && !faceDetailRun && precisionEdit && (!maskMode || strokes.isEmpty())) {
-        status = "Precision Edit requires a painted area. Paint the region to change or disable Precision Edit."
-        return
-       }
-       val mask = if (input != null && !faceDetailRun && maskMode && strokes.isNotEmpty()) makeMask(input.width, input.height, strokes.toList(), brush) else null
-              lastRequestDetails = ""
-              result = null // Do not leave a previous variation visible as a failed new edit.
-              busy = true; generationPercent = 0; renderingPercent = 0; nativeProgress = useNativeEdit
-              nightmareConnectionFailed = false
-              status = if (useOnlineEdit) "Editing with online Qwen…" else if (useNativeEdit) "Editing locally with Qwen Turbo…" else if (input != null) "Editing photo…" else "Creating image…" 
-        // Nightmare does not currently expose generation progress through this client.
-        // Show an explicitly estimated percentage, capped below 100 until an image arrives.
-        val progressJob = if (useNativeEdit) null else scope.launch {
-         imageElapsedSeconds = 0
-         while (isActive && busy) {
-          delay(1000)
-          if (busy) {
-           imageElapsedSeconds++
-           generationPercent = (generationPercent + 1).coerceAtMost(80)
-            // Remote rendering has no actual progress callback. Display a
-            // clearly labeled estimate that never reaches 100% before completion.
-            if (!nativeProgress) renderingPercent = (renderingPercent + 1).coerceAtMost(95)
-          }
-         }
-        }
-       generationJob = scope.launch {
-        val editEngine = if (useOnlineEdit) "Online Qwen" else if (useNativeEdit) "On-device Qwen" else if (useNightmare) "Nightmare" else if (useLocal) "Local Dream" else "Remote image server"
-        var usedFastLocalEdit = false
-        val editStartedAt = android.os.SystemClock.elapsedRealtime()
-        var inferenceFinishedAt = editStartedAt
-        try {
-         status = "$editEngine: processing image (elapsed time shown below)"
-         val completedImage = withContext(Dispatchers.IO) {
-          val fastLocalColor = if (input != null && autoColorRequest != null)
-           AutomaticClothingEdit.recolor(input, autoColorRequest) else null
-          if (fastLocalColor != null) {
-           usedFastLocalEdit = true
-           fastLocalColor
-           } else if (useNativeEdit && input != null) {
-           val generated = NativeQwenEditor.edit(
-            this@MainActivity, input, editPrompt,
-            com.scsonic.qwenimage21.QwenImage21.Size.Tier.valueOf(if (faceDetailRun) "STANDARD" else qwenTier)
-           ) { percentage -> runOnUiThread {
-            if (generationJob?.isActive == true) {
-             generationPercent = percentage
-             status = "Qwen Turbo: $percentage% completed"
-            }
-           } }
-           check(!isNearlyWhiteImage(generated)) { "Qwen returned a blank image." }
-           if (faceDetailRun) compositeRefinedFaces(input, generated) ?: error("No faces could be located for face-only refinement.") else if (mask != null) compositeMaskedEdit(input, generated, mask) else generated
-          } else if (useNightmare) {
-           val generated = try {
-            NightmareClient.generate(editPrompt, tokenForRun, input, requestedStrength, requestedHighQuality, requestedResolution, editFlowForRun, requestedSpeed, imageFlowForRun, cartoonMode = cartoonMode && tab == 0 && input == null, routingPrompt = requestedPrompt, requestedModelId = if (input == null && nightmareMode) nightmareSelectedModel.ifBlank { null } else null)
-           } catch (nightmareError: Exception) {
-            val maskFailure = nightmareError.message.orEmpty()
-             val maskUnavailable = input != null &&
-              (maskFailure.contains("auto-mask is unavailable", ignoreCase = true) ||
-               maskFailure.contains("cannot automatically mask", ignoreCase = true) ||
-               maskFailure.contains("no working instruction-edit fallback", ignoreCase = true))
-            if (maskUnavailable && qwenReady) {
-             runOnUiThread { status = "Nightmare mask unavailable. Trying installed Qwen editor…" }
-             NativeQwenEditor.edit(this@MainActivity, input!!, editPrompt,
-              com.scsonic.qwenimage21.QwenImage21.Size.Tier.valueOf(if (faceDetailRun) "STANDARD" else qwenTier)
-             ) { percentage -> runOnUiThread { generationPercent = percentage } }
-            } else if (maskUnavailable) {
-             // NightmareClient has already tried the installed instruction-edit
-             // fallback when the original workflow was Auto. Do not repeat it.
-             error("Nightmare could not complete the edit: ${maskFailure.take(330)}. Original photo preserved. Check the installed Qwen/FLUX editor in Nightmare, or enable Clothes Auto Mask.")
-            } else throw nightmareError
-           }
-           check(!isNearlyWhiteImage(generated)) { "The AI returned a blank white image. Try a different flow or restart the model." }
-           if (input != null && isSameImage(input, generated)) error("Nightmare returned the original image unchanged; verify the img2img flow and its image input.")
-           if (mask != null && input != null) compositeMaskedEdit(input, generated, mask) else if (faceDetailRun && input != null) {
-             compositeRefinedFaces(input, generated) ?: error("No faces could be automatically located for face-only refinement. Original photo preserved.")
-            } else if (input != null) {
-              val framed = preserveFraming(input, generated)
-              if (EditRequestRouting.shouldPreserveFace(requestedPrompt))
-               preserveDetectedFace(input, framed) else framed
-             } else generated
-          } else if (useLocal) {
-           val encoded = input?.let { bitmap ->
-            ByteArrayOutputStream().use { stream -> bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream); Base64.encodeToString(stream.toByteArray(), Base64.NO_WRAP) }
-           }
-           if (mask != null) error("Painted-area edits require an HTTPS AUTOMATIC1111 server")
-           val frame = LocalDreamClient.generate(editPrompt, encoded, requestedStrength) { step, total ->
-            runOnUiThread { if (generationJob?.isActive == true) status = "Creating image: step $step of $total" }
-           }
-           Bitmap.createBitmap(frame.pixels, frame.width, frame.height, Bitmap.Config.ARGB_8888).let { generated ->
-             if (faceDetailRun && input != null) compositeRefinedFaces(input, generated) ?: error("No faces located for face-only refinement.") else generated
-            }
-          } else {
-           val generated = generateImage(address, editPrompt, input, requestedStrength, mask, requestedHighQuality, cartoonMode && tab == 0 && input == null)
-           if (faceDetailRun && input != null) compositeRefinedFaces(input, generated) ?: error("No faces located for face-only refinement.") else if (input != null && mask == null) preserveFraming(input, generated) else generated
-          }
-         }
-         inferenceFinishedAt = android.os.SystemClock.elapsedRealtime()
-         kotlinx.coroutines.currentCoroutineContext().ensureActive()
-         stripeRepairUndo = null
-         result = completedImage
-         if (result != null && isNearlyWhiteImage(result!!)) {
-          result = null
-          status = "The AI returned a blank white image. Your original photo is safe. Try again with lower edit strength or restart the model."
-         } else {
-          generationPercent = 100
-          if (input == null && useNightmare) lastRequestDetails = NightmareClient.lastGenerationDetails
-           resultGeneratedHere = if (input == null) true else originalGeneratedHere
-           status = if (usedFastLocalEdit) "Fast local recolor complete. Only detected fabric pixels were changed; no AI render was needed." else if (useOnlineEdit) "Online Qwen edit complete. Check the result against the original." else if (useNativeEdit) "Qwen Turbo edit complete. Compare the face, pose and background with the original." else if (input != null && useNightmare) "Nightmare local edit complete (actual flow: ${NightmareClient.lastImageFlowUsed.ifBlank { EditRequestRouting.chooseFlow(editFlowForRun, requestedPrompt) }}). Actual model must be confirmed in Nightmare run details." else if (input != null) "AI returned an edit — compare it with your requested change below" else if (cartoonMode && tab == 0 && input == null && useNightmare) "Cartoon generated with ${NightmareClient.lastCartoonModelLabel}. ${if (NightmareClient.lastCartoonLetteringApplied) "Exact English dialogue added to speech bubbles." else "For correctly spelled speech bubbles, put the words in double quotes."} Compare the result to your prompt." else "Image ready"
-         }
-         val totalSeconds = (android.os.SystemClock.elapsedRealtime() - editStartedAt) / 1000
-         val engineSeconds = (inferenceFinishedAt - editStartedAt) / 1000
-         status += " | Engine: ${if (usedFastLocalEdit) "On-device color edit" else editEngine} | Processing: ${engineSeconds}s | Total: ${totalSeconds}s"
-        } catch (e: kotlinx.coroutines.CancellationException) { throw e
-        } catch (e: Exception) {
-         val nightmareHelp = if (useNightmare) NightmareConnectionDiagnostics.helpFor(e) else null
-         nightmareConnectionFailed = nightmareHelp != null
-         status = when {
-          nightmareHelp != null -> nightmareHelp
-          useOnlineEdit -> "Online Qwen edit failed: ${e.message ?: "Check your endpoint, model and token"}. Original image unchanged."
-           useNativeEdit -> "Native Qwen edit failed: ${e.message ?: "Unknown model error"}. Your original image is unchanged."
-          useNightmare -> "Nightmare ${if (input != null) "edit" else "generation"} failed (flow: ${if (input != null) editFlowForRun else imageFlowForRun}): ${e.message ?: "connection failed"}. Open the matching flow in Nightmare, check its model and image input."
-          useLocal -> "Local Dream: ${e.message ?: "connection failed"}. Keep the model loaded; try split screen if disconnected."
-          else -> "Could not create image: ${e.message ?: "connection failed"}"
-         }
-        } finally { progressJob?.cancel(); if (generationJob == kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job]) { busy = false; generationJob = null } }
-       }
       }
       if (tab == 2 && adultConfirmed) {
        Card(Modifier.fillMaxWidth()) {
@@ -1491,113 +1715,7 @@ class MainActivity : ComponentActivity() {
          Text("Elapsed: ${videoElapsedSeconds}s. Nightmare does not report a reliable live completion percentage.")
         }
        }
-       Button(enabled = !busy, onClick = {
-        if (!useMobileI2V && motionPrompt.isBlank()) status = "Describe the desired movement"
-        else {
-         busy = true
-         generationPercent = 0
-         videoElapsedSeconds = 0
-         status = if (useMobileI2V) "Running offline MobileI2V models…" else "Connecting to Nightmare…"
-         generationJob = scope.launch {
-          try {
-           val video = withContext(Dispatchers.IO) {
-            // Clean only stale FreedomAI render artifacts, never user media or models.
-            runOnUiThread { status = "Preparing video: clearing temporary memory…" }
-            val staleCutoff = System.currentTimeMillis() - 60L * 60L * 1000L
-            cacheDir.listFiles()?.forEach { file ->
-             if (file.isFile && file.lastModified() < staleCutoff &&
-                 (file.name.startsWith("mobilei2v_") || file.name.startsWith("freedomai_video_")) &&
-                 file.extension.lowercase() in setOf("mp4", "tmp")) {
-              runCatching { file.delete() }
-             }
-            }
-            // Avoid expensive forced GC/finalization when Nightmare handles video inference.
-            if (useMobileI2V) {
-             System.gc()
-             runOnUiThread { status = "Preparing MobileI2V ONNX models…" }
-            } else {
-             runOnUiThread { status = "Connecting to Nightmare…" }
-            }
-            if (useMobileI2V) {
-             fun checkpoint(stage: String) {
-              val memory = android.app.ActivityManager.MemoryInfo()
-              (getSystemService(ACTIVITY_SERVICE) as android.app.ActivityManager).getMemoryInfo(memory)
-              val processMiB = android.os.Debug.getPss() / 1024
-              val availableMiB = memory.availMem / (1024 * 1024)
-              prefs.edit().putString("mobilei2v_checkpoint",
-               "$stage · app PSS ${processMiB} MiB · available ${availableMiB} MiB").commit()
-             }
-             checkpoint("Checking models")
-             val models = java.io.File(filesDir, "models/video-v1")
-             // Check verified release on every video attempt so previously installed
-             // full-precision models can be upgraded to the smaller validated graph.
-             runOnUiThread { status = "Checking compatible MobileI2V models…" }
-             MobileI2VModelUpdater.install(models) { p ->
-              runOnUiThread { generationPercent = p; status = "Checking MobileI2V models… $p%" }
-             }
-             runOnUiThread { generationPercent = 0; status = "Generating MobileI2V video…" }
-             checkpoint("Models ready, starting inference")
-             var lastCheckpoint = -1
-             MobileI2VVideoEngine.generate(this@MainActivity, java.io.File(filesDir, "models/video-v1"), cacheDir, image, motionPrompt, duration) { p ->
-              if (generationJob?.isActive == false) throw kotlinx.coroutines.CancellationException("MobileI2V cancelled")
-              if (p != lastCheckpoint) {
-               checkpoint("Inference progress $p%")
-               lastCheckpoint = p
-              }
-              runOnUiThread { generationPercent = p; status = "MobileI2V processing… $p%" }
-             }
-            } else {
-             NightmareVideoClient.generate(this@MainActivity, nightmareToken, nightmareVideoFlow, image, motionPrompt, duration) { stage ->
-              runOnUiThread {
-               if (busy && !useMobileI2V && generationJob?.isActive == true) status = stage
-              }
-             }
-            }
-           }
-           kotlinx.coroutines.currentCoroutineContext().ensureActive()
-           if (useMobileI2V) withContext(Dispatchers.IO) {
-            // Experimental MP4 must pass the same corruption and motion gate.
-            // A pan/zoom substitute or still clip must not be called AI action.
-            NightmareVideoQualityGate.requireUsable(this@MainActivity, video.bytes)
-           }
-           val values = ContentValues().apply {
-            put(MediaStore.Video.Media.DISPLAY_NAME, "FreedomAI_Motion_${System.currentTimeMillis()}.mp4")
-            put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
-            put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/FreedomAI")
-            put(MediaStore.Video.Media.IS_PENDING, 1)
-           }
-           val uri = contentResolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values) ?: error("Cannot save video")
-           try {
-            withContext(Dispatchers.IO) { contentResolver.openOutputStream(uri)?.use { it.write(video.bytes) } ?: error("Cannot write MP4") }
-            contentResolver.update(uri, ContentValues().apply { put(MediaStore.Video.Media.IS_PENDING, 0) }, null, null)
-            val quality = withContext(Dispatchers.IO) {
-             runCatching { VideoMotionCheck.inspect(this@MainActivity, uri) }.getOrNull()
-            }
-            lastVideo = uri
-            lastVideoGenerator = if (useMobileI2V) "MobileI2V (offline)" else "Nightmare"
-            prefs.edit().putString("last_video_generator", lastVideoGenerator)
-             .putString("last_video_uri", uri.toString()).apply()
-            showVideoPlayer = true
-            generationPercent = 100
-            status = if (useMobileI2V) "Experimental MobileI2V video saved (${video.width}×${video.height}, ${video.durationLabel}s). Motion prompts are unsupported in the official checkpoint; check frame quality." else if (video.reducedForMemory) "AI video saved to Movies/FreedomAI (reduced to ${video.width}×${video.height}, ${video.durationLabel}s to fit NPU memory)." else "AI video saved to Movies/FreedomAI (${video.width}×${video.height}, ${video.durationLabel}s)."
-            if (quality != null && quality.samples >= 4) {
-             if (quality.nearlyStatic) status += " WARNING: Video contains almost no movement."
-             if (quality.largeFrameChanges >= 3) status += " WARNING: Abrupt frame changes detected; possible video model/decoder corruption. Try another compatible Nightmare image-to-video workflow."
-             android.util.Log.i("FreedomAI-VideoQuality", "Generator=${lastVideoGenerator}, change=${quality.meanChange}, abrupt=${quality.largeFrameChanges}")
-            }
-           } catch (e: Exception) { contentResolver.delete(uri, null, null); throw e }
-          } catch (e: kotlinx.coroutines.CancellationException) { throw e }
-          catch (e: OutOfMemoryError) {
-           status = "MobileI2V stopped: Android ran out of memory. Original photo is preserved. Use a smaller model or remote video rendering."
-           android.util.Log.e("MobileI2V", "Video memory exhaustion", e)
-          }
-          catch (e: Exception) {
-           android.util.Log.e("MobileI2V", "Video generation failed", e)
-           status = "AI video failed: ${e.message}"
-          }
-          finally { if (generationJob == kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job]) { busy = false; generationJob = null } }
-         }
-        }
+       Button(enabled = !busy, onClick = { requestVideo(image)
        }, modifier = Modifier.fillMaxWidth()) { Text("Generate AI Video") }
        
         }
@@ -1647,8 +1765,10 @@ private fun adjust(bitmap: Bitmap, brightness: Float, saturation: Float): Bitmap
  return Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888).apply { setPixels(pixels, 0, w, 0, 0, w, h) }
 }
 
-private fun generateImage(server: String, prompt: String, input: Bitmap?, editStrength: Float, mask: Bitmap? = null, highQuality: Boolean = true, cartoonMode: Boolean = false): Bitmap {
+private fun generateImage(server: String, prompt: String, input: Bitmap?, editStrength: Float, mask: Bitmap? = null, highQuality: Boolean = true, cartoonMode: Boolean = false, canvas: Pair<Int, Int>? = null, literal: Boolean = false): Bitmap {
  val payload = JSONObject().put("prompt", prompt).put("negative_prompt", CartoonImagePrompt.negativePrompt(cartoonMode)).put("steps", if (highQuality) 35 else 20).put("cfg_scale", 6.0).put("width", if (input == null && highQuality) 768 else ((input?.width ?: 512).coerceIn(256, 1024) / 8 * 8)).put("height", if (input == null && highQuality) 1024 else ((input?.height ?: 512).coerceIn(256, 1024) / 8 * 8)).put("batch_size", 1)
+ if (literal) payload.put("negative_prompt", "")
+ canvas?.let { (w,h) -> payload.put("width", w).put("height", h) }
  if (input != null) {
   val bytes = ByteArrayOutputStream().use { stream -> input.compress(Bitmap.CompressFormat.PNG, 100, stream); stream.toByteArray() }
   payload.put("init_images", JSONArray().put(Base64.encodeToString(bytes, Base64.NO_WRAP))).put("denoising_strength", editStrength.toDouble())

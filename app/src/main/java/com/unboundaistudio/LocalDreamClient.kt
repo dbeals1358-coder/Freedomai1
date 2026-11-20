@@ -47,9 +47,9 @@ internal object LocalDreamClient {
   } finally { c.disconnect() }
  }
 
- fun generate(prompt: String, sourceImage: String?, editStrength: Float = 0.55f, progress: (Int, Int) -> Unit): LocalFrame {
-  val payload = JSONObject().put("prompt", prompt).put("negative_prompt", "blurry, watermark, jpeg artifacts")
-   .put("steps", 20).put("cfg", 7.5).put("size", 1024).put("aspect_ratio", "1:1")
+ fun generate(prompt: String, sourceImage: String?, editStrength: Float = 0.55f, ratio: String = "1:1", size: Int = 1024, literal: Boolean = false, progress: (Int, Int) -> Unit): LocalFrame {
+  val payload = JSONObject().put("prompt", prompt).put("negative_prompt", if (literal) "" else "blurry, watermark, jpeg artifacts")
+   .put("steps", 20).put("cfg", 7.5).put("size", size).put("aspect_ratio", ratio)
    .put("scheduler", "dpm").put("show_diffusion_process", false)
   if (sourceImage != null) payload.put("image", sourceImage).put("denoise_strength", editStrength.toDouble())
   val c = connect("/generate", payload)
