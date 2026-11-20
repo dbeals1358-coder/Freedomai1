@@ -46,4 +46,23 @@ class HybridEngineSelectorTest {
         val supported = remote.copy(tasks = setOf(HybridEngineSelector.Task.IMAGE_VIDEO), supportsPromptedMotion = true)
         assertEquals(listOf(supported), HybridEngineSelector.candidates(request, listOf(unsupported, supported)))
     }
+    @Test fun qualityModeRanksCapableEngineFirst() {
+        val request = HybridEngineSelector.Request(
+            HybridEngineSelector.Mode.AUTO, HybridEngineSelector.Task.TEXT_IMAGE, true,
+            preferQuality = true
+        )
+        val localFast = local.copy(qualityRank = 1)
+        val remoteHighQuality = remote.copy(qualityRank = 5)
+        assertEquals(listOf(remoteHighQuality, localFast),
+            HybridEngineSelector.candidates(request, listOf(localFast, remoteHighQuality)))
+    }
+    @Test fun qualityModeStillRespectsOfflineAndPaymentLimits() {
+        val request = HybridEngineSelector.Request(
+            HybridEngineSelector.Mode.AUTO, HybridEngineSelector.Task.TEXT_IMAGE, false,
+            preferQuality = true
+        )
+        val paidRemote = remote.copy(qualityRank = 10, requiresPaidService = true)
+        assertEquals(listOf(local),
+            HybridEngineSelector.candidates(request, listOf(paidRemote, local)))
+    }
 }
