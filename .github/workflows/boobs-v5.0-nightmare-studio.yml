@@ -1,4 +1,4 @@
-name: Boob's V6-1 - Android APK Build
+name: Titties V1.69 - Android APK Build
 on:
   workflow_dispatch:
   pull_request:
@@ -7,6 +7,8 @@ on:
     branches: [main]
     paths:
       - 'app/src/main/java/com/unboundaistudio/MainActivity.kt'
+      - 'app/src/main/java/com/unboundaistudio/HybridEngineSelector.kt'
+      - 'app/src/test/java/com/unboundaistudio/HybridEngineSelectorTest.kt'
       - 'app/src/main/java/com/unboundaistudio/NightmareCatalog.kt'
       - 'app/src/test/java/com/unboundaistudio/NightmareCatalogTest.kt'
       - 'app/src/main/java/com/unboundaistudio/FictionalAdultPrompt.kt'
@@ -72,7 +74,7 @@ jobs:
         with:
           gradle-version: '8.10.2'
       - name: Verify source version
-        run: grep -q 'versionName = "6.1"' app/build.gradle.kts
+        run: grep -q 'versionName = "1.69"' app/build.gradle.kts
       - name: Fetch native Qwen 2.1 runtime
         env:
           GH_TOKEN: ${{ github.token }}
@@ -104,15 +106,15 @@ jobs:
           mkdir -p app/src/main/res/drawable-nodpi
           base64 --decode app/icon_source.b64 > app/src/main/res/drawable-nodpi/boobs_launcher.jpg
           test -s app/src/main/res/drawable-nodpi/boobs_launcher.jpg
-      - name: Compile and test Boob's V6-1
+      - name: Compile and test Titties V1.69
         run: gradle assembleDebug lintDebug testDebugUnitTest --no-daemon
       - name: Name APK with version
-        run: cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/Boobs-V6-1-Android-debug.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/Titties-V1.69-Android-debug.apk
       - uses: actions/upload-artifact@v4
         with:
           if-no-files-found: error
-          name: Boobs-V6-1-Android-APK
-          path: app/build/outputs/apk/debug/Boobs-V6-1-Android-debug.apk
+          name: Titties-V1.69-Android-APK
+          path: app/build/outputs/apk/debug/Titties-V1.69-Android-debug.apk
 
       - name: Publish direct APK download in GitHub Releases
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
@@ -120,10 +122,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          APK="app/build/outputs/apk/debug/Boobs-V6-1-Android-debug.apk"
-          TAG="v6.1"
+          APK="app/build/outputs/apk/debug/Titties-V1.69-Android-debug.apk"
+          TAG="v1.69"
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" "$APK" --clobber
           else
-            gh release create "$TAG" "$APK" --title "Boob's V6-1" --notes "Android debug APK for Boob's V6-1. Download the APK asset directly; no artifact ZIP extraction needed." --target "$GITHUB_SHA"
+            gh release create "$TAG" "$APK" --title "Titties V1.69" --notes "Android debug APK for Titties V1.69. Download the APK asset directly; no artifact ZIP extraction needed." --target "$GITHUB_SHA"
           fi
