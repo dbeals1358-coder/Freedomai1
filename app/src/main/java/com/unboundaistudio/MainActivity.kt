@@ -813,7 +813,7 @@ class MainActivity : ComponentActivity() {
         val task = if (input == null) HybridEngineSelector.Task.TEXT_IMAGE else HybridEngineSelector.Task.IMAGE_EDIT
         HybridEngineSelector.candidates(
          HybridEngineSelector.Request(HybridEngineSelector.Mode.AUTO, task,
-          internetAvailable = true, preferQuality = requestedHighQuality),
+          internetAvailable = true, preferQuality = (if (input == null) generationSpeed else editSpeed) == "MAX QUALITY"),
          listOf(
           HybridEngineSelector.Engine("nightmare", HybridEngineSelector.Location.DEVICE,
            setOf(HybridEngineSelector.Task.TEXT_IMAGE, HybridEngineSelector.Task.IMAGE_EDIT),
