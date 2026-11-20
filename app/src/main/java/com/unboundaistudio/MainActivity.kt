@@ -508,6 +508,9 @@ class MainActivity : ComponentActivity() {
         }, enabled = !busy, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("Create Similar Image") }
 
         OutlinedButton(onClick = { videoMode = true; tab = 1; result = null; status = "" }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("Create Video") }
+        OutlinedButton(onClick = {
+         startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.aiporn.net/en")))
+        }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("AIporn.net Generator (Website)") }
         HorizontalDivider()
         Text("More tools", style = MaterialTheme.typography.titleMedium)
         OutlinedButton(onClick = { showAdultConfirm = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("18+ Private Studio") }
