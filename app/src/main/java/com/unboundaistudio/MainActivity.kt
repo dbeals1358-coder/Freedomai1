@@ -473,7 +473,7 @@ class MainActivity : ComponentActivity() {
       }
      }
     }
-      fun requestImage(input: Bitmap?, promptOverride: String? = null) {
+      fun requestImage(input: Bitmap?, promptOverride: String? = null, cartoonRestyle: Boolean = false) {
         val faceDetailRun = input != null && promptOverride == FaceDetailEnhancement.REFINE_PROMPT
        if ((promptOverride ?: prompt).isBlank() && !(tab == 2 && fictionalAdultMode && input == null)) { status = "Describe the image first"; return }
        // FAST: a conservative, color-only bikini recolor can use source pixels
@@ -483,7 +483,7 @@ class MainActivity : ComponentActivity() {
        if (useNativeCreate && !qwenReady) { status = "Download Qwen Turbo first."; return }
        val useOnlineEdit = false
        val useNativeEdit = input != null && nativeQwen && !useOnlineEdit && !nightmareMode
-       val autoColorRequest = if (!studio && input != null && editSpeed == "FAST" &&
+       val autoColorRequest = if (!cartoonRestyle && !studio && input != null && editSpeed == "FAST" &&
          !maskMode && !precisionEdit) AutomaticClothingEdit.parse(promptOverride ?: prompt) else null
         if (useNativeEdit && !qwenReady) {
         status = "Download Qwen Turbo models in the Edit tab before using built-in AI Edit (~11 GB)."
@@ -537,21 +537,24 @@ class MainActivity : ComponentActivity() {
        // Keep "auto" intact so NightmareClient can recover from missing inpaint
        // auto-mask support. The original user instruction is passed separately
        // for routing, so the English comic-text hint cannot switch to img2img.
-       val editFlowForRun = if (faceDetailRun && nightmareMode) "flux_edit" else nightmareEditFlow
-         val requestedStrength = if (faceDetailRun) 0.45f else if (input != null) editStrength.coerceIn(0.10f, 0.80f) else editStrength
+       val editFlowForRun = if (cartoonRestyle) "img2img" else if (faceDetailRun && nightmareMode) "flux_edit" else nightmareEditFlow
+         val requestedStrength = if (cartoonRestyle) 0.65f else if (faceDetailRun) 0.45f else if (input != null) editStrength.coerceIn(0.10f, 0.80f) else editStrength
        val requestedSpeed = if (faceDetailRun) "MAX QUALITY" else if (input != null) editSpeed else generationSpeed
        val requestedHighQuality = requestedSpeed == "MAX QUALITY"
        val requestedResolution = if (studio) studioSize else if (input == null && requestedSpeed == "FAST") 768 else resolution
-       val editPrompt = if (studio) requestedPrompt else if (input != null) {
+       val editPrompt = if (cartoonRestyle) {
+         "Redraw the entire source image in this cartoon style: ${requestedPrompt.trim()}. " +
+          "Keep the subject recognizable and preserve the pose, framing and background layout. Apply the style to the whole scene."
+        } else if (studio) requestedPrompt else if (input != null) {
          if (faceDetailRun) requestedPrompt else CartoonImagePrompt.withEnglishTextForEditing("$requestedPrompt. Keep the same person, face, pose, camera and background.")
         } else if (cartoonMode && tab == 0) CartoonImagePrompt.generationPrompt(
          requestedPrompt, expandCartoonPrompt, cartoonStyle, cartoonCharacters, cartoonMaleClothing, cartoonFemaleClothing
         ) else requestedPrompt.trim() // Preserve exact user wording for photo generation
-       if (input != null && !faceDetailRun && precisionEdit && (!maskMode || strokes.isEmpty())) {
+       if (input != null && !cartoonRestyle && !faceDetailRun && precisionEdit && (!maskMode || strokes.isEmpty())) {
         status = "Precision Edit requires a painted area. Paint the region to change or disable Precision Edit."
         return
        }
-       val mask = if (input != null && !faceDetailRun && maskMode && strokes.isNotEmpty()) makeMask(input.width, input.height, strokes.toList(), brush) else null
+       val mask = if (input != null && !cartoonRestyle && !faceDetailRun && maskMode && strokes.isNotEmpty()) makeMask(input.width, input.height, strokes.toList(), brush) else null
               lastRequestDetails = ""
               result = null // Do not leave a previous variation visible as a failed new edit.
               busy = true; generationPercent = 0; renderingPercent = 0; nativeProgress = useNativeEdit || useNativeCreate
@@ -604,7 +607,7 @@ class MainActivity : ComponentActivity() {
            if (faceDetailRun) compositeRefinedFaces(input, generated) ?: error("No faces could be located for face-only refinement.") else if (mask != null) compositeMaskedEdit(input, generated, mask) else generated
           } else if (useNightmare) {
            val generated = try {
-            NightmareClient.generate(editPrompt, tokenForRun, input, requestedStrength, requestedHighQuality, requestedResolution, editFlowForRun, requestedSpeed, imageFlowForRun, studioRatio = if (studio && input == null) studioRatio else null, literal = studio, cartoonMode = cartoonMode && tab == 0 && input == null, routingPrompt = requestedPrompt, requestedModelId = if (input == null && nightmareMode) nightmareSelectedModel.ifBlank { null } else null)
+            NightmareClient.generate(editPrompt, tokenForRun, input, requestedStrength, requestedHighQuality, requestedResolution, editFlowForRun, requestedSpeed, imageFlowForRun, studioRatio = if (studio && input == null) studioRatio else null, literal = studio || cartoonRestyle, cartoonMode = cartoonMode && tab == 0 && input == null, routingPrompt = requestedPrompt, requestedModelId = if (input == null && nightmareMode) nightmareSelectedModel.ifBlank { null } else null)
            } catch (nightmareError: Exception) {
             val maskFailure = nightmareError.message.orEmpty()
              val maskUnavailable = input != null &&
@@ -628,7 +631,7 @@ class MainActivity : ComponentActivity() {
              compositeRefinedFaces(input, generated) ?: error("No faces could be automatically located for face-only refinement. Original photo preserved.")
             } else if (input != null) {
               val framed = preserveFraming(input, generated)
-              if (EditRequestRouting.shouldPreserveFace(requestedPrompt))
+              if (!cartoonRestyle && EditRequestRouting.shouldPreserveFace(requestedPrompt))
                preserveDetectedFace(input, framed) else framed
              } else generated
           } else if (useLocal) {
@@ -636,14 +639,14 @@ class MainActivity : ComponentActivity() {
             ByteArrayOutputStream().use { stream -> bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream); Base64.encodeToString(stream.toByteArray(), Base64.NO_WRAP) }
            }
            if (mask != null) error("Painted-area edits require an HTTPS AUTOMATIC1111 server")
-           val frame = LocalDreamClient.generate(editPrompt, encoded, requestedStrength, ratio = if (studio && input == null) studioRatio else "1:1", size = if (studio && input == null) studioSize else 1024, literal = studio) { step, total ->
+           val frame = LocalDreamClient.generate(editPrompt, encoded, requestedStrength, ratio = if (studio && input == null) studioRatio else "1:1", size = if (studio && input == null) studioSize else 1024, literal = studio || cartoonRestyle) { step, total ->
             runOnUiThread { if (generationJob?.isActive == true) status = "Creating image: step $step of $total" }
            }
            Bitmap.createBitmap(frame.pixels, frame.width, frame.height, Bitmap.Config.ARGB_8888).let { generated ->
              if (faceDetailRun && input != null) compositeRefinedFaces(input, generated) ?: error("No faces located for face-only refinement.") else generated
             }
           } else {
-           val generated = generateImage(address, editPrompt, input, requestedStrength, mask, requestedHighQuality, cartoonMode && tab == 0 && input == null, if (studio && input == null) studioDimensions(studioSize, studioRatio) else null, studio)
+           val generated = generateImage(address, editPrompt, input, requestedStrength, mask, requestedHighQuality, cartoonMode && tab == 0 && input == null, if (studio && input == null) studioDimensions(studioSize, studioRatio) else null, studio || cartoonRestyle)
            if (faceDetailRun && input != null) compositeRefinedFaces(input, generated) ?: error("No faces located for face-only refinement.") else if (input != null && mask == null) preserveFraming(input, generated) else generated
           }
          }
@@ -1515,8 +1518,10 @@ class MainActivity : ComponentActivity() {
          OutlinedButton(onClick = { strokes.clear(); drawing = emptyList() }) { Text("Clear selection") }
          Text("With Nightmare, only the painted area is copied from the AI edit; everything outside stays pixel-identical. For true mask-guided generation, a compatible inpainting workflow is still needed.")
         }
-        OutlinedTextField(value = prompt, onValueChange = { prompt = it }, label = { Text("Describe your AI edit") }, placeholder = { Text("Make the bikini top smaller; keep the face, pose and background unchanged.") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(value = prompt, onValueChange = { prompt = it }, label = { Text("Describe your edit or cartoon style") }, placeholder = { Text("For example, 1990s cel animation with bold outlines") }, modifier = Modifier.fillMaxWidth())
        OutlinedButton(onClick = { listenForPrompt() }, enabled = !busy) { Text("🎤 Speak prompt") }
+        OutlinedButton(onClick = { requestImage(bitmap, prompt.trim(), cartoonRestyle = true) },
+         enabled = !busy && prompt.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("Turn Photo into Cartoon") }
         var showEditHelp by remember { mutableStateOf(false) }
         TextButton(onClick = { showEditHelp = !showEditHelp }) { Text(if (showEditHelp) "ⓘ Hide editing help" else "ⓘ Help") }
         if (showEditHelp) {
