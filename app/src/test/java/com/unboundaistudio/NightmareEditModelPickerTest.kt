@@ -19,14 +19,14 @@ class NightmareEditModelPickerTest {
         assertEquals("flux2-klein-4b", NightmareEditModelPicker.select(installed, "FAST"))
     }
 
-    @Test fun fastFallsBackToAlreadyInstalledQwen() {
-        assertEquals("qwen-turbo", NightmareEditModelPicker.select(
+    @Test fun fastSkipsQwenEvenWhenInstalled() {
+        assertNull(NightmareEditModelPicker.select(
             models("QWEN21" to "qwen-turbo"), "FAST"))
     }
 
-    @Test fun balancedPreservesQwenPreference() {
+    @Test fun balancedUsesCompatibleEditor() {
         val installed = models("FLUX2" to "flux2-klein-4b", "QWEN21" to "qwen-turbo")
-        assertEquals("qwen-turbo", NightmareEditModelPicker.select(installed, "BALANCED"))
+        assertEquals("flux2-klein-4b", NightmareEditModelPicker.select(installed, "BALANCED"))
     }
 
     @Test fun neverSelectImageOnlyModel() {

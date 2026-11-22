@@ -8,7 +8,7 @@ import org.json.JSONObject
  * different model, changes a saved flow, or silently uses image-to-image restyling.
  */
 internal object NightmareEditModelPicker {
-    private val families = setOf("FLUX2", "FLUX3", "QWEN21", "FIBO2")
+    private val families = setOf("FLUX2", "FLUX3", "FIBO2")
     private val fourB = Regex("(?i)(^|[^0-9])4b([^0-9]|$)")
 
     fun select(installed: JSONArray, speed: String): String? {
@@ -18,15 +18,12 @@ internal object NightmareEditModelPicker {
         fun is4B(model: JSONObject) =
             fourB.containsMatchIn(model.optString("id")) || fourB.containsMatchIn(model.optString("name"))
         val chosen = if (speed == "FAST") {
-            // Klein 4B is much faster for instruction edits than a 1024px Qwen pass.
             available.firstOrNull { isFamily(it, "FLUX2") && is4B(it) }
                 ?: available.firstOrNull { isFamily(it, "FLUX2") }
                 ?: available.firstOrNull { isFamily(it, "FLUX3") }
-                ?: available.firstOrNull { isFamily(it, "QWEN21") }
                 ?: available.firstOrNull { isFamily(it, "FIBO2") }
         } else {
-            // Preserve Qwen as the detailed-instruction option, if installed.
-            available.firstOrNull { isFamily(it, "QWEN21") } ?: available.firstOrNull()
+            available.firstOrNull()
         }
         return chosen?.optString("id")
     }

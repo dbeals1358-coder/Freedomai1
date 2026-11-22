@@ -62,14 +62,11 @@ import java.io.ByteArrayOutputStream
 class MainActivity : ComponentActivity() {
  override fun onCreate(savedInstanceState: Bundle?) {
   super.onCreate(savedInstanceState)
-  // One-time stable rollback: avoid reusing the v3.2 on-device Qwen and
-  // RAM-heavy experimental video preferences. Keep user files and tokens.
   val rollbackPrefs = getSharedPreferences("server", MODE_PRIVATE)
   if (!rollbackPrefs.getBoolean("stable_rollback_v33_applied", false)) {
    rollbackPrefs.edit()
     .putBoolean("nightmare", true)
     .putBoolean("local", false)
-    .putBoolean("native_qwen", false)
     .putBoolean("video_mobilei2v_experimental", false)
     .putBoolean("stable_rollback_v33_applied", true)
     .apply()
@@ -140,14 +137,6 @@ class MainActivity : ComponentActivity() {
    }
    var busy by remember { mutableStateOf(false) }
    var generationJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
-   // Native Qwen editor is fully on-device. Image generation still uses the selected backend.
-   var nativeQwen by remember { mutableStateOf(prefs.getBoolean("native_qwen", true)) }
-   var qwenTier by remember { mutableStateOf(prefs.getString("qwen_tier", "FAST") ?: "FAST") }
-   var qwenReady by remember { mutableStateOf(runCatching { NativeQwenEditor.ready(this@MainActivity) }.getOrDefault(false)) }
-   var qwenDownloading by remember { mutableStateOf(false) }
-   var qwenDownloadPercent by remember { mutableIntStateOf(0) }
-   var qwenDownloadText by remember { mutableStateOf("") }
-   var nativeProgress by remember { mutableStateOf(false) }
    var videoElapsedSeconds by remember { mutableIntStateOf(0) }
    var videoJob by remember { mutableStateOf<Job?>(null) }
    var status by remember { mutableStateOf("") }
@@ -185,7 +174,6 @@ class MainActivity : ComponentActivity() {
    var tool by remember { mutableStateOf(StudioTool.EDIT) }
    var studioRatio by remember { mutableStateOf("1:1") }
    var studioSize by remember { mutableIntStateOf(1024) }
-   var studioEngine by remember { mutableStateOf(prefs.getString("studio_generator", "Auto") ?: "Auto") }
    var pickingSecond by remember { mutableStateOf(false) }
    var second by remember { mutableStateOf<Bitmap?>(null) }
    var latestStudioImage by remember { mutableStateOf<Bitmap?>(null) }
@@ -228,7 +216,7 @@ class MainActivity : ComponentActivity() {
    var nightmareCatalogMessage by remember { mutableStateOf("") }
    var availableNightmareModels by remember { mutableStateOf(emptyList<NightmareCatalog.Model>()) }
    var availableNightmareFlows by remember { mutableStateOf(emptyList<String>()) }
-   var nightmareSelectedModel by remember { mutableStateOf(prefs.getString("nightmare_model_v5", "") ?: "") }
+   var nightmareSelectedModel by remember { mutableStateOf(prefs.getString("nightmare_model_v5", "").orEmpty().takeUnless { it.contains("qwen", ignoreCase = true) }.orEmpty()) }
    var nightmareSelectedFlow by remember { mutableStateOf("") }
    var showNightmareModelMenu by remember { mutableStateOf(false) }
    var showNightmareFlowMenu by remember { mutableStateOf(false) }
@@ -286,7 +274,6 @@ class MainActivity : ComponentActivity() {
     generationJob = null
     videoJob = null
     busy = false
-    nativeProgress = false
     generationPercent = 0
     imageElapsedSeconds = 0
     videoElapsedSeconds = 0
@@ -483,23 +470,14 @@ class MainActivity : ComponentActivity() {
        if ((promptOverride ?: prompt).isBlank() && !(tab == 2 && fictionalAdultMode && input == null)) { status = "Describe the image first"; return }
        // FAST: a conservative, color-only bikini recolor can use source pixels
        // without AI inference. If fabric recognition fails, use the selected editor.
-       val useNativeCreate = studio && tool == StudioTool.TEXT && input == null &&
-        (studioEngine == "Qwen" || (studioEngine == "Auto" && qwenReady))
-       if (useNativeCreate && !qwenReady) { status = "Download Qwen Turbo first."; return }
-       val useOnlineEdit = false
-       val useNativeEdit = input != null && nativeQwen && !useOnlineEdit && !nightmareMode
        val autoColorRequest = if (!cartoonRestyle && !studio && input != null && editSpeed == "FAST" &&
          !maskMode && !precisionEdit) AutomaticClothingEdit.parse(promptOverride ?: prompt) else null
-        if (useNativeEdit && !qwenReady) {
-        status = "Download Qwen Turbo models in the Edit tab before using built-in AI Edit (~11 GB)."
-        return
-       }
        val address = server.trim().trimEnd('/')
-       if (!useNativeCreate && autoColorRequest == null && !useNativeEdit && !useOnlineEdit && !nightmareMode && !localMode && runCatching { URL(address).let { it.protocol == "https" && it.host.isNotBlank() && it.userInfo == null && it.query == null && it.ref == null } }.getOrDefault(false).not()) {
+       if (autoColorRequest == null && !nightmareMode && !localMode && runCatching { URL(address).let { it.protocol == "https" && it.host.isNotBlank() && it.userInfo == null && it.query == null && it.ref == null } }.getOrDefault(false).not()) {
         status = "Enter a valid HTTPS server URL"; return
        }
        prefs.edit().putString("url", address).apply()
-       val hybridCandidates = if (hybridAuto && !useNativeCreate && !useNativeEdit && !useOnlineEdit) {
+       val hybridCandidates = if (hybridAuto) {
         val task = if (input == null) HybridEngineSelector.Task.TEXT_IMAGE else HybridEngineSelector.Task.IMAGE_EDIT
         HybridEngineSelector.candidates(
          HybridEngineSelector.Request(HybridEngineSelector.Mode.AUTO, task,
@@ -517,13 +495,13 @@ class MainActivity : ComponentActivity() {
          )
         )
        } else emptyList()
-       if (hybridAuto && !useNativeCreate && !useNativeEdit && !useOnlineEdit && hybridCandidates.isEmpty()) {
+       if (hybridAuto && hybridCandidates.isEmpty()) {
         status = "Auto: no configured compatible image engine. Enable Nightmare or Local Dream, or configure an HTTPS server."
         return
        }
        val selectedEngine = hybridCandidates.firstOrNull()?.id
        val useLocal = if (hybridAuto) selectedEngine == "localdream" else localMode
-       val useNightmare = if (hybridAuto) selectedEngine == "nightmare" else nightmareMode && !useOnlineEdit && !useNativeEdit
+       val useNightmare = if (hybridAuto) selectedEngine == "nightmare" else nightmareMode
        if (cartoonMode && tab == 0 && input == null && !useNightmare) {
         status = "Cartoon creation requires Nightmare text-to-image. Select Nightmare in Connection settings; the photo/edit engines cannot create a fresh cartoon here."
         return
@@ -562,12 +540,12 @@ class MainActivity : ComponentActivity() {
        val mask = if (input != null && !cartoonRestyle && !faceDetailRun && maskMode && strokes.isNotEmpty()) makeMask(input.width, input.height, strokes.toList(), brush) else null
               lastRequestDetails = ""
               result = null // Do not leave a previous variation visible as a failed new edit.
-              busy = true; generationPercent = 0; renderingPercent = 0; nativeProgress = useNativeEdit || useNativeCreate
+              busy = true; generationPercent = 0; renderingPercent = 0
               nightmareConnectionFailed = false
-              status = if (useOnlineEdit) "Editing with online Qwen…" else if (useNativeEdit) "Editing locally with Qwen Turbo…" else if (input != null) "Editing photo…" else "Creating image…" 
+              status = if (input != null) "Editing photo…" else "Creating image…"
         // Nightmare does not currently expose generation progress through this client.
         // Show an explicitly estimated percentage, capped below 100 until an image arrives.
-        val progressJob = if (useNativeEdit || useNativeCreate) null else scope.launch {
+        val progressJob = scope.launch {
          imageElapsedSeconds = 0
          while (isActive && busy) {
           delay(1000)
@@ -576,12 +554,12 @@ class MainActivity : ComponentActivity() {
            generationPercent = (generationPercent + 1).coerceAtMost(80)
             // Remote rendering has no actual progress callback. Display a
             // clearly labeled estimate that never reaches 100% before completion.
-            if (!nativeProgress) renderingPercent = (renderingPercent + 1).coerceAtMost(95)
+            renderingPercent = (renderingPercent + 1).coerceAtMost(95)
           }
          }
         }
        generationJob = scope.launch {
-        val editEngine = if (useNativeCreate) "Offline Qwen Turbo" else if (useOnlineEdit) "Online Qwen" else if (useNativeEdit) "On-device Qwen" else if (useNightmare) "Nightmare" else if (useLocal) "Local Dream" else "Remote image server"
+        val editEngine = if (useNightmare) "Nightmare" else if (useLocal) "Local Dream" else "Remote image server"
         var usedFastLocalEdit = false
         val editStartedAt = android.os.SystemClock.elapsedRealtime()
         var inferenceFinishedAt = editStartedAt
@@ -590,26 +568,9 @@ class MainActivity : ComponentActivity() {
          val renderedImage = withContext(Dispatchers.IO) {
           val fastLocalColor = if (input != null && autoColorRequest != null)
            AutomaticClothingEdit.recolor(input, autoColorRequest) else null
-          if (useNativeCreate) {
-           val (width, height) = studioDimensions(512, studioRatio)
-           NativeQwenEditor.generate(this@MainActivity, requestedPrompt, width, height) { percent ->
-            runOnUiThread { if (generationJob?.isActive == true) { generationPercent = percent; status = "Qwen Turbo: $percent%" } }
-           }
-          } else if (fastLocalColor != null) {
+          if (fastLocalColor != null) {
            usedFastLocalEdit = true
            fastLocalColor
-           } else if (useNativeEdit && input != null) {
-           val generated = NativeQwenEditor.edit(
-            this@MainActivity, input, editPrompt,
-            com.scsonic.qwenimage21.QwenImage21.Size.Tier.valueOf(if (faceDetailRun) "STANDARD" else qwenTier)
-           ) { percentage -> runOnUiThread {
-            if (generationJob?.isActive == true) {
-             generationPercent = percentage
-             status = "Qwen Turbo: $percentage% completed"
-            }
-           } }
-           check(!isNearlyWhiteImage(generated)) { "Qwen returned a blank image." }
-           if (faceDetailRun) compositeRefinedFaces(input, generated) ?: error("No faces could be located for face-only refinement.") else if (mask != null) compositeMaskedEdit(input, generated, mask) else generated
           } else if (useNightmare) {
            val generated = try {
             NightmareClient.generate(editPrompt, tokenForRun, input, requestedStrength, requestedHighQuality, requestedResolution, editFlowForRun, requestedSpeed, imageFlowForRun, studioRatio = if (studio && input == null) studioRatio else null, literal = studio || cartoonRestyle, cartoonMode = cartoonMode && tab == 0 && input == null, routingPrompt = requestedPrompt, requestedModelId = if (input == null && nightmareMode) nightmareSelectedModel.ifBlank { null } else null)
@@ -619,15 +580,10 @@ class MainActivity : ComponentActivity() {
               (maskFailure.contains("auto-mask is unavailable", ignoreCase = true) ||
                maskFailure.contains("cannot automatically mask", ignoreCase = true) ||
                maskFailure.contains("no working instruction-edit fallback", ignoreCase = true))
-            if (maskUnavailable && qwenReady) {
-             runOnUiThread { status = "Nightmare mask unavailable. Trying installed Qwen editor…" }
-             NativeQwenEditor.edit(this@MainActivity, input!!, editPrompt,
-              com.scsonic.qwenimage21.QwenImage21.Size.Tier.valueOf(if (faceDetailRun) "STANDARD" else qwenTier)
-             ) { percentage -> runOnUiThread { generationPercent = percentage } }
-            } else if (maskUnavailable) {
+            if (maskUnavailable) {
              // NightmareClient has already tried the installed instruction-edit
              // fallback when the original workflow was Auto. Do not repeat it.
-             error("Nightmare could not complete the edit: ${maskFailure.take(330)}. Original photo preserved. Check the installed Qwen/FLUX editor in Nightmare, or enable Clothes Auto Mask.")
+             error("Nightmare could not complete the edit: ${maskFailure.take(330)}. Original photo preserved. Check the installed FLUX editor in Nightmare, or enable Clothes Auto Mask.")
             } else throw nightmareError
            }
            check(!isNearlyWhiteImage(generated)) { "The AI returned a blank white image. Try a different flow or restart the model." }
@@ -664,7 +620,7 @@ class MainActivity : ComponentActivity() {
           status = "The AI returned a blank white image. Your original photo is safe. Try again with lower edit strength or restart the model."
          } else {
           val completedImage = if (autoImprove && maxOf(renderedImage.width, renderedImage.height) < 4096) {
-           progressJob?.cancel()
+           progressJob.cancel()
            status = "Auto Improve: enhancing image detail…"
            try {
             withContext(Dispatchers.IO) {
@@ -695,27 +651,24 @@ class MainActivity : ComponentActivity() {
             } catch (e: Exception) { file.failWrite(stream); throw e }
            }
           }
-          if (input == null && useNightmare && !useNativeCreate) lastRequestDetails = NightmareClient.lastGenerationDetails
+          if (input == null && useNightmare) lastRequestDetails = NightmareClient.lastGenerationDetails
            resultGeneratedHere = if (input == null) true else originalGeneratedHere
-           status = if (usedFastLocalEdit) "Fast local recolor complete. Only detected fabric pixels were changed; no AI render was needed." else if (useOnlineEdit) "Online Qwen edit complete. Check the result against the original." else if (useNativeEdit) "Qwen Turbo edit complete. Compare the face, pose and background with the original." else if (input != null && useNightmare) "Nightmare local edit complete (actual flow: ${NightmareClient.lastImageFlowUsed.ifBlank { EditRequestRouting.chooseFlow(editFlowForRun, requestedPrompt) }}). Actual model must be confirmed in Nightmare run details." else if (input != null) "AI returned an edit — compare it with your requested change below" else if (cartoonMode && tab == 0 && input == null && useNightmare) "Cartoon generated with ${NightmareClient.lastCartoonModelLabel}. ${if (NightmareClient.lastCartoonLetteringApplied) "Exact English dialogue added to speech bubbles." else "For correctly spelled speech bubbles, put the words in double quotes."} Compare the result to your prompt." else "Image ready"
+           status = if (usedFastLocalEdit) "Fast local recolor complete. Only detected fabric pixels were changed; no AI render was needed." else if (input != null && useNightmare) "Nightmare local edit complete (actual flow: ${NightmareClient.lastImageFlowUsed.ifBlank { EditRequestRouting.chooseFlow(editFlowForRun, requestedPrompt) }}). Actual model must be confirmed in Nightmare run details." else if (input != null) "AI returned an edit — compare it with your requested change below" else if (cartoonMode && tab == 0 && input == null && useNightmare) "Cartoon generated with ${NightmareClient.lastCartoonModelLabel}. ${if (NightmareClient.lastCartoonLetteringApplied) "Exact English dialogue added to speech bubbles." else "For correctly spelled speech bubbles, put the words in double quotes."} Compare the result to your prompt." else "Image ready"
          }
          val totalSeconds = (android.os.SystemClock.elapsedRealtime() - editStartedAt) / 1000
          val engineSeconds = (inferenceFinishedAt - editStartedAt) / 1000
          status += " | Engine: ${if (usedFastLocalEdit) "On-device color edit" else editEngine} | Processing: ${engineSeconds}s | Total: ${totalSeconds}s$qualityNote"
         } catch (e: kotlinx.coroutines.CancellationException) { throw e
         } catch (e: Exception) {
-         val nightmareHelp = if (useNightmare && !useNativeCreate) NightmareConnectionDiagnostics.helpFor(e) else null
+         val nightmareHelp = if (useNightmare) NightmareConnectionDiagnostics.helpFor(e) else null
          nightmareConnectionFailed = nightmareHelp != null
          status = when {
-          useNativeCreate -> "Offline Qwen generation failed: ${e.message}"
           nightmareHelp != null -> nightmareHelp
-          useOnlineEdit -> "Online Qwen edit failed: ${e.message ?: "Check your endpoint, model and token"}. Original image unchanged."
-           useNativeEdit -> "Native Qwen edit failed: ${e.message ?: "Unknown model error"}. Your original image is unchanged."
           useNightmare -> "Nightmare ${if (input != null) "edit" else "generation"} failed (flow: ${if (input != null) editFlowForRun else imageFlowForRun}): ${e.message ?: "connection failed"}. Open the matching flow in Nightmare, check its model and image input."
           useLocal -> "Local Dream: ${e.message ?: "connection failed"}. Keep the model loaded; try split screen if disconnected."
           else -> "Could not create image: ${e.message ?: "connection failed"}"
          }
-        } finally { progressJob?.cancel(); if (generationJob == kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job]) { busy = false; generationJob = null } }
+        } finally { progressJob.cancel(); if (generationJob == kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job]) { busy = false; generationJob = null } }
        }
       }
     fun requestVideo(image: Bitmap) {
@@ -892,32 +845,12 @@ class MainActivity : ComponentActivity() {
            StudioTool.TEXT -> "Describe the image you want to create."
           }) })
          if (tool == StudioTool.TEXT) {
-          StudioOptions("Engine", listOf("Auto", "Qwen", "Configured"), studioEngine, !busy && !qwenDownloading) {
-           studioEngine = it
-           prefs.edit().putString("studio_generator", it).apply()
-          }
-          val offline = studioEngine == "Qwen" || (studioEngine == "Auto" && qwenReady)
-          if (offline && !qwenReady) {
-           TextButton(enabled = !qwenDownloading, onClick = {
-            qwenDownloading = true
-            scope.launch {
-             try {
-              withContext(Dispatchers.IO) { NativeQwenEditor.download(this@MainActivity) { name, pct ->
-               runOnUiThread { qwenDownloadText = "$name • $pct%" }
-              } }
-              qwenReady = NativeQwenEditor.ready(this@MainActivity)
-             } catch (e: Exception) { status = "Qwen download: ${e.message}" }
-             finally { qwenDownloading = false }
-            }
-           }) { Text(if (qwenDownloading) qwenDownloadText.ifBlank { "Downloading…" } else "Download offline Qwen Turbo (~11 GB)") }
-          }
-          if (offline) Text("Qwen Turbo · 512 px")
-          else StudioOptions("Size", listOf("512", "768", "1024"), studioSize.toString(), !busy) { studioSize = it.toInt() }
+          StudioOptions("Size", listOf("512", "768", "1024"), studioSize.toString(), !busy) { studioSize = it.toInt() }
           StudioOptions("Ratio", listOf("1:1", "3:4", "4:3", "9:16"), studioRatio, !busy) { studioRatio = it }
          }
          AutoImproveButton(autoImprove, !busy, toggleAutoImprove)
          if (videoMode) StudioOptions("Duration", listOf(2,4,8,10).map { "${it}s" }, "${duration}s", !busy) { duration = it.removeSuffix("s").toInt() }
-         Button(enabled = !busy && !(tool == StudioTool.TEXT && studioEngine == "Qwen" && !qwenReady) && (if (videoMode) motionPrompt else prompt).isNotBlank() && (tool == StudioTool.TEXT || original != null),
+         Button(enabled = !busy && (if (videoMode) motionPrompt else prompt).isNotBlank() && (tool == StudioTool.TEXT || original != null),
           modifier = Modifier.fillMaxWidth(), onClick = {
            if (videoMode) { useMobileI2V = false; original?.let { requestVideo(it) } }
            else if (tool == StudioTool.TEXT) requestImage(null)
@@ -1232,7 +1165,7 @@ class MainActivity : ComponentActivity() {
          }) { Text(if (editSpeed == speed) "✓ $speed" else speed) }
         }
        }
-       Text("FAST: 512px edits and an already-installed FLUX Klein model when available in Nightmare. BALANCED / MAX QUALITY can use slower, more detailed Qwen editing.")
+       Text("FAST: 512px edits and an already-installed FLUX Klein model when available in Nightmare. BALANCED / MAX QUALITY can use higher-quality editing settings.")
        }
       }
       if (tab == 0 || tab == 2) {
@@ -1256,18 +1189,16 @@ class MainActivity : ComponentActivity() {
       }
       if (busy) {
         Button(onClick = { cancelGeneration() }, colors = ButtonDefaults.buttonColors(containerColor = UiColor(0xFFB3261E), contentColor = UiColor.White), modifier = Modifier.fillMaxWidth()) { Text("Cancel") }
-        if (!nativeProgress && generationPercent >= 80) {
+        if (generationPercent >= 80) {
          LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
          Text("Waiting for AI result — progress unavailable. You can cancel if it takes too long.")
         } else {
          LinearProgressIndicator(progress = { generationPercent / 100f }, modifier = Modifier.fillMaxWidth())
         }
         Text("Elapsed: ${imageElapsedSeconds}s")
-        Text(if (nativeProgress) "Qwen editing: $generationPercent% (model progress)" else if (generationPercent >= 80) "AI is still processing — 80% is an estimate, not a rendering checkpoint." else "AI is processing your image… $generationPercent% estimated")
-        if (!nativeProgress) {
+        Text(if (generationPercent >= 80) "AI is still processing — 80% is an estimate, not a rendering checkpoint." else "AI is processing your image… $generationPercent% estimated")
          Text(if (renderingPercent >= 95 || generationPercent >= 80) "Rendering: waiting for AI result (actual progress unavailable)" else "Rendering: $renderingPercent% estimated")
          if (renderingPercent >= 95 || generationPercent >= 80) LinearProgressIndicator(modifier = Modifier.fillMaxWidth()) else LinearProgressIndicator(progress = { renderingPercent / 100f }, modifier = Modifier.fillMaxWidth())
-        }
        }
       if (status.isNotEmpty() && !status.startsWith("Nightmare v")) Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceVariant) { Text(status, modifier = Modifier.fillMaxWidth().padding(16.dp)) }
       if (nightmareConnectionFailed) {
@@ -1455,67 +1386,12 @@ class MainActivity : ComponentActivity() {
 
       } else if (!videoMode && (tab == 1 || (tab == 2 && adultConfirmed && !fictionalAdultMode))) {
        if (tab == 2) Text("Private editing: adjust brightness and saturation, then save to app-private storage. AI edits may send your photo to the selected model/server. Only use images you have permission to edit.")
-       var showAdvancedEditing by remember { mutableStateOf(false) }
        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.weight(1f)) {
          Text("AI editing", style = MaterialTheme.typography.titleMedium)
           Text("When editing cartoons, speech bubbles, captions and signs are requested in English.", style = MaterialTheme.typography.bodySmall)
-         Text(if (nightmareMode) "Nightmare Auto Edit (uses installed models when available)" else if (nativeQwen) "Offline Qwen" else "Automatic", style = MaterialTheme.typography.bodySmall)
+         Text(if (nightmareMode) "Nightmare Auto Edit (uses installed models when available)" else "Automatic", style = MaterialTheme.typography.bodySmall)
         }
-        TextButton(onClick = { showAdvancedEditing = !showAdvancedEditing }) {
-         Text(if (showAdvancedEditing) "Hide settings" else "Advanced")
-        }
-       }
-       if (showAdvancedEditing) {
-       Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-         Text("Editing options", style = MaterialTheme.typography.titleMedium)
-          Text("Offline Qwen (optional)")
-         Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-          Text("Use Qwen for AI Edit (offline)", modifier = Modifier.weight(1f))
-          Switch(checked = nativeQwen, enabled = !busy, onCheckedChange = {
-           nativeQwen = it; prefs.edit().putBoolean("native_qwen", it).apply()
-          })
-         }
-         Text(if (qwenReady) "Qwen editing model installed ✓" else "Qwen editing model not installed on this app. One-time download ~11 GB. Nightmare model files cannot be reused across Android app sandboxes.")
-         Text("Nightmare uses its own installed editing model. Other options may require a separate download or provider account.")
-         Text("Qwen editing quality (Fast preserves identity better in upstream testing):")
-         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-          listOf("TINY" to "320", "FAST" to "384", "STANDARD" to "512").forEach { (tier, label) ->
-           OutlinedButton(enabled = !busy, onClick = {
-            qwenTier = tier; prefs.edit().putString("qwen_tier", tier).apply()
-           }) { Text(if (qwenTier == tier) "✓ $label" else label) }
-          }
-         }
-         if (qwenDownloading) {
-          LinearProgressIndicator(progress = { qwenDownloadPercent / 100f }, modifier = Modifier.fillMaxWidth())
-          Text("Downloading: $qwenDownloadPercent% · $qwenDownloadText")
-          OutlinedButton(onClick = { NativeQwenEditor.cancelDownload() }) { Text("Cancel download") }
-         } else if (!qwenReady) {
-          Button(enabled = !busy, onClick = {
-           qwenDownloading = true
-           qwenDownloadText = "Starting secure model download"
-           qwenDownloadPercent = 0
-           scope.launch {
-            try {
-             withContext(Dispatchers.IO) {
-              NativeQwenEditor.download(this@MainActivity) { filename, percent ->
-               runOnUiThread {
-                qwenDownloadText = filename
-                qwenDownloadPercent = percent
-               }
-              }
-             }
-             qwenReady = NativeQwenEditor.ready(this@MainActivity)
-             status = if (qwenReady) "Qwen Turbo installed. AI Edit is ready." else "Qwen files incomplete; tap download to resume."
-            } catch (e: Exception) {
-             status = "Qwen download: ${e.message ?: "failed"}. Tap download to resume."
-            } finally { qwenDownloading = false }
-           }
-          }, modifier = Modifier.fillMaxWidth()) { Text("Download Qwen Turbo editing models") }
-         }
-        }
-       }
        }
        Button(enabled = !busy, onClick = { picker.launch("image/*") }, modifier = Modifier.fillMaxWidth()) { Text("Choose Photo") }
        edited?.let { bitmap ->

@@ -224,11 +224,10 @@ internal object NightmareClient {
                     // Do not run an SDXL restyle and claim a requested object edit succeeded.
                     val installed = installedModels(token)
                     // FAST selects an installed Klein model when available;
-                    // BALANCED/MAX QUALITY may use the more detailed Qwen model.
                     // No additional download and no SDXL img2img substitution.
                     val model = NightmareEditModelPicker.select(installed, speed).orEmpty()
                     check(model.isNotBlank()) {
-                        "Nightmare has no instruction-edit model installed. Open Nightmare → Models → Edit and install a compatible FLUX Klein or Qwen Image model. Your RealVis/SDXL image-to-image flow only restyles the photo."
+                        "Nightmare has no instruction-edit model installed. Open Nightmare → Models → Edit and install a compatible FLUX Klein model. Your RealVis/SDXL image-to-image flow only restyles the photo."
                     }
                     // Respect the requested edit resolution instead of forcing 512 px.
                     // Higher sizes require more memory in Nightmare; report backend errors rather than silently downgrading.
@@ -302,7 +301,7 @@ internal object NightmareClient {
                         "flux_edit", speed, routingPrompt = routingPrompt, literal = literal)
                 }
                 fallback.getOrNull()?.let { return it }
-                error("Nightmare clothing auto-mask unavailable; instruction-edit fallback failed too. Check that the installed Qwen/FLUX edit model runs successfully inside Nightmare. Original photo preserved. Details: ${fallback.exceptionOrNull()?.message?.substringBefore(":{")?.take(110)}")
+                error("Nightmare clothing auto-mask unavailable; instruction-edit fallback failed too. Check that the installed FLUX edit model runs successfully inside Nightmare. Original photo preserved. Details: ${fallback.exceptionOrNull()?.message?.substringBefore(":{")?.take(110)}")
             }
             if (code !in 200..299 && actualFlow == "inpaint" &&
                 (body.contains("parser", true) || body.contains("picked by name", true) ||
@@ -311,7 +310,7 @@ internal object NightmareClient {
                 // A missing clothes parser should not strand users who already have a
                 // compatible instruction-following editor installed in Nightmare.
                 // Never silently fall back to SDXL img2img: it can replace the person.
-                error("Nightmare clothing auto-mask is unavailable for the explicitly selected inpaint workflow. Original photo preserved. Switch Nightmare edit workflow to Auto to use an installed Qwen/FLUX editor, or enable Clothes Auto Mask.")
+                error("Nightmare clothing auto-mask is unavailable for the explicitly selected inpaint workflow. Original photo preserved. Switch Nightmare edit workflow to Auto to use an installed FLUX editor, or enable Clothes Auto Mask.")
             }
             if (code !in 200..299 && input == null && !disableControlNet &&
                 NightmareControlNetRecovery.isControlNetNpuFailure(body)) {

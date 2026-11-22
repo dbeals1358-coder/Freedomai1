@@ -33,6 +33,8 @@ internal object NightmareCatalog {
                 }
                 else -> continue
             }
+            if (listOf(id, label, (item as? JSONObject)?.optString("family").orEmpty())
+                    .any { it.contains("qwen", ignoreCase = true) }) continue
             if (id.isNotBlank() && id != "null" && id.length <= 256) {
                 results.add(Model(id, label.take(140)))
             }

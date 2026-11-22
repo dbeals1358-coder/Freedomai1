@@ -11,7 +11,7 @@ android {
         minSdk = 29
         targetSdk = 35
         ndk { abiFilters += "arm64-v8a" }
-        versionCode = 73
+        versionCode = 74
         versionName = "1.69"
     }
     // The build injects this into the APK; it can be extracted from the APK.
@@ -29,8 +29,6 @@ android {
     kotlinOptions { jvmTarget = "17" }
 }
 dependencies {
-    // GitHub Actions pins and fetches the official native Qwen Android AAR before compiling.
-    implementation(files("libs/qwenimage21.aar"))
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")

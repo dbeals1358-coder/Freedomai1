@@ -137,7 +137,7 @@ fun AssistantScreen(onCreateImage: (String) -> Unit = {}, onEditImage: (String) 
     Text(if (offlineSettingsVisible) "Hide offline model setup" else "Offline model setup (optional)")
    }
    if (offlineSettingsVisible) {
-     Text("Offline AI setup: Gemma 3 1B (.task format). The Qwen Image model in Nightmare cannot be used for chat. Install a compatible language model once to enable offline replies and automatic fallback.")
+     Text("Offline AI setup: Gemma 3 1B (.task format). Install a compatible language model once to enable offline replies and automatic fallback.")
      if (embeddedHfToken.isNotBlank()) {
       Text("Hugging Face access configured automatically.")
      } else {
