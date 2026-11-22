@@ -851,7 +851,10 @@ class MainActivity : ComponentActivity() {
       Column(Modifier.padding(inset).fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
        verticalArrangement = Arrangement.spacedBy(14.dp)) {
        when (tab) {
-        -1 -> StudioHome({ next, starter -> openTool(next, starter) }, { studio = false; tab = -1 })
+        -1 -> {
+         AppDataControl(!busy)
+         StudioHome({ next, starter -> openTool(next, starter) }, { studio = false; tab = -1 })
+        }
         4 -> {
          Text("Creation", style = MaterialTheme.typography.headlineSmall)
          latestStudioImage?.let { bitmap ->
@@ -955,6 +958,7 @@ class MainActivity : ComponentActivity() {
         )
       }
       if (tab == -1) {
+       AppDataControl(!busy)
        Column(Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(UiColor(0xFF164A3C), UiColor(0xFF192F49))), RoundedCornerShape(28.dp)).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text("Dream It. Build It. Crank It.", style = MaterialTheme.typography.headlineMedium)
         Text("Choose what you want to create.", color = UiColor(0xFFD3D0E3))
@@ -2114,4 +2118,53 @@ private fun generateVideoMp4(endpoint: String, bitmap: Bitmap, prompt: String, s
   check(bytes.size > 12 && String(bytes, 4, 4, Charsets.US_ASCII) == "ftyp") { "Invalid MP4" }
   return bytes
  } finally { connection.disconnect() }
+}
+
+@Composable
+private fun AppDataControl(enabled: Boolean) {
+ val context = androidx.compose.ui.platform.LocalContext.current
+ var confirm by remember { mutableStateOf(false) }
+ var clearing by remember { mutableStateOf(false) }
+ var size by remember { mutableStateOf("Calculating…") }
+ var error by remember { mutableStateOf<String?>(null) }
+
+ LaunchedEffect(context, confirm) {
+  size = withContext(Dispatchers.IO) {
+   try {
+    val storage = requireNotNull(context.getSystemService(android.os.storage.StorageManager::class.java))
+    val stats = requireNotNull(context.getSystemService(android.app.usage.StorageStatsManager::class.java))
+    val volumes = (listOf(context.dataDir) + context.getExternalFilesDirs(null).filterNotNull())
+     .map { storage.getUuidForPath(it) }.distinct()
+    val bytes = volumes.sumOf { volume ->
+     stats.queryStatsForUid(volume, android.os.Process.myUid()).dataBytes
+    }
+    android.text.format.Formatter.formatFileSize(context, bytes)
+   } catch (e: Exception) {
+    "Size unavailable"
+   }
+  }
+ }
+ OutlinedButton(
+  enabled = enabled && !clearing,
+  onClick = { error = null; confirm = true },
+  modifier = Modifier.fillMaxWidth()
+ ) { Text("Clear all data · $size") }
+ if (confirm) AlertDialog(
+  onDismissRequest = { if (!clearing) confirm = false },
+  title = { Text("Clear all app data?") },
+  text = { Text(error ?: "App storage: $size. Android will erase settings, saved tokens, cache, and models stored inside the app. Gallery exports stay on your phone. The app will close. Reopen it to see the new storage total.") },
+  dismissButton = { TextButton(enabled = !clearing, onClick = { confirm = false }) { Text("Cancel") } },
+  confirmButton = {
+   TextButton(enabled = !clearing && enabled, onClick = {
+    clearing = true
+    val accepted = try {
+     context.getSystemService(android.app.ActivityManager::class.java)?.clearApplicationUserData() == true
+    } catch (e: Exception) { false }
+    if (!accepted) {
+     clearing = false
+     error = "Android could not clear the app data. You can retry or cancel."
+    }
+   }) { Text(if (clearing) "Clearing…" else "Clear all data") }
+  }
+ )
 }
