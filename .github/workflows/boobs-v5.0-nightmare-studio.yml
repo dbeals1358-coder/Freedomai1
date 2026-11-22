@@ -6,6 +6,7 @@ on:
   push:
     branches: [main]
     paths:
+      - 'app/src/main/java/com/unboundaistudio/StudioScreens.kt'
       - 'app/src/main/java/com/unboundaistudio/MainActivity.kt'
       - 'app/src/main/java/com/unboundaistudio/HybridEngineSelector.kt'
       - 'app/src/test/java/com/unboundaistudio/HybridEngineSelectorTest.kt'
