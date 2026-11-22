@@ -102,7 +102,7 @@ internal fun ObjectTransferDialog(initialBackground: Bitmap?, onClose: () -> Uni
     val paint = remember { Paint(Paint.FILTER_BITMAP_FLAG) }
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.fillMaxSize()) {
-            Column(Modifier.fillMaxSize().systemBarsPadding().padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(Modifier.fillMaxSize().systemBarsPadding().navigationBarsPadding().padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Add object from photo", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
                     TextButton(onClick = onClose) { Text("Cancel") }
@@ -122,6 +122,22 @@ internal fun ObjectTransferDialog(initialBackground: Bitmap?, onClose: () -> Uni
                     source == null -> "Choose the source photo that contains the object."
                     else -> "Trace around the object with one finger. Lift to close the outline, or trace again to redraw."
                 })
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (placing) TextButton(onClick = { cut = null }) { Text("Retrace") }
+                    Button(enabled = !loading && (if (placing) background != null else outline.size >= 3), onClick = {
+                        val piece = cut
+                        val base = background
+                        if (piece == null) {
+                            cut = source?.let { cutObject(it, outline) }
+                            if (cut == null) error = "Trace a larger area around the object."
+                        } else if (base != null) {
+                            val composite = base.copy(Bitmap.Config.ARGB_8888, true)
+                            Canvas(composite).drawBitmap(piece, null,
+                                objectBounds(piece, base.width.toFloat(), base.height.toFloat(), position, scale), paint)
+                            onApply(composite)
+                        }
+                    }) { Text(if (placing) "Apply to photo" else "Use cutout") }
+                }
                 BoxWithConstraints(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
                     val photo = shown
                     if (photo != null) {
@@ -164,22 +180,7 @@ internal fun ObjectTransferDialog(initialBackground: Bitmap?, onClose: () -> Uni
                         Slider(scale, { scale = it }, modifier = Modifier.weight(1f), valueRange = .03f..2f)
                     }
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    if (placing) TextButton(onClick = { cut = null }) { Text("Retrace") }
-                    Button(enabled = !loading && (if (placing) background != null else outline.size >= 3), onClick = {
-                        val piece = cut
-                        val base = background
-                        if (piece == null) {
-                            cut = source?.let { cutObject(it, outline) }
-                            if (cut == null) error = "Trace a larger area around the object."
-                        } else if (base != null) {
-                            val composite = base.copy(Bitmap.Config.ARGB_8888, true)
-                            Canvas(composite).drawBitmap(piece, null,
-                                objectBounds(piece, base.width.toFloat(), base.height.toFloat(), position, scale), paint)
-                            onApply(composite)
-                        }
-                    }) { Text(if (placing) "Apply to photo" else "Use cutout") }
-                }
+
             }
         }
     }
