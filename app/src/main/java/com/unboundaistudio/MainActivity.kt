@@ -354,6 +354,26 @@ class MainActivity : ComponentActivity() {
    }
    var expandedPhoto by remember { mutableStateOf<Bitmap?>(null) }
    val edited = remember(original, brightness, saturation) { original?.let { adjust(it, brightness, saturation) } }
+   var transferOpen by remember { mutableStateOf(false) }
+   if (transferOpen) ObjectTransferDialog(
+    initialBackground = result ?: edited,
+    onClose = { transferOpen = false },
+    onApply = { composite ->
+     original = composite
+     originalGeneratedHere = false
+     result = composite
+     resultGeneratedHere = false
+     latestStudioImage = composite
+     second = null
+     brightness = 0f
+     saturation = 1f
+     strokes.clear()
+     drawing = emptyList()
+     maskMode = false
+     transferOpen = false
+     status = "Object added. Save the image when ready."
+    }
+   )
    fun openNightmare() {
     val intent = packageManager.getLaunchIntentForPackage("com.abrah.nightmare")
     if (intent == null) {
@@ -833,6 +853,7 @@ class MainActivity : ComponentActivity() {
            StudioReference("Add Image", original, !busy) { pickingSecond = false; picker.launch("image/*") }
            if (!videoMode) StudioReference("Optional", second, !busy) { pickingSecond = true; picker.launch("image/*") }
           }
+          if (!videoMode) OutlinedButton(enabled = !busy, onClick = { transferOpen = true }, modifier = Modifier.fillMaxWidth()) { Text("Add object from photo") }
           if (!videoMode && second != null) TextButton(enabled = !busy, onClick = { second = null }) { Text("Remove second reference • side-by-side input") }
          }
          OutlinedTextField(if (videoMode) motionPrompt else prompt,
@@ -1394,6 +1415,7 @@ class MainActivity : ComponentActivity() {
         }
        }
        Button(enabled = !busy, onClick = { picker.launch("image/*") }, modifier = Modifier.fillMaxWidth()) { Text("Choose Photo") }
+       if (tab == 1) OutlinedButton(enabled = !busy, onClick = { transferOpen = true }, modifier = Modifier.fillMaxWidth()) { Text("Add object from photo") }
        edited?.let { bitmap ->
         BoxWithConstraints(Modifier.fillMaxWidth()) {
          val displayHeight = maxWidth * bitmap.height.toFloat() / bitmap.width.toFloat()
