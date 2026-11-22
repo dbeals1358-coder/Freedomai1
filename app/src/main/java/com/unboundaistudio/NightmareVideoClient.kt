@@ -53,6 +53,7 @@ internal object NightmareVideoClient {
   image: Bitmap,
   prompt: String,
   seconds: Int,
+  improveQuality: Boolean = false,
   onStatus: (String) -> Unit = {}
  ): RenderedVideo {
   val operation = Operation()
@@ -80,7 +81,8 @@ internal object NightmareVideoClient {
   operation.check()
   onStatus("Preparing source photo for AI video…")
 
-  val scale = minOf(1f, 512f / maxOf(image.width, image.height))
+  val targetSide = if (improveQuality) 640 else 512
+  val scale = minOf(1f, targetSide.toFloat() / maxOf(image.width, image.height))
   val resized = if (scale < 1f) Bitmap.createScaledBitmap(
    image, maxOf(2, (image.width * scale).toInt()),
    maxOf(2, (image.height * scale).toInt()), true
@@ -93,7 +95,7 @@ internal object NightmareVideoClient {
   } finally { if (resized !== image) resized.recycle() }
   val base64Image = Base64.encodeToString(png, Base64.NO_WRAP)
 
-  var plan = NightmareVideoFlowPlanner.plan(schema, seconds, targetSide = 512, sourceWidth = image.width, sourceHeight = image.height)
+  var plan = NightmareVideoFlowPlanner.plan(schema, seconds, targetSide = targetSide, sourceWidth = image.width, sourceHeight = image.height)
   var reduced = false
   operation.check()
   onStatus("Generating AI motion in Nightmare (no live percentage)…")

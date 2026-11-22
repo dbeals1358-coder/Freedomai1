@@ -16,11 +16,11 @@ import kotlin.math.cos
 
 /** On-device photo animation (pan/zoom), not generative AI or articulated human motion. */
 object OfflineVideoEngine {
- fun renderFrames(frames: List<Bitmap>, seconds: Int, output: File, progress: (Int) -> Unit) {
+ fun renderFrames(frames: List<Bitmap>, seconds: Int, output: File, improveQuality: Boolean = false, progress: (Int) -> Unit) {
   require(frames.isNotEmpty()) { "No decoded MobileI2V frames" }
-  render(frames.first(), seconds, "", output, progress, frames)
+  render(frames.first(), seconds, "", output, progress, frames, improveQuality)
  }
- fun render(photo: Bitmap, seconds: Int, motion: String, output: File, progress: (Int) -> Unit, decodedFrames: List<Bitmap>? = null) {
+ fun render(photo: Bitmap, seconds: Int, motion: String, output: File, progress: (Int) -> Unit, decodedFrames: List<Bitmap>? = null, improveQuality: Boolean = false) {
   require(seconds in 1..120)
   val w = decodedFrames?.firstOrNull()?.width ?: 512
   val h = decodedFrames?.firstOrNull()?.height ?: 512
@@ -31,7 +31,7 @@ object OfflineVideoEngine {
   val total = seconds * fps
   val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, w, h).apply {
    setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Flexible)
-   setInteger(MediaFormat.KEY_BIT_RATE, 2_500_000)
+   setInteger(MediaFormat.KEY_BIT_RATE, if (improveQuality) 5_000_000 else 2_500_000)
    setInteger(MediaFormat.KEY_FRAME_RATE, fps)
    setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 2)
   }

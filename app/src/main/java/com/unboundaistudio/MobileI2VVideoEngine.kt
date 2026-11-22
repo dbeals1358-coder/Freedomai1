@@ -45,7 +45,7 @@ internal object MobileI2VVideoEngine {
  }
 
  fun generate(context: Context, modelsDir: File, cacheDir: File, photo: Bitmap, prompt: String,
-              seconds: Int, progress: (Int) -> Unit): NightmareVideoClient.RenderedVideo {
+              seconds: Int, improveQuality: Boolean = false, progress: (Int) -> Unit): NightmareVideoClient.RenderedVideo {
   require(seconds in 1..10) { "Choose 1–10 seconds" }
   val targetSeconds = seconds.coerceAtLeast(3) // Never silently deliver a one-second MobileI2V clip.
   require(photo.width > 0 && photo.height > 0) { "Choose a photo first" }
@@ -358,7 +358,7 @@ internal object MobileI2VVideoEngine {
    require(maxDifference >= 2.0) { "MobileI2V decoder produced almost no visible motion; refusing to save a static clip." }
    val out = File.createTempFile("mobilei2v_", ".mp4", cacheDir)
    try {
-    OfflineVideoEngine.renderFrames(frames, targetSeconds, out) { p -> progress(88 + p * 12 / 100) }
+    OfflineVideoEngine.renderFrames(frames, targetSeconds, out, improveQuality) { p -> progress(88 + p * 12 / 100) }
     val mp4 = out.readBytes()
     require(mp4.size > 12 && String(mp4, 4, 4, Charsets.US_ASCII) == "ftyp") {
      "MobileI2V did not create a valid MP4"

@@ -133,6 +133,11 @@ class MainActivity : ComponentActivity() {
     }
    }
    var lastVideoGenerator by remember { mutableStateOf(prefs.getString("last_video_generator", "Not recorded") ?: "Not recorded") }
+   var autoImprove by remember { mutableStateOf(prefs.getBoolean("auto_improve_quality", false)) }
+   val toggleAutoImprove = {
+    autoImprove = !autoImprove
+    prefs.edit().putBoolean("auto_improve_quality", autoImprove).apply()
+   }
    var busy by remember { mutableStateOf(false) }
    var generationJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
    // Native Qwen editor is fully on-device. Image generation still uses the selected backend.
@@ -582,7 +587,7 @@ class MainActivity : ComponentActivity() {
         var inferenceFinishedAt = editStartedAt
         try {
          status = "$editEngine: processing image (elapsed time shown below)"
-         val completedImage = withContext(Dispatchers.IO) {
+         val renderedImage = withContext(Dispatchers.IO) {
           val fastLocalColor = if (input != null && autoColorRequest != null)
            AutomaticClothingEdit.recolor(input, autoColorRequest) else null
           if (useNativeCreate) {
@@ -653,11 +658,31 @@ class MainActivity : ComponentActivity() {
          inferenceFinishedAt = android.os.SystemClock.elapsedRealtime()
          kotlinx.coroutines.currentCoroutineContext().ensureActive()
          stripeRepairUndo = null
-         result = completedImage
-         if (result != null && isNearlyWhiteImage(result!!)) {
+         var qualityNote = ""
+         if (isNearlyWhiteImage(renderedImage)) {
           result = null
           status = "The AI returned a blank white image. Your original photo is safe. Try again with lower edit strength or restart the model."
          } else {
+          val completedImage = if (autoImprove && maxOf(renderedImage.width, renderedImage.height) < 4096) {
+           progressJob?.cancel()
+           status = "Auto Improve: enhancing image detail…"
+           try {
+            withContext(Dispatchers.IO) {
+             AiSuperResolution.upscale(this@MainActivity, renderedImage) { percent ->
+              runOnUiThread { if (busy) { renderingPercent = percent; status = "Auto Improve: ${percent}%" } }
+             }
+            }.also { qualityNote = " • Auto Improve: 4K" }
+           } catch (e: CancellationException) {
+            throw e
+           } catch (e: OutOfMemoryError) {
+            qualityNote = " • Kept original render: insufficient memory for Auto Improve."
+            renderedImage
+           } catch (e: Exception) {
+            qualityNote = " • Kept original render: Auto Improve failed (${e.message})."
+            renderedImage
+           }
+          } else renderedImage
+          result = completedImage
           generationPercent = 100
           if (studio) {
            latestStudioImage = completedImage
@@ -676,7 +701,7 @@ class MainActivity : ComponentActivity() {
          }
          val totalSeconds = (android.os.SystemClock.elapsedRealtime() - editStartedAt) / 1000
          val engineSeconds = (inferenceFinishedAt - editStartedAt) / 1000
-         status += " | Engine: ${if (usedFastLocalEdit) "On-device color edit" else editEngine} | Processing: ${engineSeconds}s | Total: ${totalSeconds}s"
+         status += " | Engine: ${if (usedFastLocalEdit) "On-device color edit" else editEngine} | Processing: ${engineSeconds}s | Total: ${totalSeconds}s$qualityNote"
         } catch (e: kotlinx.coroutines.CancellationException) { throw e
         } catch (e: Exception) {
          val nightmareHelp = if (useNightmare && !useNativeCreate) NightmareConnectionDiagnostics.helpFor(e) else null
@@ -740,7 +765,7 @@ class MainActivity : ComponentActivity() {
              runOnUiThread { generationPercent = 0; status = "Generating MobileI2V video…" }
              checkpoint("Models ready, starting inference")
              var lastCheckpoint = -1
-             MobileI2VVideoEngine.generate(this@MainActivity, java.io.File(filesDir, "models/video-v1"), cacheDir, image, motionPrompt, duration) { p ->
+             MobileI2VVideoEngine.generate(this@MainActivity, java.io.File(filesDir, "models/video-v1"), cacheDir, image, motionPrompt, duration, autoImprove) { p ->
               if (generationJob?.isActive == false) throw kotlinx.coroutines.CancellationException("MobileI2V cancelled")
               if (p != lastCheckpoint) {
                checkpoint("Inference progress $p%")
@@ -749,7 +774,7 @@ class MainActivity : ComponentActivity() {
               runOnUiThread { generationPercent = p; status = "MobileI2V processing… $p%" }
              }
             } else {
-             NightmareVideoClient.generate(this@MainActivity, nightmareToken, nightmareVideoFlow, image, motionPrompt, duration) { stage ->
+             NightmareVideoClient.generate(this@MainActivity, nightmareToken, nightmareVideoFlow, image, motionPrompt, duration, autoImprove) { stage ->
               runOnUiThread {
                if (busy && !useMobileI2V && generationJob?.isActive == true) status = stage
               }
@@ -887,6 +912,7 @@ class MainActivity : ComponentActivity() {
           else StudioOptions("Size", listOf("512", "768", "1024"), studioSize.toString(), !busy) { studioSize = it.toInt() }
           StudioOptions("Ratio", listOf("1:1", "3:4", "4:3", "9:16"), studioRatio, !busy) { studioRatio = it }
          }
+         AutoImproveButton(autoImprove, !busy, toggleAutoImprove)
          if (videoMode) StudioOptions("Duration", listOf(2,4,8,10).map { "${it}s" }, "${duration}s", !busy) { duration = it.removeSuffix("s").toInt() }
          Button(enabled = !busy && !(tool == StudioTool.TEXT && studioEngine == "Qwen" && !qwenReady) && (if (videoMode) motionPrompt else prompt).isNotBlank() && (tool == StudioTool.TEXT || original != null),
           modifier = Modifier.fillMaxWidth(), onClick = {
@@ -920,6 +946,7 @@ class MainActivity : ComponentActivity() {
        Text("FreedomAI", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
        Text(if (videoMode) "Create Video" else if (tab == 0 && cartoonMode) "Create Cartoon" else if (tab == 0) "Create Image" else if (tab == 3) "AI Assistant" else if (tab == 2) "Private Studio" else "Edit Photo", style = MaterialTheme.typography.titleLarge)
       }
+      if (tab != -1) AutoImproveButton(autoImprove, !busy, toggleAutoImprove)
       if (tab == 3) {
        AssistantScreen(
          onCreateImage = { request -> prompt = request; cartoonMode = false; videoMode = false; tab = 0; pendingAssistantImage = request; status = "Assistant is starting image generation…" },
@@ -1798,6 +1825,14 @@ private fun adjust(bitmap: Bitmap, brightness: Float, saturation: Float): Bitmap
   pixels[i] = Color.argb(Color.alpha(c), channel(r), channel(g), channel(b))
  }
  return Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888).apply { setPixels(pixels, 0, w, 0, 0, w, h) }
+}
+
+@Composable
+private fun AutoImproveButton(selected: Boolean, enabled: Boolean, toggle: () -> Unit) {
+ FilterChip(selected = selected, enabled = enabled, onClick = toggle,
+  label = { Text(if (selected) "Auto Improve • On" else "Auto Improve • Off") },
+  colors = FilterChipDefaults.filterChipColors(containerColor = UiColor(0xFF292F3D),
+   labelColor = UiColor.White, selectedContainerColor = studioOrange, selectedLabelColor = UiColor.Black))
 }
 
 private fun generateImage(server: String, prompt: String, input: Bitmap?, editStrength: Float, mask: Bitmap? = null, highQuality: Boolean = true, cartoonMode: Boolean = false, canvas: Pair<Int, Int>? = null, literal: Boolean = false): Bitmap {
