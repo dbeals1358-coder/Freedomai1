@@ -28,7 +28,7 @@ internal enum class StudioTool(val label: String) {
 internal fun StudioHome(open: (StudioTool, String?) -> Unit, more: () -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         TextButton(onClick = more) { Text("☰", color = Color.White, fontSize = 22.sp) }
-        Text("Titties", Modifier.weight(1f), style = MaterialTheme.typography.headlineMedium)
+        Text("Titties", Modifier.weight(1f), color = Color.White, style = MaterialTheme.typography.headlineMedium)
         Text("V1.69", color = studioOrange)
     }
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -37,8 +37,8 @@ internal fun StudioHome(open: (StudioTool, String?) -> Unit, more: () -> Unit) {
                 listOf(Color(0xFF51436A), Color(0xFF24113C)))).clickable { open(tool, null) }
                 .height(98.dp).padding(4.dp), horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center) {
-                Text(listOf("▧", "▷", "✧")[index], fontSize = 28.sp)
-                Text(tool.label, fontSize = 12.sp)
+                Text(listOf("▧", "▷", "✧")[index], color = Color.White, fontSize = 28.sp)
+                Text(tool.label, color = Color.White, fontSize = 14.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
             }
         }
     }
@@ -50,13 +50,13 @@ internal fun StudioHome(open: (StudioTool, String?) -> Unit, more: () -> Unit) {
         "An anime ballet dancer practicing in an airy studio.", "A golden hourglass suspended in a starlit sky.",
         "A silver android awakening inside a futuristic hangar.")
     for ((row, title) in listOf("Hot 🔥", "Cinematic").withIndex()) {
-        Text(title, style = MaterialTheme.typography.titleMedium)
+        Text(title, color = Color.White, style = MaterialTheme.typography.titleMedium)
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             for (index in row * 3 until row * 3 + 3) {
                 Box(Modifier.size(120.dp, 156.dp).clip(curve).clickable { open(StudioTool.TEXT, prompts[index]) }) {
                     Image(painterResource(photos[index]), names[index], Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                     Text(names[index], Modifier.align(Alignment.BottomStart).fillMaxWidth()
-                        .background(Color.Black.copy(alpha = .66f)).padding(6.dp), fontSize = 13.sp)
+                        .background(Color.Black.copy(alpha = .78f)).padding(6.dp), color = Color.White, fontSize = 14.sp)
                 }
             }
         }
