@@ -66,7 +66,16 @@ internal object NightmareVideoFlowPlanner {
     error("This workflow supports at most ${maxSeconds}s per video. Choose a shorter duration.")
    }
    val secondValue = lengthValue(secondsWidget, perPart)
-   durationLabel = if (parts > 1) "${secondValue.toDoubleOrNull()?.times(parts) ?: requestedSeconds.toDouble()}" else secondValue
+   // Never label a clip as the requested duration if the model's fixed
+   // duration menu actually selected a different value.
+   val actualPartSeconds = secondValue.toDoubleOrNull()
+    ?: error("Nightmare returned an invalid video duration: $secondValue")
+   val actualSeconds = actualPartSeconds * parts
+   check(kotlin.math.abs(actualSeconds - requestedSeconds) < 0.05) {
+    "This Nightmare workflow supports ${actualSeconds}s, not ${requestedSeconds}s. " +
+     "Select a supported duration or another image-to-video workflow."
+   }
+   durationLabel = if (parts > 1) actualSeconds.toString() else secondValue
    val overrides = JSONObject().put("width", w.toString()).put("height", h.toString())
     .put("seconds", secondValue)
    if (parts > 1) overrides.put("parts", parts.toString())
