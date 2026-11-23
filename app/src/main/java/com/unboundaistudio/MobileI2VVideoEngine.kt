@@ -30,7 +30,7 @@ internal object MobileI2VVideoEngine {
  private const val SIDE = 512            // 16x16 video latents instead of unusable 2x2
  private const val FRAMES = 17
  private const val CHANNELS = 128
- private const val STEPS = 12
+ private const val STEPS = 20
  private const val PROCESS_BUDGET_KB = 4L * 1024 * 1024
  private const val PROCESS_GUARD_KB = 384L * 1024
 
@@ -127,7 +127,8 @@ internal object MobileI2VVideoEngine {
   val spatial = height * width
   val total = CHANNELS * FRAMES * spatial
   val videoLatent = FloatArray(total)
-  val rng = java.util.Random()
+  // Deterministic sampling makes video quality regressions reproducible.
+  val rng = java.util.Random(0x4D6F74696F6EL)
   for (ch in 0 until CHANNELS) for (t in 0 until FRAMES) for (px in 0 until spatial) {
    val offset = (ch * FRAMES + t) * spatial + px
    videoLatent[offset] = if (t == 0) encoded[ch * spatial + px] else rng.nextGaussian().toFloat()
@@ -295,6 +296,26 @@ internal object MobileI2VVideoEngine {
       count++
      }
     return sum.toDouble() / (count * 3)
+   }
+   // Repair isolated corrupt frames without suppressing genuine subject movement.
+   // Only repair when both neighbors agree and the middle frame is an outlier.
+   for (index in 1 until frames.lastIndex) {
+    if (Thread.currentThread().isInterrupted) throw InterruptedException("Video rendering cancelled")
+    val previous = frames[index - 1]
+    val current = frames[index]
+    val following = frames[index + 1]
+    val before = frameDelta(previous, current)
+    val after = frameDelta(current, following)
+    val across = frameDelta(previous, following)
+    if (before > 42.0 && after > 42.0 && across < 16.0) {
+     val repaired = Bitmap.createBitmap(current.width, current.height, Bitmap.Config.ARGB_8888)
+     val canvas = android.graphics.Canvas(repaired)
+     canvas.drawBitmap(previous, 0f, 0f, null)
+     val paint = android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG).apply { alpha = 128 }
+     canvas.drawBitmap(following, 0f, 0f, paint)
+     frames[index] = repaired
+     current.recycle()
+    }
    }
    val deltas = (1 until frames.size).map { frameDelta(frames[it - 1], frames[it]) }
    val sorted = deltas.sorted()
