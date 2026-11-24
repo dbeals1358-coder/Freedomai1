@@ -810,7 +810,7 @@ class MainActivity : ComponentActivity() {
      tab = if (next == StudioTool.TEXT) 0 else 1
      if (starter != null && presetTitle != null) {
       activePresetTitle = presetTitle
-      activePresetScene = starter
+      activePresetScene = "$presetTitle. $starter"
       // The editable field is only for the user's extra instructions.
       if (videoMode) motionPrompt = "" else prompt = ""
      } else {
