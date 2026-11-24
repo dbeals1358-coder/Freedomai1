@@ -59,9 +59,9 @@ internal object EditRequestRouting {
     /** Keep the requested change first: SD/SDXL models have a short CLIP prompt budget. */
     fun promptFor(flow: String, userInstruction: String): String = when (flow) {
         "inpaint" -> userInstruction.trim() +
-            ". Preserve the original illustration or photo style exactly; do not convert cartoons into photographs. Keep every character\u0027s identity, costume details, face, proportions, pose, background and lighting unchanged outside the requested edit."
+            ". Preserve the original illustration or photo style exactly; do not convert cartoons into photographs. Keep the same person and preserve the original body silhouette, apparent body proportions, posture, face, hairstyle, camera position, background and lighting. Do not enlarge, shrink, reshape or invent anatomical features outside the requested change."
         "flux_edit" -> userInstruction.trim() +
-            ". Make only this requested change. Preserve the original drawing or photographic style, each character\u0027s identity and costume, face, body, background and camera angle. Do not merge characters or introduce new ones."
+            ". Make only this requested change. Preserve the original drawing or photographic style, each character\u0027s identity and costume, face, body silhouette, apparent body proportions, pose, background and camera angle. Do not enlarge or reshape unrelated anatomy, merge characters or introduce new ones."
         else -> userInstruction.trim()
     }
 }
