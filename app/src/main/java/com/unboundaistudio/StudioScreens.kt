@@ -34,7 +34,8 @@ private data class StudioPreset(
     val category: String,
     val image: Int,
     val prompt: String,
-    val tall: Boolean = false
+    val tall: Boolean = false,
+    val tool: StudioTool = StudioTool.TEXT
 )
 
 private val studioPresets = listOf(
@@ -73,12 +74,41 @@ private val studioPresets = listOf(
     StudioPreset("Dreamlike Light", "Cinematic", R.drawable.studio_scene_4,
         "A glowing hourglass against a dreamlike night sky, cinematic color grading.", true),
     StudioPreset("Future World", "Cinematic", R.drawable.studio_scene_5,
-        "A futuristic robot in a large illuminated space station, photoreal science fiction production design.")
+        "A futuristic robot in a large illuminated space station, photoreal science fiction production design."),
+    StudioPreset("Romantic Walk", "Videos", R.drawable.studio_scene_0,
+        "Animate the two adults taking a gentle walk together, natural gestures, relaxed expressions and realistic body movement.",
+        tall = true, tool = StudioTool.VIDEO),
+    StudioPreset("Painter at Work", "Videos", R.drawable.studio_scene_1,
+        "Animate the painter applying brush strokes on a canvas, with natural hand, shoulder and head movement.",
+        tool = StudioTool.VIDEO),
+    StudioPreset("Desert Winds", "Videos", R.drawable.studio_scene_2,
+        "Create a moving scene with drifting desert sand, fluttering fabric and a character stepping forward.",
+        tall = true, tool = StudioTool.VIDEO),
+    StudioPreset("Ballet in Motion", "Videos", R.drawable.studio_scene_3,
+        "Animate a ballet dancer performing graceful turns and steps with realistic limb motion and fluid movement.",
+        tool = StudioTool.VIDEO),
+    StudioPreset("Cinematic Orbit", "Videos", R.drawable.studio_scene_4,
+        "Create a smooth cinematic camera orbit around a glowing hourglass while particles drift through the air.",
+        tall = true, tool = StudioTool.VIDEO),
+    StudioPreset("Robot Comes Alive", "Videos", R.drawable.studio_scene_5,
+        "Animate a futuristic android lifting its head, looking around and taking deliberate steps with realistic motion.",
+        tool = StudioTool.VIDEO)
 )
 
+/** Keep a card's scene intact and append the user's exact words to the render request. */
+internal fun studioPresetPrompt(scene: String, additions: String): String {
+    val base = scene.trim()
+    val details = additions.trim()
+    return when {
+        base.isEmpty() -> details
+        details.isEmpty() -> base
+        else -> "$base\nAdditional instructions from the user: $details"
+    }
+}
+
 @Composable
-private fun StudioPresetCard(item: StudioPreset, open: (StudioTool, String?) -> Unit) {
-    val launch = { open(StudioTool.TEXT, item.prompt) }
+private fun StudioPresetCard(item: StudioPreset, open: (StudioTool, String?, String?) -> Unit) {
+    val launch = { open(item.tool, item.prompt, item.title) }
     Box(
         Modifier.fillMaxWidth()
             .height(if (item.tall) 248.dp else 200.dp)
@@ -91,6 +121,11 @@ private fun StudioPresetCard(item: StudioPreset, open: (StudioTool, String?) -> 
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(
             colors = listOf(Color.Black.copy(alpha = 0.08f), Color.Transparent,
                 Color.Black.copy(alpha = 0.89f)))))
+        Text(if (item.tool == StudioTool.VIDEO) "VIDEO" else "PHOTO",
+            Modifier.align(Alignment.TopEnd).padding(8.dp)
+                .background(accentPink, RoundedCornerShape(8.dp))
+                .padding(horizontal = 7.dp, vertical = 4.dp),
+            color = Color.White, fontSize = 11.sp)
         Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(item.title, color = Color.White, fontSize = 17.sp,
@@ -102,14 +137,15 @@ private fun StudioPresetCard(item: StudioPreset, open: (StudioTool, String?) -> 
                 colors = ButtonDefaults.buttonColors(containerColor = accentPink),
                 contentPadding = PaddingValues(horizontal = 8.dp)
             ) {
-                Text("Generate", color = Color.White, fontSize = 14.sp)
+                Text(if (item.tool == StudioTool.VIDEO) "Make Video" else "Generate",
+                    color = Color.White, fontSize = 14.sp)
             }
         }
     }
 }
 
 @Composable
-internal fun StudioHome(open: (StudioTool, String?) -> Unit, more: () -> Unit) {
+internal fun StudioHome(open: (StudioTool, String?, String?) -> Unit, more: () -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         TextButton(onClick = more) { Text("☰", color = Color.White, fontSize = 22.sp) }
         Text("Titties", Modifier.weight(1f), color = Color.White,
@@ -132,10 +168,10 @@ internal fun StudioHome(open: (StudioTool, String?) -> Unit, more: () -> Unit) {
     }
 
     var selectedCategory by rememberSaveable { mutableStateOf("All") }
-    val categories = listOf("All", "Portraits", "Romance", "Fantasy", "Animation", "Cinematic")
+    val categories = listOf("All", "Portraits", "Romance", "Fantasy", "Animation", "Cinematic", "Videos")
     Text("Explore & Generate", color = Color.White,
         style = MaterialTheme.typography.titleLarge)
-    Text("Scroll to browse more ideas. Tap any card to edit its prompt and generate.",
+    Text("Choose a scene, then add your instructions. Video cards require a reference image.",
         color = Color.LightGray, fontSize = 13.sp)
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -182,7 +218,7 @@ internal fun StudioHome(open: (StudioTool, String?) -> Unit, more: () -> Unit) {
             "Fantasy" to "High-detail fantasy concept art with imaginative environment."
         ).forEach { (name, description) ->
             OutlinedButton(
-                onClick = { open(StudioTool.TEXT, description) },
+                onClick = { open(StudioTool.TEXT, description, null) },
                 shape = RoundedCornerShape(14.dp)
             ) { Text(name) }
         }
