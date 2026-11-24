@@ -27,6 +27,8 @@ on:
       - 'app/src/test/java/com/unboundaistudio/EditRequestRoutingTest.kt'
       - 'app/src/main/java/com/unboundaistudio/NightmareVideoQualityGate.kt'
       - 'app/src/test/java/com/unboundaistudio/VideoFrameContinuityTest.kt'
+      - 'app/src/test/java/com/unboundaistudio/NightmareVideoFlowPlannerTest.kt'
+      - 'app/src/main/java/com/unboundaistudio/NightmareVideoFlowPlanner.kt'
       - 'app/src/main/java/com/unboundaistudio/AutomaticClothingEdit.kt'
       - 'app/src/test/java/com/unboundaistudio/AutomaticClothingEditTest.kt'
       - 'app/src/main/java/com/unboundaistudio/NightmareEditModelPicker.kt'
