@@ -157,7 +157,7 @@ internal fun StudioHome(open: (StudioTool, String?, String?) -> Unit, more: () -
             Column(Modifier.weight(1f).clip(curve)
                 .background(Brush.linearGradient(
                     listOf(Color(0xFF51436A), Color(0xFF24113C))))
-                .clickable { open(tool, null) }
+                .clickable { open(tool, null, null) }
                 .height(98.dp).padding(4.dp), horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center) {
                 Text(listOf("▧", "▷", "✧")[index], color = Color.White, fontSize = 28.sp)
