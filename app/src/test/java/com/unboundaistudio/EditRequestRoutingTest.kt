@@ -59,6 +59,20 @@ class EditRequestRoutingTest {
         assertFalse(s.startsWith("Edit the supplied"))
     }
 
+    @Test fun inpaintInstructionPreservesSourceProportions() {
+        val text = EditRequestRouting.promptFor("inpaint", "change the jacket color")
+        assertTrue(text.startsWith("change the jacket color"))
+        assertTrue(text.contains("original body silhouette"))
+        assertTrue(text.contains("apparent body proportions"))
+        assertTrue(text.contains("Do not enlarge, shrink, reshape"))
+    }
+
+    @Test fun instructionEditPreservesUnrelatedAnatomy() {
+        val text = EditRequestRouting.promptFor("flux_edit", "replace the red hat")
+        assertTrue(text.startsWith("replace the red hat"))
+        assertTrue(text.contains("Do not enlarge or reshape unrelated anatomy"))
+    }
+
     @Test fun ordinaryClothingEditKeepsOriginalFace() {
         assertTrue(EditRequestRouting.shouldPreserveFace("turn the shirt blue"))
         assertTrue(EditRequestRouting.shouldPreserveFace("change the dress color and keep face the same"))
