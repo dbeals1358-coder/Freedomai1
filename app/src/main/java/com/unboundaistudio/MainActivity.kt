@@ -222,6 +222,9 @@ class MainActivity : ComponentActivity() {
    var showNightmareFlowMenu by remember { mutableStateOf(false) }
    var showAdvancedConnection by remember { mutableStateOf(false) }
    var prompt by remember { mutableStateOf("") }
+   // A card keeps its own preset scene separate from optional user additions.
+   var activePresetTitle by remember { mutableStateOf<String?>(null) }
+   var activePresetScene by remember { mutableStateOf("") }
     var cartoonMode by remember { mutableStateOf(false) }
     var expandCartoonPrompt by remember { mutableStateOf(prefs.getBoolean("expand_cartoon_prompt", false)) }
     var lastRequestDetails by remember { mutableStateOf("") }
@@ -691,8 +694,9 @@ class MainActivity : ComponentActivity() {
         } finally { progressJob.cancel(); if (generationJob == kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job]) { busy = false; generationJob = null } }
        }
       }
-    fun requestVideo(image: Bitmap) {
-        if (!useMobileI2V && motionPrompt.isBlank()) status = "Describe the desired movement"
+    fun requestVideo(image: Bitmap, motionOverride: String? = null) {
+        val motionForRun = (motionOverride ?: motionPrompt).trim()
+        if (!useMobileI2V && motionForRun.isBlank()) status = "Describe the desired movement"
         else {
          busy = true
          generationPercent = 0
@@ -738,7 +742,7 @@ class MainActivity : ComponentActivity() {
              runOnUiThread { generationPercent = 0; status = "Generating MobileI2V video…" }
              checkpoint("Models ready, starting inference")
              var lastCheckpoint = -1
-             MobileI2VVideoEngine.generate(this@MainActivity, java.io.File(filesDir, "models/video-v1"), cacheDir, image, motionPrompt, duration, autoImprove) { p ->
+             MobileI2VVideoEngine.generate(this@MainActivity, java.io.File(filesDir, "models/video-v1"), cacheDir, image, motionForRun, duration, autoImprove) { p ->
               if (generationJob?.isActive == false) throw kotlinx.coroutines.CancellationException("MobileI2V cancelled")
               if (p != lastCheckpoint) {
                checkpoint("Inference progress $p%")
@@ -747,7 +751,7 @@ class MainActivity : ComponentActivity() {
               runOnUiThread { generationPercent = p; status = "MobileI2V processing… $p%" }
              }
             } else {
-             NightmareVideoClient.generate(this@MainActivity, nightmareToken, nightmareVideoFlow, image, motionPrompt, duration, autoImprove) { stage ->
+             NightmareVideoClient.generate(this@MainActivity, nightmareToken, nightmareVideoFlow, image, motionForRun, duration, autoImprove) { stage ->
               runOnUiThread {
                if (busy && !useMobileI2V && generationJob?.isActive == true) status = stage
               }
@@ -799,12 +803,23 @@ class MainActivity : ComponentActivity() {
          }
         }
     }
-    fun openTool(next: StudioTool, starter: String? = null) {
+    fun openTool(next: StudioTool, starter: String? = null, presetTitle: String? = null) {
      tool = next
      videoMode = next == StudioTool.VIDEO
      cartoonMode = false
      tab = if (next == StudioTool.TEXT) 0 else 1
-     if (starter != null) prompt = starter
+     if (starter != null && presetTitle != null) {
+      activePresetTitle = presetTitle
+      activePresetScene = starter
+      // The editable field is only for the user's extra instructions.
+      if (videoMode) motionPrompt = "" else prompt = ""
+     } else {
+      activePresetTitle = null
+      activePresetScene = ""
+      if (starter != null) {
+       if (videoMode) motionPrompt = starter else prompt = starter
+      }
+     }
      status = ""
     }
     androidx.activity.compose.BackHandler(enabled = !studio || tab != -1) {
@@ -826,7 +841,7 @@ class MainActivity : ComponentActivity() {
        when (tab) {
         -1 -> {
          AppDataControl(!busy)
-         StudioHome({ next, starter -> openTool(next, starter) }, { studio = false; tab = -1 })
+         StudioHome({ next, starter, title -> openTool(next, starter, title) }, { studio = false; tab = -1 })
         }
         4 -> {
          Text("Creation", style = MaterialTheme.typography.headlineSmall)
@@ -856,14 +871,31 @@ class MainActivity : ComponentActivity() {
           if (!videoMode) OutlinedButton(enabled = !busy, onClick = { transferOpen = true }, modifier = Modifier.fillMaxWidth()) { Text("Add object from photo") }
           if (!videoMode && second != null) TextButton(enabled = !busy, onClick = { second = null }) { Text("Remove second reference • side-by-side input") }
          }
+         if (activePresetTitle != null) {
+          Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = UiColor(0xFF222A37))) {
+           Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("Selected card: ${activePresetTitle}", color = studioOrange,
+             style = MaterialTheme.typography.titleMedium)
+            Text(activePresetScene, style = MaterialTheme.typography.bodySmall)
+            Text("This scene stays in the generation request. Your words are added below.",
+             style = MaterialTheme.typography.labelSmall)
+           }
+          }
+          if (videoMode && original == null) {
+           Text("Select a starting picture above to animate. This video generator needs an image.",
+            color = studioOrange, style = MaterialTheme.typography.bodySmall)
+          }
+         }
          OutlinedTextField(if (videoMode) motionPrompt else prompt,
           { if (videoMode) motionPrompt = it else prompt = it }, enabled = !busy,
           modifier = Modifier.fillMaxWidth().heightIn(min = 148.dp), shape = RoundedCornerShape(18.dp),
           colors = OutlinedTextFieldDefaults.colors(unfocusedContainerColor = UiColor(0xFF292F3D), focusedContainerColor = UiColor(0xFF292F3D)),
-          placeholder = { Text(when(tool) {
-           StudioTool.VIDEO -> "Describe motion, expression, camera movement, and atmosphere."
-           StudioTool.EDIT -> "Describe the outfit, pose, style, lighting, and mood to change."
-           StudioTool.TEXT -> "Describe the image you want to create."
+          label = if (activePresetTitle != null) { { Text("Add your instructions (optional)") } } else null,
+          placeholder = { Text(when {
+           activePresetTitle != null -> "Add details or changes to the selected scene."
+           tool == StudioTool.VIDEO -> "Describe motion, expression, camera movement, and atmosphere."
+           tool == StudioTool.EDIT -> "Describe the outfit, pose, style, lighting, and mood to change."
+           else -> "Describe the image you want to create."
           }) })
          if (tool == StudioTool.TEXT) {
           StudioOptions("Size", listOf("512", "768", "1024"), studioSize.toString(), !busy) { studioSize = it.toInt() }
@@ -871,11 +903,17 @@ class MainActivity : ComponentActivity() {
          }
          AutoImproveButton(autoImprove, !busy, toggleAutoImprove)
          if (videoMode) StudioOptions("Duration", listOf(2,4,8,10).map { "${it}s" }, "${duration}s", !busy) { duration = it.removeSuffix("s").toInt() }
-         Button(enabled = !busy && (if (videoMode) motionPrompt else prompt).isNotBlank() && (tool == StudioTool.TEXT || original != null),
+         Button(enabled = !busy && (activePresetScene.isNotBlank() || (if (videoMode) motionPrompt else prompt).isNotBlank()) && (tool == StudioTool.TEXT || original != null),
           modifier = Modifier.fillMaxWidth(), onClick = {
-           if (videoMode) { useMobileI2V = false; original?.let { requestVideo(it) } }
-           else if (tool == StudioTool.TEXT) requestImage(null)
-           else original?.let { first -> requestImage(second?.let { referencePair(first,it) } ?: first) }
+           if (videoMode) {
+            useMobileI2V = false
+            original?.let { image ->
+             requestVideo(image, if (activePresetTitle != null) studioPresetPrompt(activePresetScene, motionPrompt) else null)
+            }
+           } else if (tool == StudioTool.TEXT) {
+            if (activePresetTitle != null) requestImage(null, studioPresetPrompt(activePresetScene, prompt))
+            else requestImage(null)
+           } else original?.let { first -> requestImage(second?.let { referencePair(first,it) } ?: first) }
           }, colors = ButtonDefaults.buttonColors(containerColor = studioOrange, contentColor = UiColor.Black)) {
           Text(if (busy) "Generating…" else if (videoMode) "Generate Video" else "Generate Image")
          }
