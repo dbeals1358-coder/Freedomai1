@@ -50,10 +50,14 @@ class NightmareVideoFlowPlannerTest {
   assertEquals("2", long.params.getJSONObject("video123").getString("parts"))
  }
 
- @Test fun fixedDurationModelsUseTheirSupportedChoice() {
-  val p = NightmareVideoFlowPlanner.plan(schema(options = "[\"0.9\",\"1.6\",\"2.3\"]"), 2)
-  assertEquals("2.3", p.params.getJSONObject("video123").getString("seconds"))
-  assertEquals("2.3", p.durationLabel)
+ @Test fun fixedDurationModelsRejectUnsupportedRequestedDuration() {
+  try {
+   NightmareVideoFlowPlanner.plan(schema(options = "[\"0.9\",\"1.6\",\"2.3\"]"), 2)
+   fail("Expected an unsupported-duration error rather than silently making a 2.3-second clip")
+  } catch (e: IllegalStateException) {
+   assertTrue(e.message.orEmpty().contains("supports 2.3s"))
+   assertTrue(e.message.orEmpty().contains("not 2s"))
+  }
  }
 
  @Test fun refusesPhotoUnconnectedToVideoInsteadOfGeneratingAnotherPerson() {
