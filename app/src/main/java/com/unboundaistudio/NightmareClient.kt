@@ -207,7 +207,10 @@ internal object NightmareClient {
                     // Its inpaint node composites the masked change onto the original photo.
                     // If the parser isn't installed, Nightmare refuses instead of silently
                     // running a full-frame img2img variation.
-                    payload.put("denoise", strength.coerceAtLeast(0.60f).toDouble())
+                    // Respect user edit-strength settings. A forced 0.60 minimum can
+                    // substantially redraw body shape even when 0.30 is selected.
+                    // Lower strength favors source geometry; stronger edits remain user-selectable.
+                    payload.put("denoise", strength.coerceIn(0.10f, 0.80f).toDouble())
                         // Faster 10-step FAST preview; higher-quality modes retain their steps.
                         .put("steps", when (speed) { "FAST" -> 10; "MAX QUALITY" -> 35; else -> 24 }).put("cfg", 6.0)
                         .put("width", editWidth).put("height", editHeight)
