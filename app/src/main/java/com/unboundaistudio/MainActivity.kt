@@ -890,7 +890,7 @@ class MainActivity : ComponentActivity() {
           { if (videoMode) motionPrompt = it else prompt = it }, enabled = !busy,
           modifier = Modifier.fillMaxWidth().heightIn(min = 148.dp), shape = RoundedCornerShape(18.dp),
           colors = OutlinedTextFieldDefaults.colors(unfocusedContainerColor = UiColor(0xFF292F3D), focusedContainerColor = UiColor(0xFF292F3D)),
-          label = if (activePresetTitle != null) { { Text("Add your instructions (optional)") } } else null,
+          label = { Text(if (activePresetTitle != null) "Add your instructions (optional)" else "Prompt") },
           placeholder = { Text(when {
            activePresetTitle != null -> "Add details or changes to the selected scene."
            tool == StudioTool.VIDEO -> "Describe motion, expression, camera movement, and atmosphere."
