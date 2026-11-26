@@ -2,6 +2,15 @@ package com.unboundaistudio
 
 import android.graphics.Bitmap
 import android.graphics.BitmapShader
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.ui.graphics.asImageBitmap
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.segmentation.subject.SubjectSegmentation
+import com.google.mlkit.vision.segmentation.subject.SubjectSegmenterOptions
 import android.graphics.Canvas
 import android.graphics.ImageDecoder
 import android.graphics.Paint
@@ -61,6 +70,19 @@ private fun objectBounds(cut: Bitmap, width: Float, height: Float, position: Off
     return RectF(x - halfWidth, y - halfHeight, x + halfWidth, y + halfHeight)
 }
 
+private fun drawTransferredSubject(canvas: Canvas, piece: Bitmap, bounds: RectF, rotation: Float, brightness: Float) {
+    val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
+        if (brightness != 0f) colorFilter = ColorMatrixColorFilter(ColorMatrix(floatArrayOf(
+            1f, 0f, 0f, 0f, brightness, 0f, 1f, 0f, brightness,
+            0f, 0f, 1f, 0f, brightness, 0f, 0f, 0f, 1f, 0f
+        )))
+    }
+    canvas.save()
+    canvas.rotate(rotation, bounds.centerX(), bounds.centerY())
+    canvas.drawBitmap(piece, null, bounds, paint)
+    canvas.restore()
+}
+
 @Composable
 internal fun ObjectTransferDialog(initialBackground: Bitmap?, onClose: () -> Unit, onApply: (Bitmap) -> Unit) {
     val context = LocalContext.current
@@ -71,9 +93,46 @@ internal fun ObjectTransferDialog(initialBackground: Bitmap?, onClose: () -> Uni
     val outline = remember { mutableStateListOf<Offset>() }
     var position by remember { mutableStateOf(Offset(.5f, .5f)) }
     var scale by remember { mutableFloatStateOf(.45f) }
+    var rotation by remember { mutableFloatStateOf(0f) }
+    var brightness by remember { mutableFloatStateOf(0f) }
+    var error by remember { mutableStateOf("") }
+    var candidates by remember { mutableStateOf<List<Bitmap>>(emptyList()) }
+    var detecting by remember { mutableStateOf(false) }
+    var active by remember { mutableStateOf(true) }
+    DisposableEffect(Unit) { onDispose { active = false } }
+    fun detectSubjects() {
+        val photo = source ?: return
+        if (detecting) return
+        detecting = true
+        error = ""
+        val options = SubjectSegmenterOptions.Builder()
+            .enableMultipleSubjects(SubjectSegmenterOptions.SubjectResultOptions.Builder().enableSubjectBitmap().build())
+            .build()
+        val segmenter = SubjectSegmentation.getClient(options)
+        try {
+            segmenter.process(InputImage.fromBitmap(photo, 0))
+                .addOnSuccessListener { result ->
+                    if (active && source === photo) {
+                        candidates = result.subjects.mapNotNull { it.bitmap }
+                        if (candidates.isEmpty()) error = "No subject found, or the Google model is still downloading. Try again or trace manually."
+                        else if (candidates.size == 1) cut = candidates.first()
+                    }
+                }
+                .addOnFailureListener {
+                    if (active && source === photo) error = "Automatic selection unavailable. Try again or trace manually."
+                }
+                .addOnCompleteListener {
+                    segmenter.close()
+                    if (active) detecting = false
+                }
+        } catch (e: Exception) {
+            segmenter.close()
+            detecting = false
+            error = "Automatic selection unavailable. Trace manually."
+        }
+    }
     var pickingBackground by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf("") }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) scope.launch {
             loading = true
@@ -91,6 +150,11 @@ internal fun ObjectTransferDialog(initialBackground: Bitmap?, onClose: () -> Uni
                     source = bitmap
                     outline.clear()
                     cut = null
+                    candidates = emptyList()
+                    position = Offset(.5f, .5f)
+                    scale = .45f
+                    rotation = 0f
+                    brightness = 0f
                 }
                 error = ""
             } catch (e: Exception) { error = "Couldn’t open this photo. Choose another image." }
@@ -104,27 +168,41 @@ internal fun ObjectTransferDialog(initialBackground: Bitmap?, onClose: () -> Uni
         Surface(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize().systemBarsPadding().navigationBarsPadding().padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Add object from photo", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+                    Text("Add Person or Object", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
                     TextButton(onClick = onClose) { Text("Cancel") }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(enabled = !loading, onClick = { pickingBackground = true; picker.launch("image/*") }) {
+                    OutlinedButton(enabled = !loading && !detecting, onClick = { pickingBackground = true; picker.launch("image/*") }) {
                         Text(if (background == null) "Choose background" else "Change background")
                     }
-                    OutlinedButton(enabled = !loading, onClick = { pickingBackground = false; picker.launch("image/*") }) {
+                    OutlinedButton(enabled = !loading && !detecting, onClick = { pickingBackground = false; picker.launch("image/*") }) {
                         Text(if (source == null) "Choose source" else "Change source")
                     }
                 }
                 Text(when {
                     loading -> "Opening photo…"
+                    detecting -> "Finding subjects on your device…"
                     placing && background == null -> "Choose the background photo for your cutout."
-                    placing -> "Drag to position the object. Adjust its size below."
+                    placing -> "Drag to position the subject. Adjust size, angle and lighting below."
                     source == null -> "Choose the source photo that contains the object."
-                    else -> "Trace around the object with one finger. Lift to close the outline, or trace again to redraw."
+                    else -> "Tap Auto select, or trace around a person or object with one finger."
                 })
+                if (!placing && source != null) {
+                    Button(enabled = !loading && !detecting, onClick = { detectSubjects() }) { Text("Auto select subject") }
+                    if (candidates.isNotEmpty()) {
+                        Text("Choose a detected subject")
+                        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            candidates.forEachIndexed { index, bitmap ->
+                                OutlinedButton(onClick = { cut = bitmap; error = "" }) {
+                                    Image(bitmap.asImageBitmap(), "Subject ${index + 1}", Modifier.size(56.dp))
+                                }
+                            }
+                        }
+                    }
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    if (placing) TextButton(onClick = { cut = null }) { Text("Retrace") }
-                    Button(enabled = !loading && (if (placing) background != null else outline.size >= 3), onClick = {
+                    if (placing) TextButton(onClick = { cut = null }) { Text("Change subject") }
+                    Button(enabled = !loading && !detecting && (if (placing) background != null else outline.size >= 3), onClick = {
                         val piece = cut
                         val base = background
                         if (piece == null) {
@@ -132,8 +210,8 @@ internal fun ObjectTransferDialog(initialBackground: Bitmap?, onClose: () -> Uni
                             if (cut == null) error = "Trace a larger area around the object."
                         } else if (base != null) {
                             val composite = base.copy(Bitmap.Config.ARGB_8888, true)
-                            Canvas(composite).drawBitmap(piece, null,
-                                objectBounds(piece, base.width.toFloat(), base.height.toFloat(), position, scale), paint)
+                            drawTransferredSubject(Canvas(composite), piece,
+                                objectBounds(piece, base.width.toFloat(), base.height.toFloat(), position, scale), rotation, brightness)
                             onApply(composite)
                         }
                     }) { Text(if (placing) "Apply to photo" else "Use cutout") }
@@ -159,7 +237,7 @@ internal fun ObjectTransferDialog(initialBackground: Bitmap?, onClose: () -> Uni
                             if (piece != null) {
                                 canvas.save()
                                 canvas.clipRect(0f, 0f, size.width, size.height)
-                                canvas.drawBitmap(piece, null, objectBounds(piece, size.width, size.height, position, scale), paint)
+                                drawTransferredSubject(canvas, piece, objectBounds(piece, size.width, size.height, position, scale), rotation, brightness)
                                 canvas.restore()
                             } else if (outline.size > 1) {
                                 val path = androidx.compose.ui.graphics.Path().apply {
@@ -178,6 +256,14 @@ internal fun ObjectTransferDialog(initialBackground: Bitmap?, onClose: () -> Uni
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("Size")
                         Slider(scale, { scale = it }, modifier = Modifier.weight(1f), valueRange = .03f..2f)
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Angle")
+                        Slider(rotation, { rotation = it }, modifier = Modifier.weight(1f), valueRange = -180f..180f)
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Lighting")
+                        Slider(brightness, { brightness = it }, modifier = Modifier.weight(1f), valueRange = -80f..80f)
                     }
                 }
 

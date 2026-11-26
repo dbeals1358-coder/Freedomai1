@@ -11,7 +11,7 @@ android {
         minSdk = 29
         targetSdk = 35
         ndk { abiFilters += "arm64-v8a" }
-        versionCode = 75
+        versionCode = 76
         versionName = "1.69"
     }
     // The build injects this into the APK; it can be extracted from the APK.
@@ -33,6 +33,7 @@ dependencies {
     testImplementation("org.json:json:20240303")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("com.google.mediapipe:tasks-genai:0.10.27")
+    implementation("com.google.android.gms:play-services-mlkit-subject-segmentation:16.0.0-beta1")
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.20.0")
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))
     implementation("androidx.activity:activity-compose:1.10.0")

@@ -374,7 +374,8 @@ class MainActivity : ComponentActivity() {
      drawing = emptyList()
      maskMode = false
      transferOpen = false
-     status = "Object added. Save the image when ready."
+     if (studio && tab == -1) tab = 4
+     status = "Subject added. Save the image when ready."
     }
    )
    fun openNightmare() {
@@ -841,6 +842,7 @@ class MainActivity : ComponentActivity() {
        when (tab) {
         -1 -> {
          AppDataControl(!busy)
+         Button(enabled = !busy, onClick = { transferOpen = true }, modifier = Modifier.fillMaxWidth()) { Text("Add Person or Object") }
          StudioHome({ next, starter, title -> openTool(next, starter, title) }, { studio = false; tab = -1 })
         }
         4 -> {
@@ -868,7 +870,7 @@ class MainActivity : ComponentActivity() {
            StudioReference("Add Image", original, !busy) { pickingSecond = false; picker.launch("image/*") }
            if (!videoMode) StudioReference("Optional", second, !busy) { pickingSecond = true; picker.launch("image/*") }
           }
-          if (!videoMode) OutlinedButton(enabled = !busy, onClick = { transferOpen = true }, modifier = Modifier.fillMaxWidth()) { Text("Add object from photo") }
+          if (!videoMode) OutlinedButton(enabled = !busy, onClick = { transferOpen = true }, modifier = Modifier.fillMaxWidth()) { Text("Add Person or Object") }
           if (!videoMode && second != null) TextButton(enabled = !busy, onClick = { second = null }) { Text("Remove second reference • side-by-side input") }
          }
          if (activePresetTitle != null) {
@@ -1453,7 +1455,7 @@ class MainActivity : ComponentActivity() {
         }
        }
        Button(enabled = !busy, onClick = { picker.launch("image/*") }, modifier = Modifier.fillMaxWidth()) { Text("Choose Photo") }
-       if (tab == 1) OutlinedButton(enabled = !busy, onClick = { transferOpen = true }, modifier = Modifier.fillMaxWidth()) { Text("Add object from photo") }
+       if (tab == 1) OutlinedButton(enabled = !busy, onClick = { transferOpen = true }, modifier = Modifier.fillMaxWidth()) { Text("Add Person or Object") }
        edited?.let { bitmap ->
         BoxWithConstraints(Modifier.fillMaxWidth()) {
          val displayHeight = maxWidth * bitmap.height.toFloat() / bitmap.width.toFloat()
