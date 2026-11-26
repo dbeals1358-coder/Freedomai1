@@ -361,6 +361,35 @@ class MainActivity : ComponentActivity() {
    if (transferOpen) ObjectTransferDialog(
     initialBackground = result ?: edited,
     onClose = { transferOpen = false },
+    onBlend = { composite, mask ->
+     val address = server.trim().trimEnd('/')
+     val token = nightmareToken
+     val useNightmareBlend = nightmareMode
+     val speed = editSpeed
+     val size = (if (studio) studioSize else resolution).coerceIn(512, 1024)
+     val instruction = "Integrate the placed foreground subject naturally into the existing photograph. " +
+      "Remove cutout seams and leftover source background at the edges. Match ambient color, lighting, edge softness, " +
+      "perspective and realistic contact shadows. Preserve the subject identity, appearance, placement and the surrounding scene. " +
+      "Do not add unrelated objects, people or text."
+     withContext(Dispatchers.IO) {
+      val rendered = if (useNightmareBlend) {
+       check(token.isNotBlank()) { "Connect Nightmare in Settings before AI blending." }
+       // Nightmare instruction-edit currently has no external pixel-mask input.
+       NightmareClient.generate(instruction, token, composite, 0.35f, true, size,
+        "flux_edit", speed, nightmareImageFlow, literal = true, routingPrompt = instruction)
+      } else {
+       check(!localMode) { "AI Blend requires Nightmare with a compatible instruction editor or an HTTPS AUTOMATIC1111 inpainting server." }
+       check(runCatching { URL(address).let { it.protocol == "https" && it.host.isNotBlank() && it.userInfo == null && it.query == null && it.ref == null } }.getOrDefault(false)) {
+        "Configure a valid HTTPS AUTOMATIC1111 server in Settings."
+       }
+       generateImage(address, instruction, composite, 0.35f, mask, true, literal = true)
+      }
+      check(!isNearlyWhiteImage(rendered)) { "AI returned a blank image." }
+      check(!isSameImage(composite, rendered)) { "AI returned the placement unchanged; try a compatible edit model." }
+      kotlinx.coroutines.currentCoroutineContext().ensureActive()
+      compositeMaskedEdit(composite, rendered, mask)
+     }
+    },
     onApply = { composite ->
      original = composite
      originalGeneratedHere = false
@@ -375,7 +404,7 @@ class MainActivity : ComponentActivity() {
      maskMode = false
      transferOpen = false
      if (studio && tab == -1) tab = 4
-     status = "Subject added. Save the image when ready."
+     status = "AI blended subject added. Save the image when ready."
     }
    )
    fun openNightmare() {

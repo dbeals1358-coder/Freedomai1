@@ -83,8 +83,38 @@ private fun drawTransferredSubject(canvas: Canvas, piece: Bitmap, bounds: RectF,
     canvas.restore()
 }
 
+// Build a soft local edit mask from the transformed subject's actual alpha.
+private fun transferBlendMask(base: Bitmap, piece: Bitmap, position: Offset, scale: Float, rotation: Float): Bitmap {
+    val ratio = minOf(1f, 1024f / maxOf(base.width, base.height))
+    val w = (base.width * ratio).toInt().coerceAtLeast(1)
+    val h = (base.height * ratio).toInt().coerceAtLeast(1)
+    val bounds = objectBounds(piece, w.toFloat(), h.toFloat(), position, scale)
+    val silhouette = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+    drawTransferredSubject(Canvas(silhouette), piece, bounds, rotation, 0f)
+    val alpha = silhouette.extractAlpha()
+    silhouette.recycle()
+    val mask = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(mask)
+    canvas.drawColor(android.graphics.Color.BLACK)
+    val radius = (minOf(bounds.width(), bounds.height()) * .12f).coerceIn(6f, 48f)
+    val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
+        color = android.graphics.Color.WHITE
+    }
+    // A small surrounding region includes edges and contact shadows.
+    for (y in -2..2) for (x in -2..2) {
+        if (x*x + y*y <= 5) canvas.drawBitmap(alpha, x * radius / 2, y * radius / 2, paint)
+    }
+    canvas.drawBitmap(alpha, 0f, radius, paint)
+    alpha.recycle()
+    val full = if (w == base.width && h == base.height) mask
+        else Bitmap.createScaledBitmap(mask, base.width, base.height, true)
+    if (full !== mask) mask.recycle()
+    return full
+}
+
 @Composable
-internal fun ObjectTransferDialog(initialBackground: Bitmap?, onClose: () -> Unit, onApply: (Bitmap) -> Unit) {
+internal fun ObjectTransferDialog(initialBackground: Bitmap?, onClose: () -> Unit,
+    onBlend: suspend (Bitmap, Bitmap) -> Bitmap, onApply: (Bitmap) -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var background by remember { mutableStateOf(initialBackground) }
@@ -133,6 +163,19 @@ internal fun ObjectTransferDialog(initialBackground: Bitmap?, onClose: () -> Uni
     }
     var pickingBackground by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(false) }
+    var blending by remember { mutableStateOf(false) }
+    var blendJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    var blended by remember { mutableStateOf<Bitmap?>(null) }
+    var blendSeconds by remember { mutableIntStateOf(0) }
+    LaunchedEffect(blending) {
+        if (blending) {
+            blendSeconds = 0
+            while (true) {
+                kotlinx.coroutines.delay(1000)
+                blendSeconds++
+            }
+        }
+    }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) scope.launch {
             loading = true
@@ -162,33 +205,35 @@ internal fun ObjectTransferDialog(initialBackground: Bitmap?, onClose: () -> Uni
         }
     }
     val placing = cut != null
-    val shown = if (placing) background else source
+    val shown = blended ?: if (placing) background else source
     val paint = remember { Paint(Paint.FILTER_BITMAP_FLAG) }
-    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    Dialog(onDismissRequest = { if (!blending) onClose() }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize().systemBarsPadding().navigationBarsPadding().padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Add Person or Object", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
-                    TextButton(onClick = onClose) { Text("Cancel") }
+                    TextButton(onClick = { if (blending) blendJob?.cancel() else onClose() }) { Text(if (blending) "Stop" else "Cancel") }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(enabled = !loading && !detecting, onClick = { pickingBackground = true; picker.launch("image/*") }) {
+                    OutlinedButton(enabled = !loading && !detecting && !blending && blended == null, onClick = { pickingBackground = true; picker.launch("image/*") }) {
                         Text(if (background == null) "Choose background" else "Change background")
                     }
-                    OutlinedButton(enabled = !loading && !detecting, onClick = { pickingBackground = false; picker.launch("image/*") }) {
+                    OutlinedButton(enabled = !loading && !detecting && !blending && blended == null, onClick = { pickingBackground = false; picker.launch("image/*") }) {
                         Text(if (source == null) "Choose source" else "Change source")
                     }
                 }
                 Text(when {
+                    blending -> "AI blending into the scene… ${blendSeconds}s elapsed"
+                    blended != null -> "Review the AI blend before applying it."
                     loading -> "Opening photo…"
                     detecting -> "Finding subjects on your device…"
                     placing && background == null -> "Choose the background photo for your cutout."
-                    placing -> "Drag to position the subject. Adjust size, angle and lighting below."
+                    placing -> "Position the subject. This is only a preview; use AI Blend for the finished photo."
                     source == null -> "Choose the source photo that contains the object."
                     else -> "Tap Auto select, or trace around a person or object with one finger."
                 })
                 if (!placing && source != null) {
-                    Button(enabled = !loading && !detecting, onClick = { detectSubjects() }) { Text("Auto select subject") }
+                    Button(enabled = !loading && !detecting && !blending && blended == null, onClick = { detectSubjects() }) { Text("Auto select subject") }
                     if (candidates.isNotEmpty()) {
                         Text("Choose a detected subject")
                         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -200,28 +245,63 @@ internal fun ObjectTransferDialog(initialBackground: Bitmap?, onClose: () -> Uni
                         }
                     }
                 }
+                if (blending) LinearProgressIndicator(Modifier.fillMaxWidth())
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    if (placing) TextButton(onClick = { cut = null }) { Text("Change subject") }
-                    Button(enabled = !loading && !detecting && (if (placing) background != null else outline.size >= 3), onClick = {
+                    if (blended != null) {
+                        TextButton(onClick = { blended = null }) { Text("Adjust placement") }
+                        Button(onClick = { blended?.let(onApply) }) { Text("Use blended photo") }
+                    } else {
+                    if (placing) TextButton(enabled = !blending, onClick = { cut = null }) { Text("Change subject") }
+                    Button(enabled = !loading && !detecting && !blending && (if (placing) background != null else outline.size >= 3), onClick = {
                         val piece = cut
                         val base = background
                         if (piece == null) {
                             cut = source?.let { cutObject(it, outline) }
                             if (cut == null) error = "Trace a larger area around the object."
                         } else if (base != null) {
-                            val composite = base.copy(Bitmap.Config.ARGB_8888, true)
-                            drawTransferredSubject(Canvas(composite), piece,
-                                objectBounds(piece, base.width.toFloat(), base.height.toFloat(), position, scale), rotation, brightness)
-                            onApply(composite)
+                            val pos = position
+                            val sz = scale
+                            val angle = rotation
+                            val light = brightness
+                            blending = true
+                            error = ""
+                            blendJob = scope.launch {
+                                var composite: Bitmap? = null
+                                var mask: Bitmap? = null
+                                try {
+                                    val prepared = withContext(Dispatchers.Default) {
+                                        val img = base.copy(Bitmap.Config.ARGB_8888, true)
+                                        drawTransferredSubject(Canvas(img), piece,
+                                            objectBounds(piece, base.width.toFloat(), base.height.toFloat(), pos, sz), angle, light)
+                                        img to transferBlendMask(base, piece, pos, sz, angle)
+                                    }
+                                    composite = prepared.first
+                                    mask = prepared.second
+                                    blended = onBlend(prepared.first, prepared.second)
+                                } catch (e: kotlinx.coroutines.CancellationException) {
+                                    error = "Blend cancelled. Placement preserved."
+                                    throw e
+                                } catch (e: OutOfMemoryError) {
+                                    error = "Not enough memory to blend this photo. Try smaller images."
+                                } catch (e: Exception) {
+                                    error = "Blend failed: " + (e.message ?: "Unknown error")
+                                } finally {
+                                    composite?.recycle()
+                                    mask?.recycle()
+                                    blending = false
+                                }
+                            }
                         }
-                    }) { Text(if (placing) "Apply to photo" else "Use cutout") }
+                    }) { Text(if (placing) "AI Blend into photo" else "Use cutout") }
+                    }
                 }
                 BoxWithConstraints(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
                     val photo = shown
                     if (photo != null) {
                         val ratio = photo.width.toFloat() / photo.height
                         val w = minOf(maxWidth, maxHeight * ratio)
-                        androidx.compose.foundation.Canvas(Modifier.size(w, w / ratio).pointerInput(photo, placing) {
+                        androidx.compose.foundation.Canvas(Modifier.size(w, w / ratio).pointerInput(photo, placing, blending, blended) {
+                            if (blending || blended != null) return@pointerInput
                             fun normalized(p: Offset) = Offset((p.x / size.width).coerceIn(0f, 1f), (p.y / size.height).coerceIn(0f, 1f))
                             detectDragGestures(onDragStart = { if (!placing) { outline.clear(); outline.add(normalized(it)); error = "" } },
                                 onDrag = { change, delta ->
@@ -234,12 +314,12 @@ internal fun ObjectTransferDialog(initialBackground: Bitmap?, onClose: () -> Uni
                             val canvas = drawContext.canvas.nativeCanvas
                             canvas.drawBitmap(photo, null, RectF(0f, 0f, size.width, size.height), paint)
                             val piece = cut
-                            if (piece != null) {
+                            if (piece != null && blended == null) {
                                 canvas.save()
                                 canvas.clipRect(0f, 0f, size.width, size.height)
                                 drawTransferredSubject(canvas, piece, objectBounds(piece, size.width, size.height, position, scale), rotation, brightness)
                                 canvas.restore()
-                            } else if (outline.size > 1) {
+                            } else if (blended == null && outline.size > 1) {
                                 val path = androidx.compose.ui.graphics.Path().apply {
                                     moveTo(outline[0].x * size.width, outline[0].y * size.height)
                                     for (i in 1 until outline.size) lineTo(outline[i].x * size.width, outline[i].y * size.height)
@@ -252,18 +332,18 @@ internal fun ObjectTransferDialog(initialBackground: Bitmap?, onClose: () -> Uni
                     }
                 }
                 if (error.isNotBlank()) Text(error, color = MaterialTheme.colorScheme.error)
-                if (placing) {
+                if (placing && blended == null) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("Size")
-                        Slider(scale, { scale = it }, modifier = Modifier.weight(1f), valueRange = .03f..2f)
+                        Slider(scale, { scale = it }, modifier = Modifier.weight(1f), enabled = !blending, valueRange = .03f..2f)
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("Angle")
-                        Slider(rotation, { rotation = it }, modifier = Modifier.weight(1f), valueRange = -180f..180f)
+                        Slider(rotation, { rotation = it }, modifier = Modifier.weight(1f), enabled = !blending, valueRange = -180f..180f)
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("Lighting")
-                        Slider(brightness, { brightness = it }, modifier = Modifier.weight(1f), valueRange = -80f..80f)
+                        Slider(brightness, { brightness = it }, modifier = Modifier.weight(1f), enabled = !blending, valueRange = -80f..80f)
                     }
                 }
 
